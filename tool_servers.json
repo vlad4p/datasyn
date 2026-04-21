@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "catalog": {
+      "transport": "http",
+      "url": "http://127.0.0.1:8010/mcp"
+    },
+    "database": {
+      "transport": "http",
+      "url": "http://127.0.0.1:8030/mcp"
+    },
+    "process": {
+      "transport": "http",
+      "url": "http://127.0.0.1:8020/mcp"
+    }
+  }
+}

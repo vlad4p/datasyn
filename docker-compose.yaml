@@ -1,0 +1,26 @@
+name: datacyber
+
+services:
+  brain:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - compose.env
+      - .env
+    command:
+      [
+        "python",
+        "-m",
+        "uvicorn",
+        "agent.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+      ]
+    ports:
+      - "8000:8000"
+

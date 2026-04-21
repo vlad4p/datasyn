@@ -1,0 +1,30 @@
+[project]
+name = "datacyber"
+version = "0.1.0"
+description = "Deep Agent API: FastAPI brain, LangChain remote tools, OpenAI-compatible chat"
+requires-python = ">=3.11"
+dependencies = [
+  "deepagents>=0.5",
+  "fastapi>=0.115",
+  "httpx>=0.27",
+  "langchain-core>=0.3",
+  "langchain-mcp-adapters>=0.1",
+  "langchain-openai>=0.3",
+  "python-dotenv>=1.0",
+  "uvicorn[standard]>=0.32",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agent*"]
+
+[project.scripts]
+datacyber-agent = "agent.runner:main"
+datacyber-api = "agent.main:run"

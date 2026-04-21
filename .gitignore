@@ -1,0 +1,61 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+agent/.env
+ui/.env
+ui/.env.local
+ui/.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.egg-info/
+*.egg
+build/
+dist/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.hypothesis/
+
+# Virtual environments
+.venv/
+venv/
+
+# uv (project-local cache if present)
+.uv/
+
+# Data and local databases
+data/
+*.duckdb
+*.sqlite
+*.sqlite-journal
+
+# Runtime / generated workspace (keep dirs with .gitkeep if needed)
+reports/*
+!reports/.gitkeep
+inbox/*
+!inbox/.gitkeep
+tmp/
+data-local/*
+
+# Node / frontend
+ui/node_modules/
+ui/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / editors
+.idea/
+*.swp
+*.swo
+
+# Docker Compose local overrides
+docker-compose.override.yml

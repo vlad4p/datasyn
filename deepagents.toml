@@ -1,0 +1,5 @@
+# Deep Agents layout (https://docs.langchain.com/oss/python/deepagents/deploy#project-layout).
+# The FastAPI brain uses CHAT_MODEL + LiteLLM from .env via agent/config.py - not this model field.
+
+[agent]
+name = "datacyber-brain"
