@@ -1,9 +1,24 @@
-"""One-turn chat: load remote HTTP tool servers and run the Deep Agent."""
+"""One-turn chat: load remote HTTP tool servers and run the Deep Agent.
+
+**Flow (UI → LiteLLM)** — only the **brain** talks to LiteLLM; the browser never sends ``LITELLM_KEY``.
+
+1. Browser: ``POST /api/agent/chat`` (Vite proxy) → brain ``POST /agent/chat`` with JSON ``{ "message": "..." }``.
+2. Brain: ``run_agent_chat_turn`` loads MCP tools from ``mcp.json``, builds ``create_deep_agent`` with
+   ``build_chat_model()`` → ``langchain_openai.ChatOpenAI`` (``base_url`` = LiteLLM proxy, ``api_key`` = ``LITELLM_KEY``).
+3. Agent graph invokes that model for LLM turns; MCP tools hit ``duckdb-mcp`` etc. No separate "model service" in front.
+
+If LiteLLM returns ``401 Received API Key = sk-…XXXX``, ``XXXX`` is the key **this process** sent in the
+``Authorization: Bearer`` header — compare to ``litellm_key_suffix`` on ``GET /health``. If your code hardcodes a
+different key but the error still shows an old suffix, the running container/image is stale: rebuild the brain.
+"""
 
 from __future__ import annotations
 
 import json
-import os
+import logging
+import time
+import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -11,8 +26,11 @@ from langchain_core.messages import HumanMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient as MultiServerToolClient
 
 from agent.graph import build_agent
-from agent.utils.messages import last_assistant_text
+from agent.utils.messages import resolve_assistant_reply, summarize_messages_for_debug
+from agent.utils.mcp_tool_log import MCPToolResponseLogger
 from agent.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def _project_root() -> Path:
@@ -20,36 +38,124 @@ def _project_root() -> Path:
 
 
 def _tool_connections() -> dict[str, Any]:
-    """HTTP connection map (env overrides, then ``tool_servers.json``)."""
-    defaults = {
-        "catalog": "http://127.0.0.1:8010/mcp",
-        "database": "http://127.0.0.1:8030/mcp",
-        "process": "http://127.0.0.1:8020/mcp",
-    }
-    env_keys = {
-        "catalog": "TOOL_CATALOG_URL",
-        "database": "TOOL_DATABASE_URL",
-        "process": "TOOL_PROCESS_URL",
-    }
-    file_urls: dict[str, str] = {}
-    cfg_path = _project_root() / "tool_servers.json"
-    if cfg_path.is_file():
-        raw = json.loads(cfg_path.read_text(encoding="utf-8"))
-        servers = raw.get("servers", {})
-        for name, spec in servers.items():
-            if isinstance(spec, dict) and spec.get("url"):
-                file_urls[str(name)] = str(spec["url"])
-
+    """HTTP connection map from ``mcp.json`` only (``mcpServers`` or ``servers`` block)."""
+    cfg_path = _project_root() / "mcp.json"
+    if not cfg_path.is_file():
+        raise FileNotFoundError(
+            f"Missing {cfg_path}: define MCP HTTP servers there (see project mcp.json)."
+        )
+    raw = json.loads(cfg_path.read_text(encoding="utf-8"))
+    block = raw.get("mcpServers") or raw.get("servers")
+    if not isinstance(block, dict) or not block:
+        raise ValueError(
+            "mcp.json must contain a non-empty object under 'mcpServers' or 'servers'."
+        )
     connections: dict[str, Any] = {}
-    for name, default_url in defaults.items():
-        url = os.environ.get(env_keys[name]) or file_urls.get(name) or default_url
-        connections[name] = {"transport": "http", "url": url}
+    for name, spec in block.items():
+        if not isinstance(spec, dict):
+            continue
+        url = spec.get("url")
+        if not url:
+            continue
+        transport = spec.get("transport") or "http"
+        connections[str(name)] = {"transport": transport, "url": str(url)}
+    if not connections:
+        raise ValueError("mcp.json: no entries with a 'url' field.")
     return connections
 
 
-async def run_agent_chat_turn(message: str) -> str:
-    client = MultiServerToolClient(_tool_connections(), tool_name_prefix=True)
+@dataclass(frozen=True)
+class ChatTurnResult:
+    """Result of a single user message → agent run."""
+
+    reply: str
+    request_id: str
+    debug: dict[str, Any] | None
+
+
+async def run_agent_chat_turn(message: str, *, request_id: str | None = None) -> ChatTurnResult:
+    """Load MCP tools, run the deep agent, return reply and optional debug payload."""
+    rid = request_id or str(uuid.uuid4())
+    t0 = time.perf_counter()
+    steps: list[dict[str, Any]] = []
+
+    def record(step: str, **extra: Any) -> None:
+        entry = {
+            "step": step,
+            "ms_from_start": round((time.perf_counter() - t0) * 1000, 2),
+            **extra,
+        }
+        steps.append(entry)
+        logger.info("[%s] pipeline %s %s", rid, step, extra)
+
+    logger.info("[%s] chat_turn start message_chars=%s", rid, len(message))
+
+    connections = _tool_connections()
+    logger.info("[%s] mcp.json server keys=%s", rid, list(connections.keys()))
+    for key, spec in connections.items():
+        logger.info("[%s] mcp server %r url=%s", rid, key, spec.get("url"))
+    record("mcp_config_loaded", servers=list(connections.keys()))
+
+    client = MultiServerToolClient(connections, tool_name_prefix=True)
+    t_tools = time.perf_counter()
     tools = await client.get_tools()
+    tools_ms = round((time.perf_counter() - t_tools) * 1000, 2)
+    tool_names = sorted([getattr(t, "name", repr(t)) for t in tools])
+    logger.info(
+        "[%s] MCP get_tools done count=%s ms=%s names=%s",
+        rid,
+        len(tools),
+        tools_ms,
+        tool_names,
+    )
+    record("mcp_get_tools", tool_count=len(tools), tool_names=tool_names, ms=tools_ms)
+
     agent = build_agent(tools)
-    state = await agent.ainvoke({"messages": [HumanMessage(content=message)]})
-    return last_assistant_text(state)
+    record("build_agent_done")
+
+    t_invoke = time.perf_counter()
+    state = await agent.ainvoke(
+        {"messages": [HumanMessage(content=message)]},
+        config={"callbacks": [MCPToolResponseLogger(rid)]},
+    )
+    invoke_ms = round((time.perf_counter() - t_invoke) * 1000, 2)
+    logger.info("[%s] agent.ainvoke finished ms=%s state_keys=%s", rid, invoke_ms, list(state.keys()))
+    record("agent_ainvoke", ms=invoke_ms)
+
+    msg_summary = summarize_messages_for_debug(state)
+    logger.info("[%s] message_count=%s", rid, msg_summary.get("message_count"))
+    for row in msg_summary.get("timeline", []):
+        logger.info("[%s] timeline %s", rid, row)
+
+    reply = resolve_assistant_reply(state)
+    if not reply.strip():
+        logger.warning(
+            "[%s] empty assistant reply after resolve_assistant_reply; check LiteLLM and graph output",
+            rid,
+        )
+
+    total_ms = round((time.perf_counter() - t0) * 1000, 2)
+    logger.info(
+        "[%s] chat_turn done reply_chars=%s total_ms=%s pipeline_debug=%s",
+        rid,
+        len(reply),
+        total_ms,
+        settings.pipeline_debug,
+    )
+
+    debug: dict[str, Any] | None = None
+    if settings.pipeline_debug:
+        debug = {
+            "request_id": rid,
+            "total_ms": total_ms,
+            "invoke_ms": invoke_ms,
+            "tool_names": tool_names,
+            "messages": msg_summary,
+            "skills": (
+                "Deep Agents `skills=[\"/skills/\"]` — SKILL.md content is injected by the framework "
+                "when relevant; there is no separate skill HTTP endpoint."
+            ),
+            "steps": steps,
+        }
+
+    return ChatTurnResult(reply=reply, request_id=rid, debug=debug)

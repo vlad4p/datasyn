@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "duckdb": {
+      "transport": "http",
+      "url": "http://duckdb-mcp:8040/mcp"
+    }
+  }
+}

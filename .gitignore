@@ -36,11 +36,9 @@ data/
 *.sqlite
 *.sqlite-journal
 
-# Runtime / generated workspace (keep dirs with .gitkeep if needed)
-reports/*
-!reports/.gitkeep
-inbox/*
-!inbox/.gitkeep
+# Runtime / generated workspace
+reports/
+inbox/
 tmp/
 data-local/*
 

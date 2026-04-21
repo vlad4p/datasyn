@@ -290,6 +290,21 @@ body {
   font-size: 0.88rem;
 }
 
+.banner.warning {
+  margin: 0;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  background: rgba(229, 192, 123, 0.12);
+  border: 1px solid rgba(229, 192, 123, 0.4);
+  color: #f0d4a0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.banner.warning strong {
+  color: #ffe7c2;
+}
+
 .composer {
   display: flex;
   gap: 0.75rem;
@@ -442,6 +457,42 @@ body {
 
 .dash-json.mt {
   margin-top: 0.75rem;
+}
+
+.dash-summary {
+  margin: 0.65rem 0 0;
+  display: grid;
+  gap: 0.5rem 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  font-size: 0.8rem;
+}
+
+.dash-summary dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.dash-summary dd {
+  margin: 0.15rem 0 0;
+  color: var(--text);
+}
+
+.dash-details {
+  margin-top: 0.65rem;
+}
+
+.dash-details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.8rem;
+  user-select: none;
+}
+
+.dash-details summary:hover {
+  color: var(--accent);
 }
 
 .mono {

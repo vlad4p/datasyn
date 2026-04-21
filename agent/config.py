@@ -8,7 +8,16 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv( ".env")
+# Resolve repo root (…/agent/config.py → project root), not CWD — so uvicorn from another cwd still loads `.env`.
+# `override=True` so a stale shell `export LITELLM_KEY=...` cannot shadow the file (common 401 cause).
+# Directory that contains the ``agent/`` package (repository root when running from this tree).
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_env_file = _REPO_ROOT / ".env"
+# Read by ``GET /health`` → ``pipeline.brain.dotenv`` (no secrets).
+ENV_DOTENV_RESOLVED_PATH = str(_env_file.resolve())
+ENV_DOTENV_LOADED_AT_IMPORT = _env_file.is_file()
+if ENV_DOTENV_LOADED_AT_IMPORT:
+    load_dotenv(_env_file, override=True)
 
 
 def _path(name: str, default: str) -> Path:
@@ -99,7 +108,7 @@ class Settings:
     reports_dir: Path
     inbox_dir: Path
     jobs_dir: Path
-    chat_model: str
+    chat_model: str | None
     litellm_key: str | None
     litellm_api_base: str | None
     duckdb_path_in_process: str
@@ -108,6 +117,7 @@ class Settings:
     api_host: str
     api_port: int
     cors_extra_origins: tuple[str, ...]
+    pipeline_debug: bool
 
     @classmethod
     def load(cls) -> Settings:
@@ -119,10 +129,7 @@ class Settings:
             reports_dir=_path("REPORTS_DIR", str(project_root / "reports")),
             inbox_dir=_path("INBOX_DIR", str(project_root / "inbox")),
             jobs_dir=_path("JOBS_DIR", str(project_root / "tmp" / "process_jobs")),
-            chat_model=os.environ.get(
-                "CHAT_MODEL",
-                "local/gemini-2.5-flash-lite",
-            ),
+            chat_model=((os.environ.get("CHAT_MODEL") or "").strip() or None),
             litellm_key=_env_first("LITELLM_KEY", "LITELLM_PROXY_KEY"),
             litellm_api_base=_litellm_base_from_env(),
             duckdb_path_in_process=os.environ.get("DUCKDB_PATH", "/data/warehouse.duckdb"),
@@ -131,6 +138,10 @@ class Settings:
             api_host=os.environ.get("API_HOST", "0.0.0.0"),
             api_port=int(os.environ.get("API_PORT", "8000")),
             cors_extra_origins=_cors_extra_origins(),
+            pipeline_debug=os.environ.get("DATACYBER_PIPELINE_DEBUG", "")
+            .strip()
+            .lower()
+            in ("1", "true", "yes"),
         )
 
 

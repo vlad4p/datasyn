@@ -3,7 +3,7 @@
 Uses ``langchain_openai.ChatOpenAI`` with ``base_url`` = proxy (e.g. ``http://host:4000/v1``), not
 ``ChatLiteLLM``, so traffic goes to your LiteLLM instance instead of ``api.openai.com``.
 
-Model ids must match your LiteLLM proxy (e.g. ``local/gemini-2.5-flash-lite`` from ``GET /v1/models``).
+Model id must match an entry from your LiteLLM proxy (``GET /v1/models``). Set ``CHAT_MODEL`` in the environment.
 
 **Env (Ubika-compatible aliases supported):**
 
@@ -14,8 +14,10 @@ Model ids must match your LiteLLM proxy (e.g. ``local/gemini-2.5-flash-lite`` fr
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import re
 from typing import Any
 
 import httpx
@@ -29,6 +31,117 @@ logger = logging.getLogger(__name__)
 
 def running_in_docker() -> bool:
     return os.path.exists("/.dockerenv")
+
+
+def parse_litellm_proxy_error_payload(data: dict[str, Any]) -> dict[str, Any] | None:
+    """Detect LiteLLM proxy failure envelopes or OpenAI-style ``{"error": {...}}`` bodies."""
+    if not isinstance(data, dict):
+        return None
+    if data.get("status") == "failure" or (
+        "user_api_key" in data and isinstance(data.get("error_information"), dict)
+    ):
+        ei = data["error_information"] if isinstance(data.get("error_information"), dict) else {}
+        return {
+            "kind": "litellm_proxy_failure",
+            "user_api_key_hash": data.get("user_api_key"),
+            "error_code": ei.get("error_code"),
+            "error_class": ei.get("error_class"),
+            "error_message": (ei.get("error_message") or "").strip() or None,
+        }
+    err = data.get("error")
+    if isinstance(err, dict):
+        return {
+            "kind": "openai_compatible_error",
+            "message": err.get("message"),
+            "code": err.get("code"),
+            "param": err.get("param"),
+            "type": err.get("type"),
+        }
+    return None
+
+
+def parse_litellm_proxy_response_body(text: str) -> dict[str, Any] | None:
+    if not text or not text.strip().startswith("{"):
+        return None
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return parse_litellm_proxy_error_payload(data) if isinstance(data, dict) else None
+
+
+def hint_for_litellm_parsed_error(parsed: dict[str, Any]) -> str:
+    if parsed.get("kind") == "litellm_proxy_failure":
+        h = parsed.get("user_api_key_hash")
+        code = parsed.get("error_code")
+        return (
+            "LiteLLM proxy rejected the API key (Bearer token). "
+            f"The proxy recorded key hash {h!r} (compare with its logs). "
+            "Fix: register a virtual key in the LiteLLM admin UI / LiteLLM_VerificationTokenTable, "
+            "or set LITELLM_KEY on the brain to the proxy's LITELLM_MASTER_KEY if your deployment uses that. "
+            "After editing .env, run: docker compose up -d --force-recreate brain. "
+            f"Proxy error_code={code!r}."
+        )
+    if parsed.get("kind") == "openai_compatible_error":
+        return (
+            f"Upstream returned: {parsed.get('message') or parsed} "
+            f"(code={parsed.get('code')!r}, type={parsed.get('type')!r})."
+        )
+    return ""
+
+
+def _collect_http_bodies_from_exception(exc: BaseException) -> list[str]:
+    """Pull raw JSON/text bodies from OpenAI/LangChain/httpx exception chains."""
+    out: list[str] = []
+    seen: set[int] = set()
+
+    def visit(e: BaseException | None) -> None:
+        if e is None or id(e) in seen:
+            return
+        seen.add(id(e))
+        body = getattr(e, "body", None)
+        if isinstance(body, str) and body.strip():
+            out.append(body)
+        resp = getattr(e, "response", None)
+        if resp is not None:
+            t = getattr(resp, "text", None)
+            if isinstance(t, str) and t.strip():
+                out.append(t)
+        for a in getattr(e, "args", ()):
+            if isinstance(a, str) and "{" in a:
+                out.append(a)
+        cause: BaseException | None = None
+        c = getattr(e, "__cause__", None)
+        if isinstance(c, BaseException):
+            cause = c
+            visit(cause)
+        ctx = getattr(e, "__context__", None)
+        if isinstance(ctx, BaseException) and ctx is not cause:
+            visit(ctx)
+        subs = getattr(e, "exceptions", None)
+        if subs:
+            for sub in subs:
+                if isinstance(sub, BaseException):
+                    visit(sub)
+
+    visit(exc)
+    return out
+
+
+def explain_litellm_http_exception(exc: BaseException) -> str | None:
+    """If ``exc`` wraps a LiteLLM proxy auth/HTTP body, return a short user-facing hint."""
+    bodies = _collect_http_bodies_from_exception(exc)
+    for raw in bodies:
+        parsed = parse_litellm_proxy_response_body(raw)
+        if parsed:
+            return hint_for_litellm_parsed_error(parsed)
+    # Fallback: JSON object embedded in the stringified exception
+    blob = str(exc)
+    for m in re.finditer(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", blob):
+        parsed = parse_litellm_proxy_response_body(m.group(0))
+        if parsed:
+            return hint_for_litellm_parsed_error(parsed)
+    return None
 
 
 async def probe_litellm_proxy() -> dict[str, Any]:
@@ -52,7 +165,12 @@ async def probe_litellm_proxy() -> dict[str, Any]:
         out["status_code"] = r.status_code
         out["ok"] = 200 <= r.status_code < 300
         if not out["ok"]:
-            out["body_preview"] = (r.text or "")[:400]
+            text = r.text or ""
+            out["body_preview"] = text[:800]
+            parsed = parse_litellm_proxy_response_body(text)
+            if parsed:
+                out["litellm_error_parsed"] = parsed
+                out["hint"] = hint_for_litellm_parsed_error(parsed)
     except Exception as exc:
         out["ok"] = False
         out["error"] = str(exc)[:500]
@@ -93,15 +211,34 @@ def build_chat_model() -> BaseChatModel:
             "e.g. http://127.0.0.1:4000/v1",
             base,
         )
-    model_name = settings.chat_model.strip()
+    model_name = (settings.chat_model or "").strip()
+    if not model_name:
+        raise RuntimeError(
+            "Set CHAT_MODEL in the environment to a model id your LiteLLM proxy serves (see GET /v1/models)."
+        )
     timeout = _request_timeout()
 
-    logger.info("[LiteLLM] ChatOpenAI model=%s base_url=%s", model_name, base)
+    api_key = settings.litellm_key
+    assert api_key is not None
+    env_openai = (os.getenv("OPENAI_API_KEY") or "").strip()
+    if env_openai:
+        logger.warning(
+            "[LiteLLM] OPENAI_API_KEY is set (suffix …%s). ChatOpenAI uses LITELLM_KEY; "
+            "unset OPENAI_API_KEY if LiteLLM reports a different key than you expect.",
+            env_openai[-4:] if len(env_openai) >= 4 else env_openai,
+        )
+
+    logger.info(
+        "[LiteLLM] ChatOpenAI model=%s base_url=%s api_key_suffix=…%s",
+        model_name,
+        base,
+        api_key[-4:] if len(api_key) >= 4 else api_key,
+    )
 
     # No custom httpx: some LangChain builds reject ``http_async_client`` and 500 every request.
     common = dict(
         base_url=base,
-        api_key=settings.litellm_key,
+        api_key=api_key,
         model=model_name,
         temperature=_temperature(),
     )

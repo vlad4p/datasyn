@@ -19,12 +19,31 @@ def load_prompt(filename: str) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-def supervisor_system_prompt() -> str:
-    """Use project ``AGENTS.md`` when present; otherwise ``supervisor_system_prompt.txt``."""
+def supervisor_system_prompt(mcp_tool_names: list[str] | None = None) -> str:
+    """Use project ``AGENTS.md`` when present; otherwise ``supervisor_system_prompt.txt``.
+
+    When ``mcp_tool_names`` is provided, the actual runtime MCP tools (from ``mcp.json``) are appended to
+    the prompt so the model cannot invent names from other products.
+    """
     root = settings.project_root
     agents = root / "AGENTS.md"
     if agents.is_file():
         base = agents.read_text(encoding="utf-8").strip()
     else:
         base = load_prompt("supervisor_system_prompt.txt")
-    return f"{base}\n\nWrite Markdown reports under: `{settings.reports_dir}`."
+
+    parts: list[str] = [base]
+    if mcp_tool_names:
+        listed = "\n".join(f"- `{n}`" for n in sorted(mcp_tool_names))
+        parts.append(
+            "\n\n## Runtime MCP tools (authoritative)\n\n"
+            "These are the **only** MCP tools loaded from `mcp.json` in this process. "
+            "If a tool is not in this list, it **does not exist**. When the user asks "
+            '"what tools do you have?", answer with **this exact list** (plus the built-in '
+            "Deep Agents helpers: `write_todos`, `ls`, `read_file`, `write_file`, `edit_file`, "
+            "`glob`, `grep`, `task`). Do **not** mention `catalog_*`, `database_*`, `process_*`, "
+            "`ingest_csv`, `database_ingest_csv`, or any other name not listed below.\n\n"
+            f"{listed}"
+        )
+    parts.append(f"\n\nWrite Markdown reports under: `{settings.reports_dir}`.")
+    return "".join(parts)

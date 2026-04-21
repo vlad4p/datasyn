@@ -10,7 +10,7 @@ from agent.utils.agent_chat import run_agent_chat_turn
 
 
 async def _arun(message: str) -> str:
-    return await run_agent_chat_turn(message)
+    return (await run_agent_chat_turn(message)).reply
 
 
 def main(argv: list[str] | None = None) -> int:

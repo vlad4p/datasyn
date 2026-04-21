@@ -1,4 +1,4 @@
-# Datacyber brain: FastAPI + Deep Agents (FilesystemBackend, remote tools via tool_servers.json).
+# Datacyber brain: FastAPI + Deep Agents (FilesystemBackend, remote tools via mcp.json).
 FROM python:3.12-slim-bookworm
 
 # Install dependencies with uv (requirements.txt is generated via `uv export`, see header in that file).
@@ -11,7 +11,7 @@ RUN uv pip install --system --no-cache -r requirements.txt \
     && rm -f /usr/local/bin/uv
 
 # Baked image layout (dev Compose still bind-mounts the repo over /project).
-COPY deepagents.toml tool_servers.json AGENTS.md /project/
+COPY deepagents.toml mcp.json AGENTS.md /project/
 COPY agent/ /project/agent/
 
 ENV PYTHONUNBUFFERED=1 \

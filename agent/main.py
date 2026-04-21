@@ -1,19 +1,21 @@
 """HTTP control plane for the Datacyber Deep Agent (leader).
 
-The leader loads catalog, database, and process tools over HTTP (see ``tool_servers.json``
-and docker-compose). The warehouse worker remains a separate HTTP service
-(``WAREHOUSE_API_URL``).
+The leader loads MCP HTTP tool servers from ``mcp.json`` at the project root.
+The warehouse worker remains a separate HTTP service (``WAREHOUSE_API_URL``).
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
+from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -23,8 +25,16 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from agent.utils.agent_chat import run_agent_chat_turn
-from agent.utils.litellm_chat import probe_litellm_proxy, running_in_docker
-from agent.config import settings
+from agent.utils.litellm_chat import (
+    explain_litellm_http_exception,
+    probe_litellm_proxy,
+    running_in_docker,
+)
+from agent.config import (
+    ENV_DOTENV_LOADED_AT_IMPORT,
+    ENV_DOTENV_RESOLVED_PATH,
+    settings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +51,54 @@ def _configure_logging() -> None:
 _configure_logging()
 
 
+def _log_effective_llm_env() -> None:
+    """One-line proof of which LiteLLM key/model the process actually loaded (suffix matches proxy error snippets)."""
+    key = settings.litellm_key or ""
+    if len(key) > 12:
+        masked = f"{key[:7]}...{key[-4:]}"
+    elif key:
+        masked = "(set, short)"
+    else:
+        masked = "(unset)"
+    logger.info(
+        "Effective LLM env: CHAT_MODEL=%r LITELLM_TEMPERATURE=%s LITELLM_KEY=%s LITELLM_BASE=%r",
+        settings.chat_model,
+        os.environ.get("LITELLM_TEMPERATURE", "(unset)"),
+        masked,
+        settings.litellm_api_base,
+    )
+
+
+_log_effective_llm_env()
+
+
+def _litellm_connection_error_hint() -> str:
+    """Extra context when ChatOpenAI cannot reach LiteLLM (port down, wrong host for Docker, etc.)."""
+    base = (settings.litellm_api_base or "").lower()
+    in_container = running_in_docker()
+    bits = [
+        f"resolved_litellm_base={settings.litellm_api_base!r}",
+        f"brain_in_docker={in_container}",
+    ]
+    if "127.0.0.1" in base or "localhost" in base:
+        if not in_container:
+            bits.append(
+                "The brain runs on the host and targets loopback — start LiteLLM on this machine: "
+                "`litellm --host 0.0.0.0 --port 4000` (or fix LITELLM_PROXY_BASE to where your proxy listens)."
+            )
+        else:
+            bits.append(
+                "If you see loopback inside Docker, set LITELLM_PROXY_BASE=http://host.docker.internal:4000 "
+                "or ensure LITELLM_DOCKER_HOST_REWRITE=1 (default)."
+            )
+    elif "host.docker.internal" in base:
+        bits.append(
+            "Brain is in Docker; LiteLLM must run on the host bound to 0.0.0.0:4000 (not 127.0.0.1-only)."
+        )
+    bits.append("Quick check: `curl -sS http://127.0.0.1:4000/v1/models -H \"Authorization: Bearer $LITELLM_KEY\"` from the host.")
+    return " ".join(bits)
+
+
 def _format_agent_error(exc: BaseException) -> str:
     """Flatten ExceptionGroup (LangGraph / asyncio) for HTTP JSON detail."""
     subs = getattr(exc, "exceptions", None)
@@ -52,8 +110,8 @@ def _format_agent_error(exc: BaseException) -> str:
 app = FastAPI(
     title="Datacyber",
     description=(
-        "Leader agent API. Remote tools use HTTP endpoints from tool_servers.json "
-        "(Compose: catalog-tools, database-tools, process-tools)."
+        "Leader agent API. Remote tools use HTTP endpoints listed in mcp.json "
+        "(mcpServers block)."
     ),
 )
 
@@ -121,28 +179,106 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+    request_id: str = Field(
+        ...,
+        description="Correlation id for brain/MCP/LiteLLM logs; echoed as X-Request-ID.",
+    )
+    debug: dict[str, Any] | None = Field(
+        None,
+        description="Structured pipeline trace when brain has DATACYBER_PIPELINE_DEBUG=1.",
+    )
 
 
 def _llm_config_snapshot() -> dict[str, Any]:
     """Static LiteLLM settings (no network)."""
+    key = settings.litellm_key or ""
+    # Last 4 chars — compare to LiteLLM 401 messages (`...RbPw` vs current key) without exposing the full secret.
+    key_suffix = key[-4:] if len(key) >= 8 else None
+    oai = (os.getenv("OPENAI_API_KEY") or "").strip()
+    oai_suffix = oai[-4:] if len(oai) >= 8 else None
     return {
         "litellm_base": settings.litellm_api_base,
         "has_key": bool(settings.litellm_key),
+        "litellm_key_suffix": key_suffix,
+        "openai_api_key_env_set": bool(oai),
+        "openai_api_key_env_suffix": oai_suffix,
         "in_docker": running_in_docker(),
         "chat_model": settings.chat_model,
     }
 
 
+def _mcp_urls_public() -> dict[str, str]:
+    """URLs from mcp.json (for debugging; no secrets)."""
+    cfg = settings.project_root / "mcp.json"
+    if not cfg.is_file():
+        return {}
+    try:
+        raw = json.loads(cfg.read_text(encoding="utf-8"))
+        block = raw.get("mcpServers") or raw.get("servers") or {}
+        out: dict[str, str] = {}
+        if isinstance(block, dict):
+            for name, spec in block.items():
+                if isinstance(spec, dict) and spec.get("url"):
+                    out[str(name)] = str(spec["url"])
+        return out
+    except Exception as exc:
+        return {"_error": str(exc)}
+
+
+def _pipeline_snapshot() -> dict[str, Any]:
+    """Architecture snapshot: who lists /data-local, MCP URLs, debug flags (no secrets)."""
+    return {
+        "brain": {
+            "project_root": str(settings.project_root),
+            "pipeline_debug_env": settings.pipeline_debug,
+            "sql_row_cap": settings.sql_row_cap,
+            "dotenv": {
+                "load_dotenv_path": ENV_DOTENV_RESOLVED_PATH,
+                "file_existed_when_process_started": ENV_DOTENV_LOADED_AT_IMPORT,
+                "load_dotenv_override_prior_env": True,
+                "expected_location": "Repository root: same directory that contains the `agent/` folder "
+                "(e.g. `datacyber/.env`). In Docker with this compose file, mount host `./.env` → `/project/.env` "
+                "and keep `PROJECT_ROOT=/project` so this path matches.",
+                "compose_also_injects": "docker-compose `brain.env_file`: compose.env then .env (values frozen until "
+                "container recreate; bind-mounted `.env` is re-read on every Python import via load_dotenv).",
+            },
+        },
+        "mcp_servers": _mcp_urls_public(),
+        "listing_data_local": {
+            "filesystem_tool": "duckdb-mcp exposes `data_local_ls(path)` — read-only directory listing under DATA_LOCAL_ROOT (default /data-local).",
+            "who_runs_glob": "duckdb-mcp `warehouse_query` runs DuckDB SQL; `glob()` reads the container filesystem.",
+            "brain_mounts_data_local": False,
+            "duckdb_service_mounts_data_local": True,
+            "duckdb_mcp_mounts_data_local": True,
+            "ui_lists_files": False,
+        },
+        "skills": {
+            "where": "./skills/*/SKILL.md",
+            "how": "Deep Agents `skills=[\"/skills/\"]` on create_deep_agent — not a separate HTTP service; no skill-specific MCP tool.",
+        },
+    }
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
-    """Liveness plus LLM snapshot so the UI can use a single ``GET /api/health`` through Vite."""
-    return {"status": "ok", **_llm_config_snapshot()}
+    """Liveness, LLM snapshot, and pipeline/architecture info (UI uses one request via ``GET /api/health``)."""
+    return {
+        "status": "ok",
+        **_llm_config_snapshot(),
+        "pipeline": _pipeline_snapshot(),
+    }
 
 
 @app.get("/health/llm/config")
 def health_llm_config() -> dict[str, Any]:
     """Same fields as the LLM keys on ``GET /health`` (kept for scripts and older clients)."""
     return _llm_config_snapshot()
+
+
+@app.get("/health/pipeline")
+def health_pipeline() -> dict[str, Any]:
+    """Same payload as the ``pipeline`` key on ``GET /health`` (alias for scripts and curl)."""
+    return _pipeline_snapshot()
 
 
 @app.get("/health/llm")
@@ -180,23 +316,39 @@ def serve_project_file(
 
 
 @app.post("/agent/chat", response_model=ChatResponse)
-async def agent_chat(body: ChatRequest) -> ChatResponse:
+async def agent_chat(request: Request, response: Response, body: ChatRequest) -> ChatResponse:
+    request_id = request.headers.get("X-Request-ID") or str(uuid4())
+    logger.info(
+        "POST /agent/chat request_id=%s message_chars=%s pipeline_debug=%s",
+        request_id,
+        len(body.message),
+        settings.pipeline_debug,
+    )
     try:
-        reply = await run_agent_chat_turn(body.message)
+        result = await run_agent_chat_turn(body.message, request_id=request_id)
     except Exception as exc:
         logger.exception("agent chat failed")
         msg = _format_agent_error(exc).strip() or type(exc).__name__
+        litellm_hint = explain_litellm_http_exception(exc)
+        if litellm_hint:
+            msg = f"{msg} | {litellm_hint}"
         if "Connection error" in msg or "ConnectError" in msg or "connection attempts failed" in msg.lower():
-            base = settings.litellm_api_base or "(not set)"
-            msg += (
-                f" [resolved_litellm_base={base!r}] "
-                "Ensure LiteLLM is running (e.g. on host: litellm --host 0.0.0.0 --port 4000). "
-                "Diagnose: curl GET /health/llm on this API, or from your machine curl the same /v1/models URL."
-            )
-        if len(msg) > 1200:
-            msg = msg[:1200] + "…"
+            msg += " [" + _litellm_connection_error_hint() + "]"
+        if len(msg) > 2000:
+            msg = msg[:2000] + "…"
         raise HTTPException(status_code=502, detail=msg) from exc
-    return ChatResponse(reply=reply)
+    response.headers["X-Request-ID"] = result.request_id
+    logger.info(
+        "POST /agent/chat ok request_id=%s reply_chars=%s debug_payload=%s",
+        result.request_id,
+        len(result.reply),
+        result.debug is not None,
+    )
+    return ChatResponse(
+        reply=result.reply,
+        request_id=result.request_id,
+        debug=result.debug,
+    )
 
 
 def run() -> None:

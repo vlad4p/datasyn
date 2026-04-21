@@ -1,15 +1,54 @@
 name: datacyber
 
 services:
+  duckdb:
+    build:
+      context: ./docker/duckdb
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    volumes:
+      - duckdb_data:/data
+      - ./data-local:/data-local:ro
+    environment:
+      DUCKDB_PATH: /data/warehouse.duckdb
+
+  duckdb-mcp:
+    build:
+      context: ./mcp_servers/duckdb-mcp
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - duckdb
+    ports:
+      - "8040:8040"
+    env_file:
+      - mcp_servers/duckdb-mcp/.env
+    environment:
+      DUCKDB_PATH: /data/warehouse.duckdb
+      DATA_LOCAL_ROOT: /data-local
+      PORT: "8040"
+      HOST: "0.0.0.0"
+      MCP_HTTP_PATH: /mcp
+    volumes:
+      - duckdb_data:/data
+      # Same host data as `duckdb` so warehouse_query can glob/read paths under /data-local
+      - ./data-local:/data-local:ro
+
   brain:
     build:
       context: .
       dockerfile: Dockerfile
+    depends_on:
+      duckdb-mcp:
+        condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway"
     env_file:
       - compose.env
       - .env
+    # So `load_dotenv` inside the brain sees the host `.env` on every restart (Compose env is frozen at *create*).
+    volumes:
+      - ./.env:/project/.env:ro
     command:
       [
         "python",
@@ -21,6 +60,10 @@ services:
         "--port",
         "8000",
       ]
+    # Host 8002 avoids a common pitfall: a local uvicorn on 127.0.0.1:8000 steals traffic while Vite
+    # proxies to 127.0.0.1:8000 — you hit the wrong process (stale LITELLM_KEY → …RbPw 401).
     ports:
-      - "8000:8000"
+      - "8002:8000"
 
+volumes:
+  duckdb_data:

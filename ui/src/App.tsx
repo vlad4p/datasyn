@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { postChat } from "./api";
+import type { ChatResponsePayload, PipelineTrace } from "./api";
 import { Dashboard } from "./components/Dashboard";
 import { MarkdownMessage } from "./components/MarkdownMessage";
 
-type Msg = { id: string; role: "user" | "assistant"; content: string };
+type Msg = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  requestId?: string;
+  pipelineDebug?: ChatResponsePayload["debug"];
+};
 
 const SUGGESTIONS = [
-  "List catalog datasets and summarize row counts.",
+  "List all files under /data-local (including subfolders) using duckdb tools.",
+  "What models does the brain use? Summarize litellm_base and CHAT_MODEL from your tools.",
   "Run SELECT * FROM example_sales LIMIT 10 and format results as a markdown table.",
   "Reply with a Mermaid flowchart in a ```mermaid fenced block showing ingest → warehouse → report.",
 ];
@@ -16,6 +24,7 @@ export default function App() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pipelineTrace, setPipelineTrace] = useState<PipelineTrace>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   const scrollToEnd = () => endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -33,8 +42,22 @@ export default function App() {
     setMessages((m) => [...m, userMsg]);
     setBusy(true);
     try {
-      const reply = await postChat(text);
-      setMessages((m) => [...m, { id: crypto.randomUUID(), role: "assistant", content: reply }]);
+      const out = await postChat(text);
+      setPipelineTrace({
+        requestId: out.request_id,
+        debug: out.debug ?? null,
+        at: Date.now(),
+      });
+      setMessages((m) => [
+        ...m,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: out.reply,
+          requestId: out.request_id,
+          pipelineDebug: out.debug ?? undefined,
+        },
+      ]);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -112,7 +135,7 @@ export default function App() {
           </div>
         </main>
 
-        <Dashboard />
+        <Dashboard pipelineTrace={pipelineTrace} />
       </div>
     </div>
   );
