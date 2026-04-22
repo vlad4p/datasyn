@@ -28,6 +28,13 @@ from langchain_mcp_adapters.client import MultiServerMCPClient as MultiServerToo
 from agent.graph import build_agent
 from agent.utils.messages import resolve_assistant_reply, summarize_messages_for_debug
 from agent.utils.mcp_tool_log import MCPToolResponseLogger
+from agent.utils.langfuse_tracing import (
+    build_langfuse_run_metadata,
+    create_langchain_callback_handler,
+    finalize_root_observation,
+    flush_langfuse,
+    root_chat_observation,
+)
 from agent.config import settings
 
 logger = logging.getLogger(__name__)
@@ -73,7 +80,13 @@ class ChatTurnResult:
     debug: dict[str, Any] | None
 
 
-async def run_agent_chat_turn(message: str, *, request_id: str | None = None) -> ChatTurnResult:
+async def run_agent_chat_turn(
+    message: str,
+    *,
+    request_id: str | None = None,
+    langfuse_session_id: str | None = None,
+    langfuse_user_id: str | None = None,
+) -> ChatTurnResult:
     """Load MCP tools, run the deep agent, return reply and optional debug payload."""
     rid = request_id or str(uuid.uuid4())
     t0 = time.perf_counter()
@@ -113,11 +126,44 @@ async def run_agent_chat_turn(message: str, *, request_id: str | None = None) ->
     agent = build_agent(tools)
     record("build_agent_done")
 
+    lf_handler = create_langchain_callback_handler()
+    callbacks: list[Any] = [MCPToolResponseLogger(rid)]
+    invoke_config: dict[str, Any] = {"callbacks": callbacks}
+    if lf_handler:
+        callbacks.append(lf_handler)
+        invoke_config["metadata"] = build_langfuse_run_metadata(
+            request_id=rid,
+            session_id=langfuse_session_id,
+            user_id=langfuse_user_id,
+        )
+        invoke_config["run_name"] = "datacyber-agent-chat"
+        record("langfuse_callbacks_attached", tags=invoke_config["metadata"].get("langfuse_tags"))
+
     t_invoke = time.perf_counter()
-    state = await agent.ainvoke(
-        {"messages": [HumanMessage(content=message)]},
-        config={"callbacks": [MCPToolResponseLogger(rid)]},
-    )
+    try:
+        if lf_handler:
+            from langfuse import propagate_attributes
+
+            with root_chat_observation(request_id=rid, user_message=message) as root_obs:
+                with propagate_attributes(
+                    session_id=langfuse_session_id,
+                    user_id=langfuse_user_id,
+                ):
+                    state = await agent.ainvoke(
+                        {"messages": [HumanMessage(content=message)]},
+                        config=invoke_config,
+                    )
+                reply = resolve_assistant_reply(state)
+                finalize_root_observation(root_obs, reply=reply)
+        else:
+            state = await agent.ainvoke(
+                {"messages": [HumanMessage(content=message)]},
+                config=invoke_config,
+            )
+            reply = resolve_assistant_reply(state)
+    finally:
+        flush_langfuse()
+
     invoke_ms = round((time.perf_counter() - t_invoke) * 1000, 2)
     logger.info("[%s] agent.ainvoke finished ms=%s state_keys=%s", rid, invoke_ms, list(state.keys()))
     record("agent_ainvoke", ms=invoke_ms)
@@ -127,7 +173,6 @@ async def run_agent_chat_turn(message: str, *, request_id: str | None = None) ->
     for row in msg_summary.get("timeline", []):
         logger.info("[%s] timeline %s", rid, row)
 
-    reply = resolve_assistant_reply(state)
     if not reply.strip():
         logger.warning(
             "[%s] empty assistant reply after resolve_assistant_reply; check LiteLLM and graph output",
@@ -152,8 +197,8 @@ async def run_agent_chat_turn(message: str, *, request_id: str | None = None) ->
             "tool_names": tool_names,
             "messages": msg_summary,
             "skills": (
-                "Deep Agents `skills=[\"/skills/\"]` — SKILL.md content is injected by the framework "
-                "when relevant; there is no separate skill HTTP endpoint."
+                "Deep Agents `skills=[\"/skills/ingest-csv\"]` — ingest SKILL.md is injected when relevant; "
+                "there is no separate skill HTTP endpoint."
             ),
             "steps": steps,
         }

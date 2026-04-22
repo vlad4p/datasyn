@@ -8,9 +8,9 @@
 | **UI (React)** | `POST /api/agent/chat` → brain. Does **not** read `./data-local` from disk. |
 | **Brain (`agent.main`)** | Loads **`mcp.json`**, connects to MCP over HTTP, runs the LangGraph/deep agent, calls **LiteLLM** for the model. **Does not mount `data-local`.** |
 | **LiteLLM (or compatible OpenAI API)** | LLM inference only. |
-| **duckdb-mcp** | Exposes **`warehouse_list_tables`**, **`warehouse_query`**, and **`data_local_ls`** (read-only directory listing under `DATA_LOCAL_ROOT`, default `/data-local`). SQL runs **inside this container**. DuckDB **`glob()`** also reads **this process’s filesystem** — hence **`./data-local` must be mounted here** (see `docker-compose.yaml`). |
+| **duckdb-mcp** | Exposes **`warehouse_list_tables`**, **`warehouse_query`**, and **`data_local_ls`** (read-only directory listing under `DATA_LOCAL_ROOT`, default `/data-local`). SQL runs **inside this container**. DuckDB **`glob()`** also reads **this process’s filesystem** — hence **`./data-local` must be mounted here** (see `mcp_servers/docker-compose.yaml`). |
 | **`duckdb` service** | Holds **`warehouse.duckdb`** on volume `duckdb_data`; mounts `./data-local` for workflows that use the DB container directly. **Listing files for the chat agent does not use this service’s shell** — listing is SQL `glob` in **duckdb-mcp**. |
-| **Skills (`./skills/*/SKILL.md`)** | Loaded by **Deep Agents** (`skills=["/skills/"]` in `agent/graph.py`). Not a separate microservice; no HTTP “skill server.” |
+| **Skills (`./skills/*/SKILL.md`)** | **Runtime:** Deep Agents loads **`skills=["/skills/ingest-csv"]`** in `agent/graph.py` for ingest workflows. **`./skills/langfuse/`** is maintainer/docs only (not injected into the agent). Not a separate microservice; no HTTP “skill server.” |
 
 ## Verifying “list files” is correct
 
@@ -37,6 +37,12 @@ DATACYBER_PIPELINE_DEBUG=1
 ```
 
 Restart the brain. Responses include a **`debug`** object (steps, tool names, message timeline). The UI shows it under **Dashboard → Last chat** when present.
+
+## Optional Langfuse tracing
+
+Set **`LANGFUSE_PUBLIC_KEY`** and **`LANGFUSE_SECRET_KEY`** on the brain (see `compose.env` comments). Traces use the LangChain callback and correlate with **`X-Request-ID`**. Optionally send **`X-Langfuse-Session-Id`** and **`X-Langfuse-User-Id`** on `POST /agent/chat` for sessions and user attribution. `GET /health` includes **`langfuse_tracing_enabled`**.
+
+If the brain runs in **Docker** and Langfuse is on the **host** (typical local self-hosted on port 3000), set **`LANGFUSE_BASE_URL=http://host.docker.internal:3000`**, not `http://localhost:3000` — inside the container, `localhost` is not your Mac/host.
 
 ## If the UI “never responds”
 

@@ -70,8 +70,47 @@ def parse_litellm_proxy_response_body(text: str) -> dict[str, Any] | None:
     return parse_litellm_proxy_error_payload(data) if isinstance(data, dict) else None
 
 
+def _is_litellm_model_not_found(parsed: dict[str, Any]) -> bool:
+    """True when CHAT_MODEL is not registered for this proxy key / team."""
+    cls = (parsed.get("error_class") or "").strip()
+    msg = f"{parsed.get('error_message') or ''} {parsed.get('message') or ''}".lower()
+    if cls == "ProxyModelNotFoundError":
+        return True
+    return "invalid model name" in msg or "modelnotfound" in msg.replace(" ", "")
+
+
+def _hint_litellm_upstream_provider_key(parsed: dict[str, Any]) -> str | None:
+    """LLM provider key invalid on the LiteLLM host (not the brain's LITELLM_KEY)."""
+    msg = f"{parsed.get('error_message') or ''} {parsed.get('message') or ''}"
+    lower = msg.lower()
+    compact = lower.replace(" ", "")
+    gemini = "gemini" in lower or "generativelanguage" in lower
+    if gemini and (
+        "api_key_invalid" in compact
+        or "api key not valid" in lower
+        or ("authenticationerror" in compact and "geminiexception" in compact)
+    ):
+        return (
+            "Google Gemini rejected the API key that **LiteLLM** uses for this model — not the brain's "
+            "LITELLM_KEY. On the **LiteLLM server** host, set a valid Gemini key (e.g. GEMINI_API_KEY or "
+            "`api_key` on that model in `model_list`), restart the proxy, and confirm the key in Google AI Studio / "
+            "Cloud console is allowed for the Generative Language API."
+        )
+    return None
+
+
 def hint_for_litellm_parsed_error(parsed: dict[str, Any]) -> str:
     if parsed.get("kind") == "litellm_proxy_failure":
+        if _is_litellm_model_not_found(parsed):
+            return (
+                "LiteLLM does not expose this model id for your virtual key (CHAT_MODEL mismatch). "
+                "Fix: open GET /health/llm on the brain or call the proxy GET /v1/models with the same Bearer key; "
+                "set CHAT_MODEL in .env to an exact returned `id`, or add the alias in the proxy `model_list` / "
+                "key permissions for that team."
+            )
+        prov = _hint_litellm_upstream_provider_key(parsed)
+        if prov:
+            return prov
         h = parsed.get("user_api_key_hash")
         code = parsed.get("error_code")
         return (
@@ -83,6 +122,16 @@ def hint_for_litellm_parsed_error(parsed: dict[str, Any]) -> str:
             f"Proxy error_code={code!r}."
         )
     if parsed.get("kind") == "openai_compatible_error":
+        if _is_litellm_model_not_found(parsed):
+            return (
+                "LiteLLM / upstream rejected the model id (CHAT_MODEL). "
+                "Use GET /health/llm or proxy GET /v1/models and set CHAT_MODEL to a listed `id`. "
+                f"Detail: {parsed.get('message') or parsed} "
+                f"(code={parsed.get('code')!r})."
+            )
+        prov = _hint_litellm_upstream_provider_key(parsed)
+        if prov:
+            return prov
         return (
             f"Upstream returned: {parsed.get('message') or parsed} "
             f"(code={parsed.get('code')!r}, type={parsed.get('type')!r})."

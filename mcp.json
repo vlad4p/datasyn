@@ -3,6 +3,10 @@
     "duckdb": {
       "transport": "http",
       "url": "http://duckdb-mcp:8040/mcp"
+    },
+    "catalog": {
+      "transport": "http",
+      "url": "http://catalog-mcp:8041/mcp"
     }
   }
 }

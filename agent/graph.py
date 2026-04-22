@@ -38,6 +38,6 @@ def build_agent(tools: list[BaseTool]):
         system_prompt=supervisor_system_prompt(mcp_tool_names=tool_names),
         backend=backend,
         name="datacyber-brain",
-        # Skill folders live at project root: ./skills/<name>/SKILL.md (see SkillsMiddleware sources).
-        skills=["/skills/"],
+        # Only ingest skill is injected at runtime; `skills/langfuse/` is for Cursor/docs (not loaded here).
+        skills=["/skills/ingest-csv"],
     )

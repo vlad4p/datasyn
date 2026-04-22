@@ -208,3 +208,45 @@ export async function getHealthPipeline(): Promise<Record<string, unknown> | nul
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json() as Promise<Record<string, unknown>>;
 }
+
+/** Summary row from ``GET /catalog/datasets`` (brain invokes MCP ``catalog_list_datasets``). */
+export type CatalogDatasetSummary = {
+  id?: string | null;
+  fullyQualifiedName?: string | null;
+  name?: string | null;
+  displayName?: string | null;
+  description?: string | null;
+  tableType?: string | null;
+  service?: { name?: string; type?: string };
+  database?: { name?: string };
+  schema?: { name?: string };
+  columnCount?: number;
+  tagCount?: number;
+  updatedAt?: string;
+  createdAt?: string;
+};
+
+export type CatalogDatasetsResponse = {
+  ok?: boolean;
+  count?: number;
+  datasets?: CatalogDatasetSummary[];
+};
+
+export async function getCatalogDatasets(params?: {
+  limit?: number;
+  service_name?: string;
+  database_name?: string;
+  schema_name?: string;
+}): Promise<CatalogDatasetSummary[]> {
+  const q = new URLSearchParams();
+  if (params?.limit != null) q.set("limit", String(params.limit));
+  if (params?.service_name) q.set("service_name", params.service_name);
+  if (params?.database_name) q.set("database_name", params.database_name);
+  if (params?.schema_name) q.set("schema_name", params.schema_name);
+  const qs = q.toString();
+  const path = qs ? `/catalog/datasets?${qs}` : "/catalog/datasets";
+  const res = await fetch(apiUrl(path));
+  if (!res.ok) throw new Error(await readFetchError(res));
+  const data = (await res.json()) as CatalogDatasetsResponse;
+  return Array.isArray(data.datasets) ? data.datasets : [];
+}

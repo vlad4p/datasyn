@@ -1,6 +1,7 @@
 """HTTP control plane for the Datacyber Deep Agent (leader).
 
-The leader loads MCP HTTP tool servers from ``mcp.json`` at the project root.
+The leader loads MCP HTTP tool servers from ``mcp.json`` at the project root
+(warehouse ``duckdb-mcp``, data catalog ``catalog-mcp`` backed by MongoDB).
 The warehouse worker remains a separate HTTP service (``WAREHOUSE_API_URL``).
 """
 
@@ -25,6 +26,11 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from agent.utils.agent_chat import run_agent_chat_turn
+from agent.utils.langfuse_tracing import (
+    langfuse_tracing_enabled,
+    log_langfuse_docker_loopback_hint,
+)
+from agent.utils.catalog_mcp import fetch_catalog_datasets_via_mcp
 from agent.utils.litellm_chat import (
     explain_litellm_http_exception,
     probe_litellm_proxy,
@@ -70,6 +76,7 @@ def _log_effective_llm_env() -> None:
 
 
 _log_effective_llm_env()
+log_langfuse_docker_loopback_hint()
 
 
 def _litellm_connection_error_hint() -> str:
@@ -204,6 +211,7 @@ def _llm_config_snapshot() -> dict[str, Any]:
         "openai_api_key_env_suffix": oai_suffix,
         "in_docker": running_in_docker(),
         "chat_model": settings.chat_model,
+        "langfuse_tracing_enabled": langfuse_tracing_enabled(),
     }
 
 
@@ -253,8 +261,9 @@ def _pipeline_snapshot() -> dict[str, Any]:
             "ui_lists_files": False,
         },
         "skills": {
-            "where": "./skills/*/SKILL.md",
-            "how": "Deep Agents `skills=[\"/skills/\"]` on create_deep_agent — not a separate HTTP service; no skill-specific MCP tool.",
+            "where": "./skills/ingest-csv/SKILL.md",
+            "how": "Deep Agents `skills=[\"/skills/ingest-csv\"]` on create_deep_agent. "
+            "See also `./skills/langfuse/` (Langfuse observability skill for maintainers; not agent-injected).",
         },
     }
 
@@ -279,6 +288,30 @@ def health_llm_config() -> dict[str, Any]:
 def health_pipeline() -> dict[str, Any]:
     """Same payload as the ``pipeline`` key on ``GET /health`` (alias for scripts and curl)."""
     return _pipeline_snapshot()
+
+
+@app.get("/catalog/datasets")
+async def catalog_datasets(
+    limit: int = Query(48, ge=1, le=200),
+    service_name: str = Query("", max_length=128),
+    database_name: str = Query("", max_length=128),
+    schema_name: str = Query("", max_length=128),
+) -> dict[str, Any]:
+    """UI catalog refresh: invoke ``catalog_list_datasets`` via MCP (same stack as the Deep Agent)."""
+    try:
+        return await fetch_catalog_datasets_via_mcp(
+            limit=limit,
+            service_name=service_name,
+            database_name=database_name,
+            schema_name=schema_name,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        logger.warning("catalog MCP: %s", exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/health/llm")
@@ -324,8 +357,15 @@ async def agent_chat(request: Request, response: Response, body: ChatRequest) ->
         len(body.message),
         settings.pipeline_debug,
     )
+    session_id = (request.headers.get("X-Langfuse-Session-Id") or "").strip() or None
+    user_id = (request.headers.get("X-Langfuse-User-Id") or "").strip() or None
     try:
-        result = await run_agent_chat_turn(body.message, request_id=request_id)
+        result = await run_agent_chat_turn(
+            body.message,
+            request_id=request_id,
+            langfuse_session_id=session_id,
+            langfuse_user_id=user_id,
+        )
     except Exception as exc:
         logger.exception("agent chat failed")
         msg = _format_agent_error(exc).strip() or type(exc).__name__

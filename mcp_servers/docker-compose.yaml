@@ -1,0 +1,92 @@
+# MCP + data dependencies for Datacyber (run before the agent stack).
+# From repo root:  docker compose -f mcp_servers/docker-compose.yaml up -d
+# From this dir:    docker compose up -d
+#
+# Shares network `datacyber_mcp` with the root `docker-compose.yaml` (brain) so
+# mcp.json hostnames `duckdb-mcp` and `catalog-mcp` resolve.
+
+name: datacyber-mcp
+
+networks:
+  mcp:
+    name: datacyber_mcp
+    driver: bridge
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: datacyber_catalog
+    volumes:
+      - mongo_data:/data/db
+      - ../docker/mongo/init-catalog.js:/docker-entrypoint-initdb.d/init-catalog.js:ro
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    networks:
+      - mcp
+
+  duckdb:
+    build:
+      context: ../docker/duckdb
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    volumes:
+      - duckdb_data:/data
+      - ../data-local:/data-local:ro
+    environment:
+      DUCKDB_PATH: /data/warehouse.duckdb
+    networks:
+      - mcp
+
+  duckdb-mcp:
+    build:
+      context: ./duckdb-mcp
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - duckdb
+    ports:
+      - "8040:8040"
+    env_file:
+      - duckdb-mcp/.env
+    environment:
+      DUCKDB_PATH: /data/warehouse.duckdb
+      DATA_LOCAL_ROOT: /data-local
+      PORT: "8040"
+      HOST: "0.0.0.0"
+      MCP_HTTP_PATH: /mcp
+    volumes:
+      - duckdb_data:/data
+      - ../data-local:/data-local:ro
+    networks:
+      - mcp
+
+  catalog-mcp:
+    build:
+      context: ./catalog-mcp
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "8041:8041"
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: datacyber_catalog
+      HOST: "0.0.0.0"
+      PORT: "8041"
+      MCP_HTTP_PATH: /mcp
+    networks:
+      - mcp
+
+volumes:
+  mongo_data:
+  duckdb_data:
