@@ -10,6 +10,17 @@ import {
 
 type Props = { className?: string; pipelineTrace?: PipelineTrace };
 
+function resolveDuckdbUiUrl(pipeline: Record<string, unknown> | null): string {
+  const block = pipeline?.duckdb_ui;
+  if (block && typeof block === "object" && block !== null && "public_url" in block) {
+    const u = String((block as { public_url?: unknown }).public_url ?? "").trim();
+    if (u) return u;
+  }
+  const v = import.meta.env.VITE_DUCKDB_UI_URL;
+  if (v && String(v).trim()) return String(v).trim();
+  return "http://127.0.0.1:4213";
+}
+
 export function Dashboard({ className, pipelineTrace }: Props) {
   const [health, setHealth] = useState<string>("—");
   const [healthPayload, setHealthPayload] = useState<BrainHealth | null>(null);
@@ -67,6 +78,8 @@ export function Dashboard({ className, pipelineTrace }: Props) {
     }
   };
 
+  const duckdbUiUrl = resolveDuckdbUiUrl(pipelineHealth);
+
   return (
     <aside className={`dashboard ${className ?? ""}`}>
       <div className="dashboard-header">
@@ -109,6 +122,36 @@ export function Dashboard({ className, pipelineTrace }: Props) {
             </span>
           </p>
         )}
+      </section>
+
+      <section className="dash-card">
+        <h3>DuckDB UI</h3>
+        <p className="small muted dash-detail">
+          The official{" "}
+          <a href="https://duckdb.org/2025/03/12/duckdb-ui" rel="noreferrer noopener" target="_blank">
+            DuckDB Local UI
+          </a>{" "}
+          (<code className="inline-code">ui</code> extension,{" "}
+          <a href="https://duckdb.org/docs/current/core_extensions/ui.html" rel="noreferrer noopener" target="_blank">
+            docs
+          </a>
+          ) for the same warehouse file as <code className="inline-code">duckdb-mcp</code>. The MCP compose file
+          starts this service only with the <code className="inline-code">ui</code> profile so the agent can ingest
+          without DuckDB file locks. From <code className="inline-code">mcp_servers/</code>, run{" "}
+          <code className="inline-code">docker compose --profile ui up -d</code>, then open:
+        </p>
+        <p className="mono dash-detail">
+          <a href={duckdbUiUrl} rel="noreferrer noopener" target="_blank">
+            {duckdbUiUrl}
+          </a>
+        </p>
+        <p className="tiny muted dash-detail">
+          URL comes from <code className="inline-code">GET /api/health</code> → <code className="inline-code">
+            pipeline.duckdb_ui.public_url
+          </code>{" "}
+          (set <code className="inline-code">DUCKDB_UI_PUBLIC_URL</code> on the brain if you remap the host port), or{" "}
+          <code className="inline-code">VITE_DUCKDB_UI_URL</code> for the Vite dev UI only.
+        </p>
       </section>
 
       <section className="dash-card">

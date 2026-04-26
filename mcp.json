@@ -4,9 +4,13 @@
       "transport": "http",
       "url": "http://duckdb-mcp:8040/mcp"
     },
-    "catalog": {
+    "scrapper": {
       "transport": "http",
-      "url": "http://catalog-mcp:8041/mcp"
+      "url": "http://scrapper-mcp:8042/mcp"
+    },
+    "dagster": {
+      "transport": "http",
+      "url": "http://dagster-mcp:8043/mcp"
     }
   }
 }

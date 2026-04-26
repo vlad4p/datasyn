@@ -1,7 +1,7 @@
 """HTTP control plane for the Datacyber Deep Agent (leader).
 
 The leader loads MCP HTTP tool servers from ``mcp.json`` at the project root
-(warehouse ``duckdb-mcp``, data catalog ``catalog-mcp`` backed by MongoDB).
+(warehouse ``duckdb-mcp``, ``scrapper-mcp``, ``dagster-mcp``, etc.).
 The warehouse worker remains a separate HTTP service (``WAREHOUSE_API_URL``).
 """
 
@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -30,7 +30,6 @@ from agent.utils.langfuse_tracing import (
     langfuse_tracing_enabled,
     log_langfuse_docker_loopback_hint,
 )
-from agent.utils.catalog_mcp import fetch_catalog_datasets_via_mcp
 from agent.utils.litellm_chat import (
     explain_litellm_http_exception,
     probe_litellm_proxy,
@@ -181,7 +180,11 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1)
+    message: str = Field(
+        ...,
+        min_length=1,
+        validation_alias=AliasChoices("message", "user_message"),
+    )
 
 
 class ChatResponse(BaseModel):
@@ -235,6 +238,10 @@ def _mcp_urls_public() -> dict[str, str]:
 
 def _pipeline_snapshot() -> dict[str, Any]:
     """Architecture snapshot: who lists /data-local, MCP URLs, debug flags (no secrets)."""
+    duckdb_ui_public = (os.environ.get("DUCKDB_UI_PUBLIC_URL") or "").strip()
+    if not duckdb_ui_public:
+        port = (os.environ.get("DUCKDB_UI_PUBLISH_PORT") or "4213").strip() or "4213"
+        duckdb_ui_public = f"http://127.0.0.1:{port}"
     return {
         "brain": {
             "project_root": str(settings.project_root),
@@ -252,18 +259,29 @@ def _pipeline_snapshot() -> dict[str, Any]:
             },
         },
         "mcp_servers": _mcp_urls_public(),
+        "duckdb_ui": {
+            "public_url": duckdb_ui_public,
+            "compose_service": "duckdb-ui",
+            "docs": "https://duckdb.org/docs/current/core_extensions/ui.html",
+            "announcement": "https://duckdb.org/2025/03/12/duckdb-ui",
+            "note": "Optional service: `docker compose -f mcp_servers/docker-compose.yaml --profile ui up -d` "
+            "(plain `up` omits `duckdb-ui` so duckdb-mcp can open warehouse.duckdb without lock conflicts). "
+            "DuckDB binds the UI on localhost:4213 (often ::1 in-container); socat listens on 0.0.0.0:4214 "
+            "(compose maps host 4213→4214).",
+        },
         "listing_data_local": {
-            "filesystem_tool": "duckdb-mcp exposes `data_local_ls(path)` — read-only directory listing under DATA_LOCAL_ROOT (default /data-local).",
-            "who_runs_glob": "duckdb-mcp `warehouse_query` runs DuckDB SQL; `glob()` reads the container filesystem.",
+            "filesystem_tool": "duckdb-mcp exposes `list_data_mount(path)` — read-only directory listing under DATA_LOCAL_ROOT (default /data-local).",
+            "who_runs_glob": "duckdb-mcp `execute_query` runs DuckDB SQL; `glob()` reads the container filesystem.",
             "brain_mounts_data_local": False,
             "duckdb_service_mounts_data_local": True,
             "duckdb_mcp_mounts_data_local": True,
             "ui_lists_files": False,
         },
         "skills": {
-            "where": "./skills/ingest-csv/SKILL.md",
-            "how": "Deep Agents `skills=[\"/skills/ingest-csv\"]` on create_deep_agent. "
-            "See also `./skills/langfuse/` (Langfuse observability skill for maintainers; not agent-injected).",
+            "where": "./skills/ingest-indec-mercadolaboral/SKILL.md, ./skills/scrape-indec-mercado-laboral/SKILL.md, ./skills/update-catalog/SKILL.md, ./skills/catalog-sql/SKILL.md",
+            "how": "Deep Agents `skills=[\"/skills/\"]` on create_deep_agent — SkillsMiddleware treats this as a PARENT directory and auto-discovers every subdir with a SKILL.md "
+            "(currently: ingest-indec-mercadolaboral, scrape-indec-mercado-laboral, update-catalog, catalog-sql). "
+            "See also `./skills/langfuse/` (Langfuse observability skill for maintainers; no SKILL.md, not agent-injected).",
         },
     }
 
@@ -288,30 +306,6 @@ def health_llm_config() -> dict[str, Any]:
 def health_pipeline() -> dict[str, Any]:
     """Same payload as the ``pipeline`` key on ``GET /health`` (alias for scripts and curl)."""
     return _pipeline_snapshot()
-
-
-@app.get("/catalog/datasets")
-async def catalog_datasets(
-    limit: int = Query(48, ge=1, le=200),
-    service_name: str = Query("", max_length=128),
-    database_name: str = Query("", max_length=128),
-    schema_name: str = Query("", max_length=128),
-) -> dict[str, Any]:
-    """UI catalog refresh: invoke ``catalog_list_datasets`` via MCP (same stack as the Deep Agent)."""
-    try:
-        return await fetch_catalog_datasets_via_mcp(
-            limit=limit,
-            service_name=service_name,
-            database_name=database_name,
-            schema_name=schema_name,
-        )
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        logger.warning("catalog MCP: %s", exc)
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/health/llm")

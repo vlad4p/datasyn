@@ -1,0 +1,33 @@
+[project]
+name = "indec_mercado_laboral"
+version = "0.1.0"
+description = "INDEC Mercado Laboral pipelines (EPH and related open data)."
+requires-python = ">=3.11"
+dependencies = [
+    "dagster>=1.9,<2",
+    "dagster-webserver>=1.9,<2",
+    # Required for ``dagster api execute_run`` when the instance uses Postgres + DockerRunLauncher (Ubika stack).
+    "dagster-postgres>=0.29,<0.30",
+    "dagster-docker>=0.29,<0.30",
+    "duckdb>=1.0,<2",
+]
+
+[dependency-groups]
+dev = [
+    "dagster-dg-cli>=1.9,<2",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.dagster]
+module_name = "indec_mercado_laboral.definitions"
+code_location_name = "indec_mercado_laboral"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["indec_mercado_laboral*"]

@@ -1,0 +1,10 @@
+# Ignore ad-hoc scaffold output by default; allow curated projects to be tracked.
+*
+!.gitignore
+!README.md
+!indec_mercado_laboral/
+!indec_mercado_laboral/**
+
+indec_mercado_laboral/.venv/
+indec_mercado_laboral/**/__pycache__/
+indec_mercado_laboral/**/*.egg-info/

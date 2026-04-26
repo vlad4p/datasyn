@@ -2,7 +2,6 @@ import { useCallback, useState } from "react";
 import { postChat } from "./api";
 import type { ChatResponsePayload, PipelineTrace } from "./api";
 import { AppHeader } from "./components/AppHeader";
-import { CatalogPanel } from "./components/CatalogPanel";
 import { ChatPanel, type ChatMsg } from "./components/ChatPanel";
 import { Dashboard } from "./components/Dashboard";
 
@@ -13,7 +12,6 @@ type Msg = ChatMsg & {
 const SUGGESTIONS = [
   "List all files under /data-local (including subfolders) using duckdb tools.",
   "What models does the brain use? Summarize litellm_base and CHAT_MODEL from your tools.",
-  "Use catalog_list_datasets and summarize FQN, schema, and column counts.",
   "Run SELECT * FROM example_sales LIMIT 10 and format results as a markdown table.",
   "Reply with a Mermaid flowchart in a ```mermaid fenced block showing ingest → warehouse → report.",
 ];
@@ -62,8 +60,6 @@ export default function App() {
       <AppHeader />
 
       <div className="layout-main">
-        <CatalogPanel className="panel-catalog" />
-
         <ChatPanel
           className="panel-chat"
           messages={messages}

@@ -2,8 +2,22 @@
 # From repo root:  docker compose -f mcp_servers/docker-compose.yaml up -d
 # From this dir:    docker compose up -d
 #
+# DuckDB file locking: only one process may open `warehouse.duckdb` read-write.
+# `duckdb-mcp` needs that for ingest/DDL. The optional Local UI (`duckdb-ui`) uses
+# compose **profile `ui`** and is **not** started unless you opt in.
+#
+# Start MCP stack + DuckDB UI (from repo root):
+#   docker compose -f mcp_servers/docker-compose.yaml --profile ui up -d
+# Same, without repeating `--profile` every time (Compose reads this env var):
+#   COMPOSE_PROFILES=ui docker compose -f mcp_servers/docker-compose.yaml up -d
+# Or create `mcp_servers/.env` with one line: COMPOSE_PROFILES=ui
+# (Compose loads `mcp_servers/.env` when this file is the project compose file.)
+#
+# Stop `duckdb-ui` (or run without profile `ui`) before agent ingest if you see
+# warehouse lock errors — https://duckdb.org/docs/current/connect/concurrency.html
+#
 # Shares network `datacyber_mcp` with the root `docker-compose.yaml` (brain) so
-# mcp.json hostnames `duckdb-mcp` and `catalog-mcp` resolve.
+# mcp.json hostnames like `duckdb-mcp` resolve.
 
 name: datacyber-mcp
 
@@ -13,25 +27,6 @@ networks:
     driver: bridge
 
 services:
-  mongo:
-    image: mongo:7
-    restart: unless-stopped
-    environment:
-      MONGO_INITDB_DATABASE: datacyber_catalog
-    volumes:
-      - mongo_data:/data/db
-      - ../docker/mongo/init-catalog.js:/docker-entrypoint-initdb.d/init-catalog.js:ro
-    ports:
-      - "27017:27017"
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
-      interval: 5s
-      timeout: 5s
-      retries: 6
-      start_period: 20s
-    networks:
-      - mcp
-
   duckdb:
     build:
       context: ../docker/duckdb
@@ -42,6 +37,32 @@ services:
       - ../data-local:/data-local:ro
     environment:
       DUCKDB_PATH: /data/warehouse.duckdb
+    networks:
+      - mcp
+
+  # Official DuckDB Local UI (``ui`` extension): https://duckdb.org/docs/current/core_extensions/ui.html
+  # DuckDB binds 127.0.0.1:4213; socat listens on 4214 in-container → publish host 4213:4214.
+  # Host URL (default): http://127.0.0.1:4213
+  # Profile `ui`: excluded from plain `up -d` so duckdb-mcp can open the warehouse
+  # without conflicting locks (see header comment).
+  duckdb-ui:
+    profiles:
+      - ui
+    build:
+      context: ./duckdb-ui
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - duckdb
+    ports:
+      - "${DUCKDB_UI_PUBLISH_PORT:-4213}:4214"
+    environment:
+      DUCKDB_PATH: /data/warehouse.duckdb
+      DUCKDB_UI_PROXY_PORT: "4214"
+      DUCKDB_UI_DUCK_PORT: "4213"
+    volumes:
+      - duckdb_data:/data
+      - ../data-local:/data-local:ro
     networks:
       - mcp
 
@@ -68,25 +89,62 @@ services:
     networks:
       - mcp
 
-  catalog-mcp:
+  scrapper-mcp:
     build:
-      context: ./catalog-mcp
+      context: ./scrapper-mcp
       dockerfile: Dockerfile
     restart: unless-stopped
-    depends_on:
-      mongo:
-        condition: service_healthy
     ports:
-      - "8041:8041"
+      - "8042:8042"
     environment:
-      MONGO_URI: mongodb://mongo:27017
-      MONGO_DB: datacyber_catalog
+      DATA_LOCAL_ROOT: /data-local
       HOST: "0.0.0.0"
-      PORT: "8041"
+      PORT: "8042"
       MCP_HTTP_PATH: /mcp
+      HTTP_TIMEOUT_SECONDS: "60"
+      HTTP_USER_AGENT: "Datacyber-Scrapper/1.0 (+https://github.com/datacyber)"
+    volumes:
+      - ../data-local:/data-local
+    networks:
+      - mcp
+
+  # Dagster MCP: scaffolds Dagster projects under `dagster-mcp/projects/` and
+  # drives the host Docker daemon (mounted socket) to build images and run/replace
+  # project containers. Project containers join the same `datacyber_mcp` network
+  # so they can reach `duckdb-mcp:8040`, `scrapper-mcp:8042`, etc.
+  #
+  # Security note: this service mounts /var/run/docker.sock and therefore has
+  # full control over the host Docker daemon. Intended for local development.
+  dagster-mcp:
+    build:
+      context: ./dagster-mcp
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8043:8043"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8043"
+      MCP_HTTP_PATH: /mcp
+      DAGSTER_PROJECTS_ROOT: /projects
+      DAGSTER_PROJECT_NETWORK: datacyber_mcp
+      DAGSTER_IMAGE_PREFIX: dagster
+      DAGSTER_CONTAINER_PREFIX: dagster
+      DAGSTER_DEFAULT_HOST_PORT: "3001"
+      DAGSTER_WEBSERVER_PORT: "3000"
+      UBIKA_DAGSTER_COMPOSE_FILE: /ubika-dagster/docker-compose.yaml
+      UBIKA_DAGSTER_COMPOSE_PROJECT: dagster
+      UBIKA_DAGSTER_USER_CODE_SERVICE: dagster_user_code
+      # Semicolon-separated `docker run -v` sources are interpreted by the **host** daemon.
+      # Append EPH files only with an **absolute** host path, e.g. in `mcp_servers/.env`:
+      #   DAGSTER_DEPLOY_VOLUMES=datacyber-mcp_duckdb_data:/data;/abs/path/datacyber/data-local:/data-local:ro
+      DAGSTER_DEPLOY_VOLUMES: "datacyber-mcp_duckdb_data:/data"
+    volumes:
+      - ./dagster-mcp/projects:/projects
+      - ../../ubika-infra/live/mvp/dagster:/ubika-dagster:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - mcp
 
 volumes:
-  mongo_data:
   duckdb_data:

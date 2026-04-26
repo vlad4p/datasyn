@@ -8,14 +8,14 @@
 | **UI (React)** | `POST /api/agent/chat` → brain. Does **not** read `./data-local` from disk. |
 | **Brain (`agent.main`)** | Loads **`mcp.json`**, connects to MCP over HTTP, runs the LangGraph/deep agent, calls **LiteLLM** for the model. **Does not mount `data-local`.** |
 | **LiteLLM (or compatible OpenAI API)** | LLM inference only. |
-| **duckdb-mcp** | Exposes **`warehouse_list_tables`**, **`warehouse_query`**, and **`data_local_ls`** (read-only directory listing under `DATA_LOCAL_ROOT`, default `/data-local`). SQL runs **inside this container**. DuckDB **`glob()`** also reads **this process’s filesystem** — hence **`./data-local` must be mounted here** (see `mcp_servers/docker-compose.yaml`). |
+| **duckdb-mcp** | Exposes **`get_schema`**, **`execute_query`**, and **`list_data_mount`** (read-only directory listing under `DATA_LOCAL_ROOT`, default `/data-local`). SQL runs **inside this container**. DuckDB **`glob()`** also reads **this process’s filesystem** — hence **`./data-local` must be mounted here** (see `mcp_servers/docker-compose.yaml`). |
 | **`duckdb` service** | Holds **`warehouse.duckdb`** on volume `duckdb_data`; mounts `./data-local` for workflows that use the DB container directly. **Listing files for the chat agent does not use this service’s shell** — listing is SQL `glob` in **duckdb-mcp**. |
-| **Skills (`./skills/*/SKILL.md`)** | **Runtime:** Deep Agents loads **`skills=["/skills/ingest-csv"]`** in `agent/graph.py` for ingest workflows. **`./skills/langfuse/`** is maintainer/docs only (not injected into the agent). Not a separate microservice; no HTTP “skill server.” |
-
+| **`duckdb-ui` (compose profile `ui`)** | Optional browser UI on the same **`warehouse.duckdb`**. **Off by default** so **`duckdb-mcp`** is not blocked by DuckDB’s single-writer file lock. Start with `docker compose --profile ui up -d` from `mcp_servers/` when needed; stop **`duckdb-ui`** before ingest if you still see lock errors ([DuckDB concurrency](https://duckdb.org/docs/current/connect/concurrency.html)). |
+| **Skills (`./skills/*/SKILL.md`)** | **Runtime:** Deep Agents loads **`["/skills/ingest-indec-mercadolaboral", "/skills/scrape-indec-mercado-laboral", "/skills/update-catalog", "/skills/catalog-sql"]`** in `agent/graph.py` (INDEC ingest + scrape; catalog workflows; catalog SQL). **`./skills/langfuse/`** is maintainer/docs only (not injected into the agent). Not a separate microservice; no HTTP “skill server.” |
 ## Verifying “list files” is correct
 
 1. **Ground truth on the host:** `ls data-local/EPH_usu_3_Trim_2025_txt` (or your folder).
-2. **MCP tools (inside duckdb-mcp):** call **`data_local_ls`** with path `/data-local/EPH_usu_3_Trim_2025_txt` (or `EPH_usu_3_Trim_2025_txt`).  
+2. **MCP tools (inside duckdb-mcp):** call **`list_data_mount`** with path `/data-local/EPH_usu_3_Trim_2025_txt` (or `EPH_usu_3_Trim_2025_txt`).  
    Alternatively: `SELECT file FROM glob('/data-local/EPH_usu_3_Trim_2025_txt/*');`  
    Top-level only: `glob('/data-local/*')` — does **not** expand nested folders.
 3. **Brain introspection:** `GET /health` includes a **`pipeline`** object (same JSON as `GET /health/pipeline`). The UI uses a single health request; **`GET /health/pipeline`** remains an alias for scripts.
@@ -25,7 +25,7 @@
 | Where | What |
 |--------|------|
 | **Brain stderr** | `POST /agent/chat`, `request_id`, MCP tool names, `agent.ainvoke` timing, per-message timeline (see `agent/utils/agent_chat.py`). |
-| **duckdb-mcp stderr** | Each `warehouse_query` / `warehouse_list_tables` with SQL preview, duration, row counts (`mcp_servers/duckdb-mcp/server.py`). |
+| **duckdb-mcp stderr** | Each `execute_query` / `get_schema` with SQL preview, duration, row counts (`mcp_servers/duckdb-mcp/server.py`). |
 | **UI devtools console** | `[datacyber] POST /agent/chat` status, `X-Request-ID`, duration (`ui/src/api.ts`, dev only). |
 
 ## Optional JSON debug in chat responses

@@ -197,8 +197,10 @@ async def run_agent_chat_turn(
             "tool_names": tool_names,
             "messages": msg_summary,
             "skills": (
-                "Deep Agents `skills=[\"/skills/ingest-csv\"]` — ingest SKILL.md is injected when relevant; "
-                "there is no separate skill HTTP endpoint."
+                "Deep Agents `skills=[\"/skills/\"]` (parent dir; SkillsMiddleware auto-discovers "
+                "every subdir with a SKILL.md — currently ingest-indec-mercadolaboral, "
+                "scrape-indec-mercado-laboral, update-catalog, catalog-sql). "
+                "There is no separate skill HTTP endpoint."
             ),
             "steps": steps,
         }

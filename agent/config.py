@@ -102,8 +102,6 @@ def _litellm_base_from_env() -> str | None:
 
 @dataclass(frozen=True)
 class Settings:
-    mongo_uri: str
-    mongo_db: str
     project_root: Path
     reports_dir: Path
     inbox_dir: Path
@@ -123,8 +121,6 @@ class Settings:
     def load(cls) -> Settings:
         project_root = _path("PROJECT_ROOT", ".")
         return cls(
-            mongo_uri=os.environ.get("MONGO_URI", "mongodb://localhost:27017"),
-            mongo_db=os.environ.get("MONGO_DB", "datacyber"),
             project_root=project_root,
             reports_dir=_path("REPORTS_DIR", str(project_root / "reports")),
             inbox_dir=_path("INBOX_DIR", str(project_root / "inbox")),

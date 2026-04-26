@@ -25,7 +25,8 @@ export function getApiDisplayLabel(): string {
   return "/api";
 }
 
-function apiUrl(path: string): string {
+/** Brain HTTP URL for a path (respects `VITE_API_BASE` or same-origin `/api` proxy). */
+export function brainApiUrl(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
   const base = getApiBase();
   if (base) return `${base}${p}`;
@@ -35,7 +36,7 @@ function apiUrl(path: string): string {
 /** Resolved URL for brain `GET /artifacts/file` (honours `VITE_API_BASE` or same-origin `/api`). */
 export function artifactFileUrl(relativeProjectPath: string): string {
   const clean = relativeProjectPath.replace(/^\/+/, "");
-  return apiUrl(`/artifacts/file?path=${encodeURIComponent(clean)}`);
+  return brainApiUrl(`/artifacts/file?path=${encodeURIComponent(clean)}`);
 }
 
 /** Match Vite proxy `timeout` / `proxyTimeout` (long agent turns). */
@@ -59,7 +60,7 @@ export async function postChat(message: string): Promise<ChatResponsePayload> {
   const t = window.setTimeout(() => ctrl.abort(), CHAT_FETCH_MS);
   const t0 = performance.now();
   try {
-    const res = await fetch(apiUrl("/agent/chat"), {
+    const res = await fetch(brainApiUrl("/agent/chat"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message }),
@@ -95,7 +96,7 @@ export async function postChat(message: string): Promise<ChatResponsePayload> {
     }
 }
 
-async function readFetchError(res: Response): Promise<string> {
+export async function readFetchError(res: Response): Promise<string> {
   const text = await res.text();
   try {
     const j = JSON.parse(text) as { detail?: unknown };
@@ -144,7 +145,7 @@ export function isStubHealthResponse(h: BrainHealth): boolean {
 }
 
 export async function getHealth(): Promise<BrainHealth> {
-  const res = await fetch(apiUrl("/health"));
+  const res = await fetch(brainApiUrl("/health"));
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json() as Promise<BrainHealth>;
 }
@@ -177,7 +178,7 @@ export async function getLlmConfig(cachedHealth?: BrainHealth): Promise<LlmConfi
   if (fromHealth) {
     return fromHealth;
   }
-  const res = await fetch(apiUrl("/health/llm/config"));
+  const res = await fetch(brainApiUrl("/health/llm/config"));
   if (!res.ok) throw new Error(await readFetchError(res));
   const raw = (await res.json()) as Record<string, unknown>;
   return {
@@ -194,7 +195,7 @@ export async function getLlmConfig(cachedHealth?: BrainHealth): Promise<LlmConfi
 }
 
 export async function probeLlm(): Promise<unknown> {
-  const res = await fetch(apiUrl("/health/llm"));
+  const res = await fetch(brainApiUrl("/health/llm"));
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json();
 }
@@ -203,50 +204,9 @@ export async function probeLlm(): Promise<unknown> {
  * Optional alias: same JSON as ``GET /health`` → ``pipeline`` (older brains may 404 — prefer ``pipeline`` on health).
  */
 export async function getHealthPipeline(): Promise<Record<string, unknown> | null> {
-  const res = await fetch(apiUrl("/health/pipeline"));
+  const res = await fetch(brainApiUrl("/health/pipeline"));
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json() as Promise<Record<string, unknown>>;
 }
 
-/** Summary row from ``GET /catalog/datasets`` (brain invokes MCP ``catalog_list_datasets``). */
-export type CatalogDatasetSummary = {
-  id?: string | null;
-  fullyQualifiedName?: string | null;
-  name?: string | null;
-  displayName?: string | null;
-  description?: string | null;
-  tableType?: string | null;
-  service?: { name?: string; type?: string };
-  database?: { name?: string };
-  schema?: { name?: string };
-  columnCount?: number;
-  tagCount?: number;
-  updatedAt?: string;
-  createdAt?: string;
-};
-
-export type CatalogDatasetsResponse = {
-  ok?: boolean;
-  count?: number;
-  datasets?: CatalogDatasetSummary[];
-};
-
-export async function getCatalogDatasets(params?: {
-  limit?: number;
-  service_name?: string;
-  database_name?: string;
-  schema_name?: string;
-}): Promise<CatalogDatasetSummary[]> {
-  const q = new URLSearchParams();
-  if (params?.limit != null) q.set("limit", String(params.limit));
-  if (params?.service_name) q.set("service_name", params.service_name);
-  if (params?.database_name) q.set("database_name", params.database_name);
-  if (params?.schema_name) q.set("schema_name", params.schema_name);
-  const qs = q.toString();
-  const path = qs ? `/catalog/datasets?${qs}` : "/catalog/datasets";
-  const res = await fetch(apiUrl(path));
-  if (!res.ok) throw new Error(await readFetchError(res));
-  const data = (await res.json()) as CatalogDatasetsResponse;
-  return Array.isArray(data.datasets) ? data.datasets : [];
-}

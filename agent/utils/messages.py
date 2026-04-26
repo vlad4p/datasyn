@@ -56,6 +56,20 @@ def resolve_assistant_reply(state: dict[str, Any]) -> str:
             t = text_from(msg)
             if t.strip():
                 return t
+
+    # Models often end with an AIMessage that has no text after tools (only an empty
+    # final turn). The UI and Langfuse then see assistant_reply="" even though tools ran.
+    tool_snippets: list[str] = []
+    for msg in reversed(messages):
+        if type(msg).__name__ == "ToolMessage":
+            t = text_from(msg)
+            if t.strip():
+                tool_snippets.append(t.strip())
+            if len(tool_snippets) >= 8:
+                break
+    if tool_snippets:
+        return "\n\n---\n\n".join(reversed(tool_snippets))
+
     return primary
 
 

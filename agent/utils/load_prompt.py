@@ -12,11 +12,12 @@ def _prompts_dir() -> Path:
 
 
 def _read_agents_md(path: Path) -> str:
-    """Read ``AGENTS.md`` as UTF-8 after normalizing stray Windows-1252 dash/quote bytes."""
+    """Read ``AGENTS.md`` as UTF-8 after normalizing stray Windows-1252 bytes (invalid UTF-8)."""
     raw = path.read_bytes()
-    # Lone 0x9d / 0x97 are invalid in UTF-8 but often appear when em dashes were saved as CP1252.
+    # CP1252 mojibake: em dash (0x9d, 0x97), horizontal ellipsis (0x85) — lone bytes are invalid in UTF-8.
     em = "\u2014".encode("utf-8")
     raw = raw.replace(b"\x9d", em).replace(b"\x97", em)
+    raw = raw.replace(b"\x85", "\u2026".encode("utf-8"))
     return raw.decode("utf-8")
 
 

@@ -5,13 +5,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY server.py .
+COPY db.py schema_inspect.py sql_guard.py server.py .
 
 ENV HOST=0.0.0.0 \
     PORT=8041 \
     MCP_HTTP_PATH=/mcp \
-    MONGO_URI=mongodb://mongo:27017 \
-    MONGO_DB=datacyber_catalog
+    DATABASE_URL=postgresql://datacyber:datacyber@catalog-db:5432/datacyber_catalog
 
 EXPOSE 8041
 

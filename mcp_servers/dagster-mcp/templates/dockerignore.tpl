@@ -1,0 +1,10 @@
+__pycache__
+*.pyc
+*.pyo
+.dagster_home
+dagster_home
+.venv
+.env
+.git
+.gitignore
+.DS_Store
