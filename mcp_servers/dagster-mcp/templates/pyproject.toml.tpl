@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "dagster>=1.9,<2",
     "dagster-webserver>=1.9,<2",
+    "dagster-duckdb>=0.29,<0.30",
 ]
 
 [build-system]

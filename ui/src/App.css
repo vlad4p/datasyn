@@ -42,6 +42,10 @@ body {
   border-bottom: 1px solid var(--border);
   background: linear-gradient(180deg, #12151c 0%, var(--bg) 100%);
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
 .brand {
@@ -69,6 +73,41 @@ body {
   margin: 0;
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+.locale-switch {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.locale-btn {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  min-width: 2.6rem;
+  font-family: inherit;
+}
+
+.locale-btn + .locale-btn {
+  border-left: 1px solid var(--border);
+}
+
+.locale-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.locale-btn.active {
+  background: rgba(91, 140, 255, 0.2);
+  color: #b8cfff;
 }
 
 /* Two-column shell: centered chat | dashboard */
@@ -147,6 +186,37 @@ body {
 
 .empty p {
   margin-bottom: 1rem;
+}
+
+.empty-intro-md {
+  text-align: left;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  margin-bottom: 1rem;
+  color: var(--muted);
+}
+
+.empty-intro-md p {
+  margin: 0 0 0.75rem;
+}
+
+.empty-intro-md p:last-child {
+  margin-bottom: 0;
+}
+
+.empty-intro-md code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.82em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.empty-intro-md strong {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .suggestions {
@@ -528,6 +598,142 @@ body {
 
 .dash-details summary:hover {
   color: var(--accent);
+}
+
+.dash-table-wrap {
+  margin-top: 0.6rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.dash-table-wrap.compact {
+  margin-top: 0;
+}
+
+.dash-table-wrap.scroll-10 {
+  /* Show ~10 rows; the rest scrolls inside the table. */
+  max-height: 295px;
+  overflow-y: auto;
+  margin-top: 0.45rem;
+}
+
+.dash-table-wrap.scroll-10 thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #1a1d23;
+}
+
+.dash-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.dash-table.compact {
+  font-size: 0.74rem;
+}
+
+.dash-table th,
+.dash-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.4rem 0.55rem;
+  text-align: left;
+}
+
+.dash-table th {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.68rem;
+}
+
+.dash-table tr {
+  cursor: pointer;
+}
+
+.dash-table tr:hover td {
+  background: rgba(91, 140, 255, 0.08);
+}
+
+.dash-table tr.selected td {
+  background: rgba(91, 140, 255, 0.14);
+}
+
+.tool-card {
+  margin-top: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 0.85rem;
+  background: rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.tool-card.unified {
+  border-color: var(--accent-dim);
+}
+
+.tool-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.tool-card-header h4 {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.tool-card .pill {
+  font-size: 0.65rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tool-card .pill.cat-mcp {
+  background: rgba(91, 140, 255, 0.18);
+  color: #a8bfff;
+}
+
+.tool-card .pill.cat-skill {
+  background: rgba(46, 184, 138, 0.18);
+  color: #8be3bf;
+}
+
+.tool-card .pill.cat-helper {
+  background: rgba(255, 178, 89, 0.18);
+  color: #ffd49a;
+}
+
+.tool-card-info {
+  margin: 0;
+  border-top: 1px dashed var(--border);
+  padding-top: 0.5rem;
+}
+
+.tool-card-section {
+  border-top: 1px dashed var(--border);
+  padding-top: 0.5rem;
+}
+
+.tool-card-section h5 {
+  margin: 0 0 0.3rem;
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tiny {
+  font-size: 0.7rem;
 }
 
 .mono {

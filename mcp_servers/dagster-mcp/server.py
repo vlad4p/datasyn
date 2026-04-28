@@ -1,6 +1,9 @@
-"""Dagster MCP (FastMCP HTTP): scaffold Dagster projects, build images, deploy.
+"""Dagster MCP (FastMCP HTTP): scaffold Dagster projects, build images, deploy,
+plus **metadata catalog** PostgreSQL access (same stack as the former standalone ``catalog-mcp``).
 
 Tools (LangChain prefixes them with the MCP key ``dagster``):
+
+**Dagster / Docker**
 
 - ``dagster_list_projects``   — list scaffolded projects under ``DAGSTER_PROJECTS_ROOT``.
 - ``dagster_create_project``  — generate a new Dagster project (pyproject, Dockerfile,
@@ -13,10 +16,17 @@ Tools (LangChain prefixes them with the MCP key ``dagster``):
                                  (optional *image_name*, e.g. ``dagster_user_code_image``).
 - ``dagster_compose_force_recreate`` — ``docker compose up -d --no-build --force-recreate``
                                  for an external stack (default: Ubika ``dagster_user_code``).
-- ``dagster_deploy``          — run/replace the project container, attached to
-                                 ``datacyber_mcp`` network.
+- ``dagster_deploy``          — by default ``docker build`` then ``docker rm -f`` +
+                                 ``docker run`` (replace container on ``datacyber_mcp``).
 - ``dagster_stop`` / ``dagster_remove`` / ``dagster_logs`` / ``dagster_status``
                                 — container lifecycle helpers.
+- ``dagster_daemon_info`` — confirm host Docker daemon socket.
+
+**Metadata catalog (PostgreSQL)**
+
+- ``dagster_catalog_get_schema`` — ``public`` tables, columns, foreign keys.
+- ``dagster_catalog_execute_query`` — one guarded SQL statement per call (see ``./skills/catalog-sql``).
+  Requires ``DATABASE_URL`` or ``CATALOG_DATABASE_URL``.
 
 The MCP **does not** embed the Dagster runtime: it generates code and shells
 out to the host Docker daemon (via mounted ``/var/run/docker.sock``).
@@ -39,6 +49,9 @@ from starlette.responses import PlainTextResponse
 
 import scaffold
 import docker_ops
+from catalog_db import catalog_connect
+from catalog_schema_inspect import fetch_public_schema
+from catalog_sql_guard import validate_catalog_sql
 
 _env = Path(__file__).resolve().parent / ".env"
 if _env.is_file():
@@ -84,6 +97,8 @@ UBIKA_DAGSTER_USER_CODE_SERVICE = os.environ.get(
 # (directory name is ``dagster`` when the compose file lives in ``.../mvp/dagster/``).
 UBIKA_DAGSTER_COMPOSE_PROJECT = os.environ.get("UBIKA_DAGSTER_COMPOSE_PROJECT", "dagster")
 
+LIST_CAP_CATALOG = max(1, min(int(os.environ.get("CATALOG_LIST_CAP", "100")), 500))
+
 mcp = FastMCP(
     name="dagster-mcp",
     instructions=(
@@ -92,12 +107,15 @@ mcp = FastMCP(
         "through a mounted socket to build images and run/replace project "
         "containers attached to the `datacyber_mcp` network. "
         "Workflow: `create_project` → `add_asset` / `add_job` / `add_schedule` / "
-        "`add_sensor` → `build_image` → `deploy` (idempotent: replaces any "
-        "container with the same name). Each project's Dagster UI is exposed on "
-        "the host port chosen at deploy time. Use `compose_force_recreate` after "
+        "`add_sensor` → `deploy` (default: rebuild image from project context, then "
+        "replace any existing container with the same name). Use `build_image` alone "
+        "when you only need an image without restarting the container. Use "
+        "`compose_force_recreate` after "
         "tagging an image (e.g. `dagster_user_code_image`) for an external Ubika "
         "compose stack mounted at `UBIKA_DAGSTER_COMPOSE_FILE`. The MCP itself never "
-        "imports Dagster; it only generates code and shells out to `docker`."
+        "imports Dagster; it only generates code and shells out to `docker`. "
+        "Optional PostgreSQL catalog: tools `catalog_get_schema` and `catalog_execute_query` "
+        "(prefixed `dagster_` by LangChain) — set DATABASE_URL or CATALOG_DATABASE_URL."
     ),
 )
 
@@ -162,8 +180,8 @@ def create_project(
     The project ships with: ``pyproject.toml``, ``workspace.yaml``, ``Dockerfile``,
     a ``<name>`` Python package with ``definitions.py`` (auto-collects every
     submodule under ``assets/`` / ``jobs/`` / ``schedules/`` / ``sensors/``), an
-    example asset and an example job. Build and deploy with
-    ``dagster_build_image`` then ``dagster_deploy``.
+    example asset and an example job. Run ``dagster_deploy`` to build the image and
+    replace the project container (or ``dagster_build_image`` only if you skip deploy).
     """
     log.info("tool create_project name=%r description=%r overwrite=%s", name, description, overwrite)
     t0 = time.perf_counter()
@@ -339,22 +357,25 @@ def deploy(
     container_port: int = 0,
     tag: str | None = None,
     image_name: str | None = None,
-    rebuild: bool = False,
+    rebuild: bool = True,
     no_cache: bool = False,
 ) -> str:
-    """Run/replace the project container.
+    """Build the project image (default) and run/replace the project container.
 
     - ``host_port=0`` (default) → use ``DAGSTER_DEFAULT_HOST_PORT``.
     - ``container_port=0`` (default) → use ``DAGSTER_WEBSERVER_PORT`` (e.g. ``3000``
       for ``dagster dev``). Set to ``4000`` when the image runs ``dagster api grpc``
       on that port (typical user-code image running ``dagster api grpc``).
-    - ``rebuild=True`` runs ``build_image`` first (same *image_name* / *tag*).
+    - ``rebuild=True`` (default) runs ``docker build`` on the project context first,
+      then ``docker rm -f`` + ``docker run`` for ``<prefix>-<project>`` (same image
+      ref as ``dagster_build_image``). Set ``rebuild=False`` to only restart the
+      container against an image you already built.
     - ``image_name`` — optional fixed image ref; see ``dagster_build_image``.
-    - The container is named ``<prefix>-<project>``, attached to the
-      ``datacyber_mcp`` network so it can reach ``duckdb-mcp:8040`` /
-      ``scrapper-mcp:8042`` / etc., and publishes ``host_port:container_port``.
+    - The container is attached to the ``datacyber_mcp`` network so it can reach
+      ``duckdb-mcp:8040`` / ``scrapper-mcp:8042`` / etc., and publishes
+      ``host_port:container_port``.
 
-    Idempotent: any existing container with the same name is removed first.
+    Idempotent: any existing container with the same name is removed before ``run``.
     """
     chosen_port = int(host_port) or DEFAULT_HOST_PORT
     chosen_container_port = int(container_port) or WEBSERVER_PORT
@@ -567,6 +588,69 @@ def daemon_info() -> str:
     except Exception as exc:
         log.exception("daemon_info failed")
         return _err(exc)
+
+
+def _catalog_preview(sql: str, max_len: int = 800) -> str:
+    s = (sql or "").strip().replace("\n", " ")
+    return s if len(s) <= max_len else s[: max_len - 3] + "..."
+
+
+@mcp.tool()
+def catalog_get_schema() -> str:
+    """Return ``public`` schema as JSON: tables, columns, and foreign keys (metadata catalog)."""
+    t0 = time.perf_counter()
+    try:
+        with catalog_connect(autocommit=True) as conn:
+            doc = fetch_public_schema(conn)
+        log.info(
+            "catalog_get_schema ok tables=%s ms=%.2f",
+            len(doc.get("tables") or {}),
+            (time.perf_counter() - t0) * 1000,
+        )
+        return json.dumps(doc, indent=2, default=str)
+    except Exception as exc:
+        log.exception("catalog_get_schema failed")
+        return json.dumps(
+            {"error": str(exc), "schema": "public", "tables": {}, "foreign_keys": []},
+            indent=2,
+        )
+
+
+@mcp.tool()
+def catalog_execute_query(sql: str, max_rows: int = 100) -> str:
+    """
+    Run one SQL statement against the metadata catalog database.
+
+    * **SELECT** (or ``WITH … SELECT``): returns ``{"rows": [...], "truncated": bool, "max_rows": N}``.
+    * **INSERT / UPDATE / DELETE**: returns ``{"ok": true, "rowcount": N}`` (use ``RETURNING`` if you need rows).
+
+    Destructive DDL is rejected (same policy as the former catalog-mcp).
+    """
+    lim = max(1, min(int(max_rows or 100), LIST_CAP_CATALOG))
+    err = validate_catalog_sql(sql)
+    if err:
+        log.warning("catalog_execute_query rejected: %s", err)
+        return json.dumps({"error": err}, indent=2)
+
+    q = (sql or "").strip()
+    log.info("catalog_execute_query max_rows=%s preview=%r", lim, _catalog_preview(q))
+    t0 = time.perf_counter()
+    try:
+        with catalog_connect(autocommit=True) as conn:
+            with conn.cursor() as cur:
+                cur.execute(q)
+                if cur.description:
+                    rows = cur.fetchmany(lim + 1)
+                    truncated = len(rows) > lim
+                    rows_out: list[dict[str, Any]] = [dict(r) for r in rows[:lim]]
+                    payload = {"rows": rows_out, "truncated": truncated, "max_rows": lim}
+                else:
+                    payload = {"ok": True, "rowcount": cur.rowcount}
+        log.info("catalog_execute_query ok ms=%.2f", (time.perf_counter() - t0) * 1000)
+        return json.dumps(payload, indent=2, default=str)
+    except Exception as exc:
+        log.exception("catalog_execute_query failed")
+        return json.dumps({"error": f"{type(exc).__name__}: {exc}"}, indent=2)
 
 
 @mcp.custom_route("/health", methods=["GET"])

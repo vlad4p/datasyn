@@ -1,5 +1,11 @@
 # Deep Agents layout (https://docs.langchain.com/oss/python/deepagents/deploy#project-layout).
-# The FastAPI brain uses CHAT_MODEL + LiteLLM from .env via agent/config.py - not this model field.
+# The FastAPI brain uses CHAT_MODEL + LiteLLM from .env via agent/config.py—not this model field.
+#
+# System prompt assembly (see agent/utils/load_prompt.supervisor_system_prompt):
+#   1. Repo-root AGENTS.md (preferred; UTF-8). Fallback: agent/prompts/supervisor_system_prompt.txt
+#   2. "## Runtime MCP tools (authoritative)" — concrete tool names from the bound LangChain tools
+#   3. Reports directory line from agent.config.settings.reports_dir
+# Skills discovery: agent/graph.py passes skills=["/skills/"] so every ./skills/*/SKILL.md is injected.
 
 [agent]
 name = "datacyber-brain"

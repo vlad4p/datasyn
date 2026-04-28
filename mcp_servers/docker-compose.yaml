@@ -26,6 +26,24 @@ networks:
     name: datacyber_mcp
     driver: bridge
 
+# --- Data layout (validate paths against Dagster / DuckDB code) ---
+#
+# ``/data`` — named volume ``duckdb_data`` mounted here. Holds ``warehouse.duckdb``
+# (the database file). This is **not** the landing zone; do not expect INDEC PDFs
+# or scraped trees under ``/data`` unless you copy them there yourself.
+#
+# ``/data-local`` — **landing zone**: host directory ``../data-local`` (repo
+# ``data-local/``) bind-mounted read-only on ``duckdb``, ``duckdb-ui``, ``duckdb-mcp``,
+# and read-write on ``scrapper-mcp``. DuckDB MCP sets ``DATA_LOCAL_ROOT=/data-local``.
+# INDEC paths in code default to ``/data-local/indec/...`` (PDF variables, EPH base).
+#
+# ``dagster-mcp`` ``DAGSTER_DEPLOY_VOLUMES`` defaults to only ``duckdb_data:/data``.
+# MCP-deployed user-code containers therefore see the warehouse but **not** ``/data-local``
+# unless you append a **host-absolute** bind, e.g. in ``mcp_servers/.env``:
+#   DAGSTER_DEPLOY_VOLUMES=datacyber-mcp_duckdb_data:/data;/abs/path/datacyber/data-local:/data-local:ro
+# Ubika ``dagster_user_code`` must mount the same landing tree at ``/data-local`` (or set
+# ``INDEC_EPH_BASE`` / ``INDEC_EPH_VARIABLES_PDF`` to paths that exist in that container).
+
 services:
   duckdb:
     build:
@@ -126,6 +144,10 @@ services:
       HOST: "0.0.0.0"
       PORT: "8043"
       MCP_HTTP_PATH: /mcp
+      # Optional metadata catalog (PostgreSQL): tools catalog_get_schema / catalog_execute_query
+      # appear as dagster_catalog_* via LangChain. Prefer DATABASE_URL or CATALOG_DATABASE_URL.
+      DATABASE_URL: "${DATABASE_URL:-}"
+      CATALOG_DATABASE_URL: "${CATALOG_DATABASE_URL:-}"
       DAGSTER_PROJECTS_ROOT: /projects
       DAGSTER_PROJECT_NETWORK: datacyber_mcp
       DAGSTER_IMAGE_PREFIX: dagster
@@ -135,13 +157,16 @@ services:
       UBIKA_DAGSTER_COMPOSE_FILE: /ubika-dagster/docker-compose.yaml
       UBIKA_DAGSTER_COMPOSE_PROJECT: dagster
       UBIKA_DAGSTER_USER_CODE_SERVICE: dagster_user_code
-      # Semicolon-separated `docker run -v` sources are interpreted by the **host** daemon.
-      # Append EPH files only with an **absolute** host path, e.g. in `mcp_servers/.env`:
-      #   DAGSTER_DEPLOY_VOLUMES=datacyber-mcp_duckdb_data:/data;/abs/path/datacyber/data-local:/data-local:ro
+      # Semicolon-separated ``docker run -v`` sources for MCP ``deploy`` (host daemon).
+      # Default: warehouse only. Add ``data-local`` with a **host-absolute** path so
+      # user-code sees the same landing zone as ``duckdb-mcp`` (``/data-local/indec/...``).
+      # Example (``mcp_servers/.env``): …duckdb_data:/data;/abs/.../datacyber/data-local:/data-local:ro
       DAGSTER_DEPLOY_VOLUMES: "datacyber-mcp_duckdb_data:/data"
     volumes:
       - ./dagster-mcp/projects:/projects
       - ../../ubika-infra/live/mvp/dagster:/ubika-dagster:ro
+      # Same landing tree as ``duckdb-mcp`` (read-only); path for ``deploy`` is still set via env above.
+      - ../data-local:/data-local:ro
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - mcp

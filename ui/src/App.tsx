@@ -1,27 +1,26 @@
 import { useCallback, useState } from "react";
 import { postChat } from "./api";
-import type { ChatResponsePayload, PipelineTrace } from "./api";
+import type { ChatResponsePayload } from "./api";
 import { AppHeader } from "./components/AppHeader";
 import { ChatPanel, type ChatMsg } from "./components/ChatPanel";
 import { Dashboard } from "./components/Dashboard";
+import { readStoredLocale, persistLocale, type UiLocale } from "./locale";
 
 type Msg = ChatMsg & {
   pipelineDebug?: ChatResponsePayload["debug"];
 };
 
-const SUGGESTIONS = [
-  "List all files under /data-local (including subfolders) using duckdb tools.",
-  "What models does the brain use? Summarize litellm_base and CHAT_MODEL from your tools.",
-  "Run SELECT * FROM example_sales LIMIT 10 and format results as a markdown table.",
-  "Reply with a Mermaid flowchart in a ```mermaid fenced block showing ingest → warehouse → report.",
-];
-
 export default function App() {
+  const [locale, setLocale] = useState<UiLocale>(() => readStoredLocale());
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pipelineTrace, setPipelineTrace] = useState<PipelineTrace>(null);
+
+  const onLocaleChange = useCallback((l: UiLocale) => {
+    persistLocale(l);
+    setLocale(l);
+  }, []);
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -32,12 +31,7 @@ export default function App() {
     setMessages((m) => [...m, userMsg]);
     setBusy(true);
     try {
-      const out = await postChat(text);
-      setPipelineTrace({
-        requestId: out.request_id,
-        debug: out.debug ?? null,
-        at: Date.now(),
-      });
+      const out = await postChat(text, { locale });
       setMessages((m) => [
         ...m,
         {
@@ -53,25 +47,25 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [input, busy]);
+  }, [input, busy, locale]);
 
   return (
     <div className="app-shell">
-      <AppHeader />
+      <AppHeader locale={locale} onLocaleChange={onLocaleChange} />
 
       <div className="layout-main">
         <ChatPanel
           className="panel-chat"
+          locale={locale}
           messages={messages}
           input={input}
           setInput={setInput}
           busy={busy}
           error={error}
-          suggestions={SUGGESTIONS}
           onSend={send}
         />
 
-        <Dashboard className="panel-dash" pipelineTrace={pipelineTrace} />
+        <Dashboard className="panel-dash" locale={locale} />
       </div>
     </div>
   );

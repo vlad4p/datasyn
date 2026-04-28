@@ -1,4 +1,8 @@
 import { useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { UiLocale } from "../locale";
+import { uiStrings } from "../locale";
 import { MarkdownMessage } from "./MarkdownMessage";
 
 export type ChatMsg = {
@@ -10,25 +14,26 @@ export type ChatMsg = {
 
 type Props = {
   className?: string;
+  locale: UiLocale;
   messages: ChatMsg[];
   input: string;
   setInput: (v: string) => void;
   busy: boolean;
   error: string | null;
-  suggestions: string[];
   onSend: () => void;
 };
 
 export function ChatPanel({
   className,
+  locale,
   messages,
   input,
   setInput,
   busy,
   error,
-  suggestions,
   onSend,
 }: Props) {
+  const s = uiStrings(locale);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -36,23 +41,18 @@ export function ChatPanel({
   }, [messages.length, busy]);
 
   return (
-    <section className={`chat-panel ${className ?? ""}`} aria-label="Agent chat">
+    <section className={`chat-panel ${className ?? ""}`} aria-label={s.chatAria}>
       <div className="chat-panel-inner">
         <div className="messages">
           {messages.length === 0 && (
             <div className="empty">
-              <p>
-                Ask anything. Replies can include <strong>Markdown tables</strong>,{" "}
-                <strong>Mermaid</strong> diagrams (fenced <code className="inline-code">mermaid</code>
-                ), <strong>Vega-Lite</strong> charts (fenced <code className="inline-code">vega-lite</code>{" "}
-                JSON), and images (
-                <code className="inline-code">https://</code>, <code className="inline-code">data:image/…</code>
-                , or saved files under <code className="inline-code">/project/reports/…</code> served by the API).
-              </p>
+              <div className="empty-intro-md">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{s.chatEmpty}</ReactMarkdown>
+              </div>
               <div className="suggestions">
-                {suggestions.map((s) => (
-                  <button key={s} type="button" className="chip" onClick={() => setInput(s)} disabled={busy}>
-                    {s}
+                {s.suggestions.map((q) => (
+                  <button key={q} type="button" className="chip" onClick={() => setInput(q)} disabled={busy}>
+                    {q}
                   </button>
                 ))}
               </div>
@@ -63,7 +63,7 @@ export function ChatPanel({
           ))}
           {busy && (
             <div className="bubble assistant thinking">
-              <span className="dots" aria-label="Loading">
+              <span className="dots" aria-label={s.loading}>
                 <span />
                 <span />
                 <span />
@@ -78,7 +78,7 @@ export function ChatPanel({
         <div className="composer">
           <textarea
             rows={2}
-            placeholder="Message…"
+            placeholder={s.placeholder}
             value={input}
             disabled={busy}
             onChange={(e) => setInput(e.target.value)}
@@ -90,7 +90,7 @@ export function ChatPanel({
             }}
           />
           <button type="button" className="btn primary" onClick={() => void onSend()} disabled={busy || !input.trim()}>
-            Send
+            {s.send}
           </button>
         </div>
       </div>

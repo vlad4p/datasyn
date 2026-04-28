@@ -1,10 +1,9 @@
 """SQL composition helpers for the brain's catalog queries.
 
-The ``catalog`` MCP server only exposes two generic tools (see
-``mcp_servers/catalog-mcp/server.py``):
+Metadata catalog tools live on **dagster-mcp** (see ``mcp_servers/dagster-mcp/server.py``):
 
-* ``catalog_get_schema`` — ``public`` tables / columns / foreign keys.
-* ``catalog_execute_query`` — single ``SELECT`` / ``INSERT`` / ``UPDATE`` /
+* ``dagster_catalog_get_schema`` — ``public`` tables / columns / foreign keys.
+* ``dagster_catalog_execute_query`` — single ``SELECT`` / ``INSERT`` / ``UPDATE`` /
   ``DELETE`` (no DDL, no multiple statements).
 
 There is **no** ``catalog_list_datasets`` / ``catalog_search_datasets`` /
@@ -12,7 +11,7 @@ There is **no** ``catalog_list_datasets`` / ``catalog_search_datasets`` /
 those dataset-shaped operations are composed as SQL by the brain (this module
 and the ``./skills/catalog-sql/SKILL.md``). The HTTP path ``GET
 /catalog/datasets`` goes through :func:`build_list_datasets_sql` +
-``catalog_execute_query``.
+``dagster_catalog_execute_query``.
 
 The SQL shape matches what's documented in ``skills/catalog-sql/SKILL.md`` so
 agent traces and the refresh button end up running identical queries.

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from agent.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def _prompts_dir() -> Path:
@@ -12,13 +15,30 @@ def _prompts_dir() -> Path:
 
 
 def _read_agents_md(path: Path) -> str:
-    """Read ``AGENTS.md`` as UTF-8 after normalizing stray Windows-1252 bytes (invalid UTF-8)."""
+    """Read ``AGENTS.md`` tolerantly so a stray non-UTF-8 byte cannot crash brain startup.
+
+    Strategy: try strict UTF-8 first; on failure, normalize the few CP1252 mojibake bytes
+    we have seen in practice (em dash, ellipsis) and retry; if still invalid, fall back to
+    CP1252 decoding (a superset of Latin-1) and log a warning. The prompt only feeds the
+    LLM, so a best-effort decode is far safer than aborting ``create_deep_agent``.
+    """
     raw = path.read_bytes()
-    # CP1252 mojibake: em dash (0x9d, 0x97), horizontal ellipsis (0x85) — lone bytes are invalid in UTF-8.
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+
     em = "\u2014".encode("utf-8")
-    raw = raw.replace(b"\x9d", em).replace(b"\x97", em)
-    raw = raw.replace(b"\x85", "\u2026".encode("utf-8"))
-    return raw.decode("utf-8")
+    patched = raw.replace(b"\x9d", em).replace(b"\x97", em).replace(b"\x85", "\u2026".encode("utf-8"))
+    try:
+        return patched.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        logger.warning(
+            "AGENTS.md contains non-UTF-8 bytes (first error at byte %s); decoding as CP1252. "
+            "Re-save the file as UTF-8 to silence this warning.",
+            exc.start,
+        )
+        return patched.decode("cp1252", errors="replace")
 
 
 def load_prompt(filename: str) -> str:
@@ -29,7 +49,30 @@ def load_prompt(filename: str) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-def supervisor_system_prompt(mcp_tool_names: list[str] | None = None) -> str:
+def _response_language_suffix(locale: str) -> str:
+    """Append instruction so the model matches the UI language (must be last, high salience)."""
+    loc = (locale or "en").strip().lower()
+    if loc in ("es", "spanish", "es-ar", "es-es", "es-mx"):
+        return (
+            "\n\n## Idioma de respuesta (obligatorio)\n\n"
+            "Responde **siempre** en **español** (títulos, explicaciones, tablas, listas, errores, "
+            "y comentarios en fragmentos de código). Mantén identificadores técnicos, nombres de "
+            "herramientas, rutas, SQL y términos de dominio en la forma en que aparezcan en el proyecto "
+            "cuando sea lo habitual."
+        )
+    return (
+        "\n\n## Response language (required)\n\n"
+        "Reply **always** in **English** (titles, explanations, tables, lists, error messages, and "
+        "code comments), unless the user explicitly asks for a different language for a specific quote. "
+        "Keep technical identifiers, tool names, paths, and SQL in their conventional form."
+    )
+
+
+def supervisor_system_prompt(
+    mcp_tool_names: list[str] | None = None,
+    *,
+    response_locale: str = "en",
+) -> str:
     """Use project ``AGENTS.md`` when present; otherwise ``supervisor_system_prompt.txt``.
 
     When ``mcp_tool_names`` is provided, the actual runtime MCP tools (from ``mcp.json``) are appended to
@@ -52,8 +95,21 @@ def supervisor_system_prompt(mcp_tool_names: list[str] | None = None) -> str:
             '"what tools do you have?", answer with **this exact list** (plus the built-in '
             "Deep Agents helpers: `write_todos`, `ls`, `read_file`, `write_file`, `edit_file`, "
             "`glob`, `grep`, `task`). Do **not** mention `database_*`, `process_*`, "
-            "`ingest_csv`, `database_ingest_csv`, or any other name not listed below.\n\n"
+            "`ingest_csv`, `database_ingest_csv`, legacy warehouse aliases (`warehouse_query`, "
+            "`duckdb_warehouse_query`), or any other name not listed below.\n\n"
             f"{listed}"
         )
+        parts.append(
+            "\n\n## Dagster project safety\n\n"
+            "For Dagster code-location work, operate with `dagster_*` tools only "
+            "(`dagster_list_projects` → `dagster_create_project` → `dagster_add_*`). "
+            "Do **not** use Deep Agents filesystem helpers (`write_file`, `edit_file`, etc.) "
+            "to modify `/projects/...` because that path belongs to the dagster-mcp container "
+            "mount and helper-tool updates there can be misleading.\n\n"
+            "Never execute SQL/code with placeholder paths (`path/to/...`, `your_file_here`, etc.). "
+            "First resolve a real absolute path from tool output (typically under `/data-local/...`) "
+            "and then reuse that exact path."
+        )
     parts.append(f"\n\nWrite Markdown reports under: `{settings.reports_dir}`.")
+    parts.append(_response_language_suffix(response_locale))
     return "".join(parts)

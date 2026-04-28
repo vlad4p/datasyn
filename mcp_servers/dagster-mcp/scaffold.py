@@ -47,8 +47,40 @@ def _project_dir(root: str | Path, project: str) -> Path:
     return _projects_root(root) / project
 
 
+def _resolve_project_dir(root: str | Path, project: str) -> Path:
+    """Resolve project input as either name or path under projects root."""
+    base = _projects_root(root)
+    raw = (project or "").strip()
+    if not raw:
+        raise ValueError("project is required")
+
+    # Accept plain project names (recommended).
+    if "/" not in raw and "\\" not in raw:
+        _validate_python_name(raw, what="project")
+        return base / raw
+
+    # Also accept path-like values to make tool usage robust.
+    p = Path(raw)
+    candidate = (base / p).resolve() if not p.is_absolute() else p.resolve()
+    try:
+        candidate.relative_to(base.resolve())
+    except ValueError as exc:
+        raise ValueError(
+            f"project path {raw!r} must be inside {base}"
+        ) from exc
+    _validate_python_name(candidate.name, what="project")
+    return candidate
+
+
 def _project_pkg(root: str | Path, project: str) -> Path:
-    return _project_dir(root, project) / project
+    pdir = _ensure_project(root, project)
+    pkg = _package_root(pdir)
+    if pkg is None:
+        raise FileNotFoundError(
+            f"project package not found under {pdir}; expected either "
+            f"{pdir / pdir.name} or {pdir / 'src' / pdir.name}"
+        )
+    return pkg
 
 
 def _package_root(project_dir: Path) -> Path | None:
@@ -64,7 +96,7 @@ def _package_root(project_dir: Path) -> Path | None:
 
 
 def _ensure_project(root: str | Path, project: str) -> Path:
-    pdir = _project_dir(root, project)
+    pdir = _resolve_project_dir(root, project)
     if _package_root(pdir) is None:
         raise FileNotFoundError(
             f"project {project!r} not found at {pdir}; run create_project first"
@@ -241,7 +273,6 @@ def create_project(
         "next_steps": [
             f"dagster_add_asset    project={name!r} name='my_asset'",
             f"dagster_add_job      project={name!r} name='my_job' selection='*'",
-            f"dagster_build_image  project={name!r}",
             f"dagster_deploy       project={name!r} host_port=3001",
         ],
     }

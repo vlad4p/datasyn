@@ -55,7 +55,13 @@ export type PipelineTrace = {
   at: number;
 } | null;
 
-export async function postChat(message: string): Promise<ChatResponsePayload> {
+export type ChatLocale = "en" | "es";
+
+export async function postChat(
+  message: string,
+  options?: { locale?: ChatLocale },
+): Promise<ChatResponsePayload> {
+  const locale = options?.locale === "es" ? "es" : "en";
   const ctrl = new AbortController();
   const t = window.setTimeout(() => ctrl.abort(), CHAT_FETCH_MS);
   const t0 = performance.now();
@@ -63,7 +69,7 @@ export async function postChat(message: string): Promise<ChatResponsePayload> {
     const res = await fetch(brainApiUrl("/agent/chat"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, locale }),
       signal: ctrl.signal,
     });
     if (import.meta.env.DEV) {
@@ -121,6 +127,25 @@ export type BrainHealth = {
   chat_model?: string;
   /** Same object as ``GET /health/pipeline``; embedded so the UI needs only one request. */
   pipeline?: Record<string, unknown>;
+};
+
+export type ToolInventoryItem = {
+  name: string;
+  server: string;
+  source: "mcp" | "helper";
+};
+
+export type SkillInventoryItem = {
+  source: "skill";
+  name: string;
+  path: string;
+};
+
+export type ToolInventoryResponse = {
+  status: string;
+  tools: ToolInventoryItem[];
+  skills: SkillInventoryItem[];
+  mcp_error?: string | null;
 };
 
 export type LlmConfig = {
@@ -208,5 +233,11 @@ export async function getHealthPipeline(): Promise<Record<string, unknown> | nul
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json() as Promise<Record<string, unknown>>;
+}
+
+export async function getToolsInventory(): Promise<ToolInventoryResponse> {
+  const res = await fetch(brainApiUrl("/health/tools"));
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<ToolInventoryResponse>;
 }
 

@@ -20,7 +20,7 @@ def _project_root() -> Path:
     return settings.project_root
 
 
-def build_agent(tools: list[BaseTool]):
+def build_agent(tools: list[BaseTool], *, response_locale: str = "en"):
     """Build the compiled Deep Agent with supervisor prompt and extra tools."""
     root = _project_root()
     tool_names = [getattr(t, "name", repr(t)) for t in tools]
@@ -35,7 +35,7 @@ def build_agent(tools: list[BaseTool]):
     return create_deep_agent(
         model=model,
         tools=tools,
-        system_prompt=supervisor_system_prompt(mcp_tool_names=tool_names),
+        system_prompt=supervisor_system_prompt(mcp_tool_names=tool_names, response_locale=response_locale),
         backend=backend,
         name="datacyber-brain",
         # `skills=` is passed to deepagents' SkillsMiddleware as `sources=`, which expects
@@ -45,7 +45,8 @@ def build_agent(tools: list[BaseTool]):
         # middleware find zero subdirectories and silently inject NO skills into the system
         # prompt — the agent then improvises ingest/catalog SQL from AGENTS.md alone.
         # So we pass the parent "/skills/" and the middleware discovers every SKILL.md child
-        # (currently: catalog-sql, ingest-indec-mercadolaboral, scrape-indec-mercado-laboral,
-        # update-catalog). `skills/langfuse/` has no SKILL.md and is harmlessly ignored.
+        # (e.g. analyze-indec-eph-hogar, catalog-sql, ingest-indec-mercadolaboral,
+        # scrape-indec-mercado-laboral, update-catalog). `skills/langfuse/` has no SKILL.md
+        # and is harmlessly ignored.
         skills=["/skills/"],
     )

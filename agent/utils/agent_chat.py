@@ -2,7 +2,7 @@
 
 **Flow (UI → LiteLLM)** — only the **brain** talks to LiteLLM; the browser never sends ``LITELLM_KEY``.
 
-1. Browser: ``POST /api/agent/chat`` (Vite proxy) → brain ``POST /agent/chat`` with JSON ``{ "message": "..." }``.
+1. Browser: ``POST /api/agent/chat`` (Vite proxy) → brain ``POST /agent/chat`` with JSON ``{ "message": "...", "locale": "en"|"es" }`` (optional ``locale``, default ``en``).
 2. Brain: ``run_agent_chat_turn`` loads MCP tools from ``mcp.json``, builds ``create_deep_agent`` with
    ``build_chat_model()`` → ``langchain_openai.ChatOpenAI`` (``base_url`` = LiteLLM proxy, ``api_key`` = ``LITELLM_KEY``).
 3. Agent graph invokes that model for LLM turns; MCP tools hit ``duckdb-mcp`` etc. No separate "model service" in front.
@@ -86,6 +86,7 @@ async def run_agent_chat_turn(
     request_id: str | None = None,
     langfuse_session_id: str | None = None,
     langfuse_user_id: str | None = None,
+    response_locale: str = "en",
 ) -> ChatTurnResult:
     """Load MCP tools, run the deep agent, return reply and optional debug payload."""
     rid = request_id or str(uuid.uuid4())
@@ -123,7 +124,9 @@ async def run_agent_chat_turn(
     )
     record("mcp_get_tools", tool_count=len(tools), tool_names=tool_names, ms=tools_ms)
 
-    agent = build_agent(tools)
+    loc = "es" if (response_locale or "en").strip().lower() == "es" else "en"
+    record("response_locale", locale=loc)
+    agent = build_agent(tools, response_locale=loc)
     record("build_agent_done")
 
     lf_handler = create_langchain_callback_handler()
@@ -198,7 +201,7 @@ async def run_agent_chat_turn(
             "messages": msg_summary,
             "skills": (
                 "Deep Agents `skills=[\"/skills/\"]` (parent dir; SkillsMiddleware auto-discovers "
-                "every subdir with a SKILL.md — currently ingest-indec-mercadolaboral, "
+                "every subdir with a SKILL.md — e.g. analyze-indec-eph-hogar, ingest-indec-mercadolaboral, "
                 "scrape-indec-mercado-laboral, update-catalog, catalog-sql). "
                 "There is no separate skill HTTP endpoint."
             ),

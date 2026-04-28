@@ -27,6 +27,12 @@ services:
       - mcp
     volumes:
       - ./.env:/project/.env:ro
+      # Skills (deepagents SkillsMiddleware reads /project/skills/*/SKILL.md per agent/graph.py)
+      # and AGENTS.md (system prompt source, see agent/utils/load_prompt.py). Bind-mounted RO so
+      # edits are picked up by `docker compose up -d --force-recreate brain` without a rebuild.
+      # The Dockerfile bakes both into the image; these mounts override with the live working copy.
+      - ./skills:/project/skills:ro
+      - ./AGENTS.md:/project/AGENTS.md:ro
     command:
       [
         "python",

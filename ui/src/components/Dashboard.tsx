@@ -1,63 +1,141 @@
-import { useCallback, useEffect, useState } from "react";
-import type { BrainHealth, LlmConfig, PipelineTrace } from "../api";
-import {
-  getApiDisplayLabel,
-  getHealth,
-  getLlmConfig,
-  isStubHealthResponse,
-  probeLlm,
-} from "../api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { BrainHealth, SkillInventoryItem, ToolInventoryItem } from "../api";
+import { getHealth, getToolsInventory } from "../api";
 
-type Props = { className?: string; pipelineTrace?: PipelineTrace };
+import type { UiLocale } from "../locale";
+import { uiStrings } from "../locale";
 
-function resolveDuckdbUiUrl(pipeline: Record<string, unknown> | null): string {
-  const block = pipeline?.duckdb_ui;
-  if (block && typeof block === "object" && block !== null && "public_url" in block) {
-    const u = String((block as { public_url?: unknown }).public_url ?? "").trim();
-    if (u) return u;
+type Props = { className?: string; locale: UiLocale };
+type ToolMeta = {
+  name: string;
+  category: "mcp" | "helper" | "skill";
+  mcpServer: string;
+  title: string;
+  description: string;
+  sourcePath?: string;
+  example: string;
+};
+
+const BUILTIN_HELPERS = [
+  "write_todos",
+  "ls",
+  "read_file",
+  "write_file",
+  "edit_file",
+  "glob",
+  "grep",
+  "task",
+];
+
+const TOOL_DESCRIPTIONS: Record<string, string> = {
+  duckdb_get_schema: "List schemas/tables/views available in DuckDB.",
+  duckdb_execute_query: "Run one DuckDB SQL statement (SELECT/DDL/DML).",
+  duckdb_list_data_mount: "List files and directories under /data-local.",
+  scrapper_list_sources: "List supported public data sources.",
+  scrapper_indec_mercado_laboral_list: "Probe INDEC EPH files by period (no download).",
+  scrapper_indec_mercado_laboral_download: "Download and unzip INDEC EPH data into /data-local.",
+  dagster_list_projects: "List scaffolded Dagster projects.",
+  dagster_create_project: "Create a Dagster project scaffold.",
+  dagster_add_asset: "Add an asset module to a Dagster project.",
+  dagster_add_job: "Add a Dagster job to a project.",
+  dagster_add_schedule: "Add a Dagster schedule to a project.",
+  dagster_add_sensor: "Add a Dagster sensor to a project.",
+  dagster_build_image: "Build Docker image for Dagster user code.",
+  dagster_deploy: "Build/deploy project container on Docker network.",
+  dagster_compose_force_recreate: "Force recreate target compose services.",
+  dagster_stop: "Stop project container.",
+  dagster_remove: "Remove project container/image.",
+  dagster_logs: "Read project container logs.",
+  dagster_status: "Show project container status.",
+  dagster_daemon_info: "Inspect host Docker daemon availability.",
+  dagster_catalog_get_schema: "Read metadata catalog schema (PostgreSQL).",
+  dagster_catalog_execute_query: "Run one guarded SQL query on metadata catalog.",
+  write_todos: "Persist task checklist state for multi-step turns.",
+  ls: "List files/directories in the project virtual FS.",
+  read_file: "Read file contents from project virtual FS.",
+  write_file: "Create/overwrite files in project virtual FS.",
+  edit_file: "Apply targeted edits to files in project virtual FS.",
+  glob: "Find files by pattern in project virtual FS.",
+  grep: "Search text pattern in project files.",
+  task: "Launch subagent for delegated work.",
+};
+
+const TOOL_EXAMPLES: Record<string, string> = {
+  duckdb_get_schema: "Use when starting a task: inspect available tables before querying.",
+  duckdb_execute_query: "Example: run an aggregate query (COUNT/GROUP BY) instead of SELECT *.",
+  duckdb_list_data_mount: "Example: list /data-local/indec recursively before ingest.",
+  scrapper_indec_mercado_laboral_list: "Example: check if 2025 Q3 source files exist before download.",
+  scrapper_indec_mercado_laboral_download: "Example: download and unzip EPH files, then ingest into DuckDB.",
+  dagster_catalog_execute_query: "Example: upsert dataset_entity metadata with ON CONFLICT.",
+  dagster_catalog_get_schema: "Example: inspect public catalog tables before writing SQL.",
+  write_todos: "Use for multi-step work tracking during long implementations.",
+  read_file: "Use to inspect AGENTS.md or SKILL.md before acting.",
+  write_file: "Use to create reports or generated artifacts under reports/.",
+  edit_file: "Use for targeted code edits preserving surrounding context.",
+  glob: "Use to locate files by pattern (e.g., **/*.tsx).",
+  grep: "Use to find exact symbols/strings in the repo.",
+  task: "Use when delegating broad exploration to a subagent.",
+};
+
+function inferToolMeta(name: string): ToolMeta {
+  const n = name.trim();
+  if (BUILTIN_HELPERS.includes(n)) {
+    return {
+      name: n,
+      category: "helper",
+      mcpServer: "deepagents",
+      title: n,
+      description: TOOL_DESCRIPTIONS[n] ?? "Built-in helper tool.",
+      example: TOOL_EXAMPLES[n] ?? "Built-in helper for filesystem and orchestration.",
+    };
   }
-  const v = import.meta.env.VITE_DUCKDB_UI_URL;
-  if (v && String(v).trim()) return String(v).trim();
-  return "http://127.0.0.1:4213";
+  const server = n.includes("_") ? n.split("_", 1)[0] : "unknown";
+  return {
+    name: n,
+    category: "mcp",
+    mcpServer: server,
+    title: n,
+    description: TOOL_DESCRIPTIONS[n] ?? "MCP tool available at runtime.",
+    example: TOOL_EXAMPLES[n] ?? "Use when this capability is required in a task flow.",
+  };
 }
 
-export function Dashboard({ className, pipelineTrace }: Props) {
+export function Dashboard({ className, locale }: Props) {
+  const d = uiStrings(locale).dashboard;
   const [health, setHealth] = useState<string>("—");
-  const [healthPayload, setHealthPayload] = useState<BrainHealth | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
-  const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
-  const [llmConfigError, setLlmConfigError] = useState<string | null>(null);
-  const [llmProbe, setLlmProbe] = useState<unknown>(null);
-  const [probeError, setProbeError] = useState<string | null>(null);
+  const [, setHealthPayload] = useState<BrainHealth | null>(null);
   const [loading, setLoading] = useState(true);
-  const [pipelineHealth, setPipelineHealth] = useState<Record<string, unknown> | null>(null);
+  const [selectedTool, setSelectedTool] = useState<string | null>(null);
+  const [inventoryTools, setInventoryTools] = useState<ToolInventoryItem[]>([]);
+  const [inventorySkills, setInventorySkills] = useState<SkillInventoryItem[]>([]);
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    setProbeError(null);
     setHealthError(null);
-    setLlmConfigError(null);
+    setInventoryError(null);
 
     try {
       const h = await getHealth();
       setHealthPayload(h);
       setHealth(h.status);
-      setPipelineHealth(h.pipeline ?? null);
-      try {
-        const cfg = await getLlmConfig(h);
-        setLlmConfig(cfg);
-        setLlmConfigError(null);
-      } catch (e) {
-        setLlmConfig(null);
-        setLlmConfigError(String(e));
-      }
     } catch (e) {
       setHealthPayload(null);
       setHealth("error");
       setHealthError(String(e));
-      setLlmConfig(null);
-      setLlmConfigError(null);
-      setPipelineHealth(null);
+    }
+    try {
+      const inv = await getToolsInventory();
+      setInventoryTools(inv.tools ?? []);
+      setInventorySkills(inv.skills ?? []);
+      if (inv.mcp_error) {
+        setInventoryError(inv.mcp_error);
+      }
+    } catch (e) {
+      setInventoryTools([]);
+      setInventorySkills([]);
+      setInventoryError(String(e));
     }
 
     setLoading(false);
@@ -67,203 +145,132 @@ export function Dashboard({ className, pipelineTrace }: Props) {
     void refresh();
   }, [refresh]);
 
-  const runProbe = async () => {
-    setProbeError(null);
-    setLlmProbe(null);
-    try {
-      const j = await probeLlm();
-      setLlmProbe(j);
-    } catch (e) {
-      setProbeError(String(e));
+  const toolRows = useMemo(() => {
+    const fromInventory = inventoryTools.map((t) => {
+      if (t.source === "helper") {
+        return inferToolMeta(t.name);
+      }
+      return {
+        ...inferToolMeta(t.name),
+        category: "mcp" as const,
+        mcpServer: t.server || inferToolMeta(t.name).mcpServer,
+      };
+    });
+    const skillRows: ToolMeta[] = inventorySkills.map((s) => ({
+      name: s.name,
+      category: "skill",
+      mcpServer: "skills",
+      title: s.name,
+      description: d.skillBlurb,
+      sourcePath: s.path,
+      example: d.skillExample,
+    }));
+    const map = new Map<string, ToolMeta>();
+    for (const row of [...fromInventory, ...skillRows]) {
+      if (!map.has(row.name)) map.set(row.name, row);
     }
-  };
+    const categoryOrder: Record<ToolMeta["category"], number> = {
+      mcp: 0,
+      skill: 1,
+      helper: 2, // Deep Agents helpers at the bottom
+    };
+    return Array.from(map.values()).sort((a, b) => {
+      const diff = categoryOrder[a.category] - categoryOrder[b.category];
+      if (diff !== 0) return diff;
+      return a.name.localeCompare(b.name);
+    });
+  }, [d.skillBlurb, d.skillExample, inventorySkills, inventoryTools]);
+  const selectedMeta = useMemo(
+    () => toolRows.find((t) => t.name === selectedTool) ?? toolRows[0] ?? null,
+    [toolRows, selectedTool],
+  );
 
-  const duckdbUiUrl = resolveDuckdbUiUrl(pipelineHealth);
+  useEffect(() => {
+    if (!selectedTool && toolRows.length > 0) {
+      setSelectedTool(toolRows[0].name);
+    }
+  }, [selectedTool, toolRows]);
 
   return (
     <aside className={`dashboard ${className ?? ""}`}>
       <div className="dashboard-header">
-        <h2>Dashboard</h2>
+        <h2>{d.title}</h2>
         <button type="button" className="btn ghost" onClick={() => void refresh()} disabled={loading}>
-          Refresh
+          {d.refresh}
         </button>
       </div>
 
       <section className="dash-card">
-        <h3>API</h3>
-        <p className="mono muted">{getApiDisplayLabel()}</p>
+        <h3>{d.toolsInModel}</h3>
         <dl className="dash-dl">
-          <dt>Brain</dt>
+          <dt>{d.status}</dt>
           <dd>
             <span className={`pill ${health === "ok" ? "ok" : "bad"}`}>{loading ? "…" : health}</span>
           </dd>
         </dl>
-        {!loading && healthPayload && isStubHealthResponse(healthPayload) && (
-          <div className="banner warning dash-detail">
-            <strong>Incomplete /health</strong> — response is only <code className="inline-code">{"{ \"status\": \"ok\" }"}</code>
-            . Vite may be proxying to the wrong host/port (e.g. an old uvicorn on{" "}
-            <code className="inline-code">127.0.0.1:8000</code>). This project maps the Docker brain to{" "}
-            <code className="inline-code">127.0.0.1:8002</code> — check <code className="inline-code">VITE_PROXY_TARGET</code> in{" "}
-            <code className="inline-code">vite.config.ts</code> and <code className="inline-code">docker-compose.yaml</code>{" "}
-            <code className="inline-code">8002:8000</code>. Or set <code className="inline-code">VITE_API_BASE</code> to the brain
-            that returns full <code className="inline-code">GET /health</code> JSON.
-          </div>
-        )}
         {healthError && (
           <p className="error small dash-detail">
             {healthError}
-            <span className="block muted tiny mt">
-              Ensure <code className="inline-code">docker compose up brain</code> publishes{" "}
-              <code className="inline-code">8002:8000</code>
-              , then <code className="inline-code">curl http://127.0.0.1:8002/health</code>. The UI calls the brain via
-              Vite&apos;s <code className="inline-code">/api</code> proxy by default (no Docker DNS in the browser). If
-              you set <code className="inline-code">VITE_API_BASE</code> to a direct URL, add matching origins to{" "}
-              <code className="inline-code">CORS_EXTRA_ORIGINS</code> on the brain when the UI origin is not localhost.
-            </span>
           </p>
         )}
-      </section>
-
-      <section className="dash-card">
-        <h3>DuckDB UI</h3>
-        <p className="small muted dash-detail">
-          The official{" "}
-          <a href="https://duckdb.org/2025/03/12/duckdb-ui" rel="noreferrer noopener" target="_blank">
-            DuckDB Local UI
-          </a>{" "}
-          (<code className="inline-code">ui</code> extension,{" "}
-          <a href="https://duckdb.org/docs/current/core_extensions/ui.html" rel="noreferrer noopener" target="_blank">
-            docs
-          </a>
-          ) for the same warehouse file as <code className="inline-code">duckdb-mcp</code>. The MCP compose file
-          starts this service only with the <code className="inline-code">ui</code> profile so the agent can ingest
-          without DuckDB file locks. From <code className="inline-code">mcp_servers/</code>, run{" "}
-          <code className="inline-code">docker compose --profile ui up -d</code>, then open:
+        <p className="small muted mt">
+          {d.toolsBlurb}
         </p>
-        <p className="mono dash-detail">
-          <a href={duckdbUiUrl} rel="noreferrer noopener" target="_blank">
-            {duckdbUiUrl}
-          </a>
+        {inventoryError && <p className="error small dash-detail">{inventoryError}</p>}
+        <p className="tiny muted mt">
+          {d.tableHint(toolRows.length)}
         </p>
-        <p className="tiny muted dash-detail">
-          URL comes from <code className="inline-code">GET /api/health</code> → <code className="inline-code">
-            pipeline.duckdb_ui.public_url
-          </code>{" "}
-          (set <code className="inline-code">DUCKDB_UI_PUBLIC_URL</code> on the brain if you remap the host port), or{" "}
-          <code className="inline-code">VITE_DUCKDB_UI_URL</code> for the Vite dev UI only.
-        </p>
-      </section>
-
-      <section className="dash-card">
-        <h3>Pipeline (debug)</h3>
-        <p className="small muted">
-          From <code className="inline-code">GET /api/health</code> → <code className="inline-code">pipeline</code> (who
-          lists <code className="inline-code">/data-local</code>, MCP URLs, <code className="inline-code">
-            DATACYBER_PIPELINE_DEBUG
-          </code>
-          ). Rebuild the brain if this is empty.
-        </p>
-        {pipelineHealth ? (
-          <pre className="dash-json">{JSON.stringify(pipelineHealth, null, 2)}</pre>
-        ) : (
-          <p className="muted">—</p>
-        )}
-      </section>
-
-      {pipelineTrace && (
-        <section className="dash-card">
-          <h3>Last chat</h3>
-          <p className="mono small muted">
-            request_id: {pipelineTrace.requestId}
-            <br />
-            at: {new Date(pipelineTrace.at).toISOString()}
-          </p>
-          {pipelineTrace.debug ? (
-            <pre className="dash-json mt">{JSON.stringify(pipelineTrace.debug, null, 2)}</pre>
-          ) : (
-            <p className="small muted mt">
-              Set <code className="inline-code">DATACYBER_PIPELINE_DEBUG=1</code> on the brain and restart to include
-              step timings, tool names, and message timeline in this panel.
-            </p>
-          )}
-        </section>
-      )}
-
-      <section className="dash-card">
-        <h3>LLM (config)</h3>
-        <p className="small muted dash-detail">
-          The browser <strong>never</strong> sends your LiteLLM key. Chat goes to the brain only; the brain calls LiteLLM.
-          If chat shows <code className="inline-code">401 … Received API Key = sk-…XXXX</code>, that suffix is whatever
-          the <strong>brain process</strong> has loaded — compare to <code className="inline-code">
-            litellm_key_suffix
-          </code>{" "}
-          below. If it does not match your repo <code className="inline-code">.env</code>, recreate the brain:{" "}
-          <code className="inline-code">docker compose up -d --force-recreate brain</code>.
-        </p>
-        {llmConfigError && (
-          <p className="error small dash-detail">
-            {llmConfigError}
-          </p>
-        )}
-        {llmConfig ? (
-          <>
-            <dl className="dash-summary">
-              <div>
-                <dt>LiteLLM base (brain)</dt>
-                <dd className="mono">{llmConfig.litellm_base ?? "—"}</dd>
-              </div>
-              <div>
-                <dt>CHAT_MODEL</dt>
-                <dd className="mono">{llmConfig.chat_model || "—"}</dd>
-              </div>
-              <div>
-                <dt>Key suffix (LITELLM_KEY)</dt>
-                <dd className="mono">{llmConfig.litellm_key_suffix ?? "—"}</dd>
-              </div>
-              <div>
-                <dt>Brain in Docker</dt>
-                <dd>{llmConfig.in_docker ? "yes" : "no"}</dd>
-              </div>
-              <div>
-                <dt>OPENAI_API_KEY in process</dt>
-                <dd>
-                  {llmConfig.openai_api_key_env_set
-                    ? `set (suffix …${llmConfig.openai_api_key_env_suffix ?? "?"})`
-                    : "unset"}
-                </dd>
-              </div>
+        <div className="dash-table-wrap compact scroll-10">
+          <table className="dash-table compact">
+            <thead>
+              <tr>
+                <th>{d.colTool}</th>
+                <th>{d.colType}</th>
+                <th>{d.colMcp}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {toolRows.map((tool) => (
+                <tr
+                  key={tool.name}
+                  className={selectedMeta?.name === tool.name ? "selected" : ""}
+                  onClick={() => setSelectedTool(tool.name)}
+                >
+                  <td className="mono">{tool.name}</td>
+                  <td>{tool.category}</td>
+                  <td>{tool.mcpServer}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {selectedMeta && (
+          <article className="tool-card unified">
+            <header className="tool-card-header">
+              <h4 className="mono">{selectedMeta.title}</h4>
+              <span className={`pill cat-${selectedMeta.category}`}>{selectedMeta.category}</span>
+            </header>
+            <p className="small">{selectedMeta.description}</p>
+            <dl className="dash-dl tool-card-info">
+              <dt>{d.name}</dt>
+              <dd className="mono">{selectedMeta.name}</dd>
+              <dt>{d.type}</dt>
+              <dd>{selectedMeta.category}</dd>
+              <dt>{d.mcpServer}</dt>
+              <dd>{selectedMeta.mcpServer}</dd>
+              {selectedMeta.sourcePath && (
+                <>
+                  <dt>{d.path}</dt>
+                  <dd className="mono">{selectedMeta.sourcePath}</dd>
+                </>
+              )}
             </dl>
-            <details className="dash-details">
-              <summary>Raw JSON</summary>
-              <pre className="dash-json mt">{JSON.stringify(llmConfig, null, 2)}</pre>
-            </details>
-          </>
-        ) : !llmConfigError ? (
-          <p className="muted">—</p>
-        ) : null}
-        <button type="button" className="btn secondary" onClick={() => void runProbe()}>
-          Probe LiteLLM (GET /health/llm)
-        </button>
-        {probeError && <p className="error small">{probeError}</p>}
-        {llmProbe !== null && (
-          <pre className="dash-json mt">{JSON.stringify(llmProbe, null, 2)}</pre>
+            <div className="tool-card-section">
+              <h5>{d.exampleUsage}</h5>
+              <p className="small muted">{selectedMeta.example}</p>
+            </div>
+          </article>
         )}
-      </section>
-
-      <section className="dash-card hints">
-        <h3>Rendering</h3>
-        <p className="small muted">
-          Markdown <strong>tables</strong>; fenced <strong>Mermaid</strong> (<code className="inline-code">mermaid</code>
-          ); <strong>Vega-Lite</strong> (<code className="inline-code">vega-lite</code> JSON or Vega-Lite in{" "}
-          <code className="inline-code">json</code> blocks); JSON arrays → data tables; <code className="inline-code">
-            https
-          </code>{" "}
-          / <code className="inline-code">data:image/…</code> images. Paths under <code className="inline-code">
-            /project/…
-          </code>{" "}
-          (reports, PNG/MD) are mapped to <code className="inline-code">GET /artifacts/file</code> on the brain. Lists of{" "}
-          <code className="inline-code">Name: N cases</code> lines may get an extra bar chart.
-        </p>
       </section>
     </aside>
   );

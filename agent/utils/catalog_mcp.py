@@ -1,10 +1,7 @@
-"""Load catalog dataset summaries by running SQL through ``catalog_execute_query``.
+"""Load catalog dataset summaries by running SQL through ``dagster_catalog_execute_query``.
 
-The ``catalog`` MCP server no longer exposes a ``catalog_list_datasets`` tool.
-Listing is composed as SQL in :mod:`agent.utils.catalog_sql` and executed via
-``catalog_execute_query``; this module bridges the HTTP endpoint
-(``GET /catalog/datasets`` in ``agent.main``) and the MCP client so the brain
-and the UI Refresh button hit the database through the exact same path.
+Listing is composed as SQL in :mod:`agent.utils.catalog_sql` and executed via the
+metadata catalog tools on **`dagster-mcp`** (see ``mcp_servers/dagster-mcp/server.py``).
 """
 
 from __future__ import annotations
@@ -20,14 +17,14 @@ from agent.utils.catalog_sql import build_list_datasets_sql, summarize_entity_js
 
 logger = logging.getLogger(__name__)
 
-CATALOG_SERVER_KEY = "catalog"
-CATALOG_EXECUTE_QUERY_TOOL = "catalog_execute_query"
+CATALOG_SERVER_KEY = "dagster"
+CATALOG_EXECUTE_QUERY_TOOL = "dagster_catalog_execute_query"
 
 
 def _extract_tool_text(raw: Any) -> str:
     """Collapse MCP / LangChain tool output into a plain string (expected: JSON).
 
-    ``catalog_execute_query`` returns a JSON string. ``langchain-mcp-adapters``
+    ``dagster_catalog_execute_query`` returns a JSON string. ``langchain-mcp-adapters``
     may surface that as:
 
     * a raw ``str``
@@ -40,7 +37,7 @@ def _extract_tool_text(raw: Any) -> str:
     """
 
     if raw is None:
-        raise ValueError("catalog_execute_query returned empty")
+        raise ValueError("dagster_catalog_execute_query returned empty")
 
     try:
         from langchain_core.messages import ToolMessage
@@ -72,11 +69,13 @@ def _extract_tool_text(raw: Any) -> str:
     if content is not None and not isinstance(raw, dict):
         return _extract_tool_text(content)
 
-    raise RuntimeError(f"catalog_execute_query returned unexpected type: {type(raw).__name__}")
+    raise RuntimeError(
+        f"dagster_catalog_execute_query returned unexpected type: {type(raw).__name__}"
+    )
 
 
 def _parse_rows(text: str) -> list[dict[str, Any]]:
-    """Parse the JSON envelope ``catalog_execute_query`` returns into ``rows``."""
+    """Parse the JSON envelope ``dagster_catalog_execute_query`` returns into ``rows``."""
 
     trimmed = text.strip()
     if not trimmed:
@@ -84,24 +83,26 @@ def _parse_rows(text: str) -> list[dict[str, Any]]:
     try:
         payload = json.loads(trimmed)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"catalog_execute_query returned invalid JSON: {exc}") from exc
+        raise ValueError(
+            f"dagster_catalog_execute_query returned invalid JSON: {exc}"
+        ) from exc
 
     if isinstance(payload, dict) and "error" in payload:
-        raise ValueError(f"catalog_execute_query error: {payload['error']}")
+        raise ValueError(f"dagster_catalog_execute_query error: {payload['error']}")
 
     if not isinstance(payload, dict):
         raise ValueError(
-            f"catalog_execute_query returned unexpected JSON: {type(payload).__name__}"
+            f"dagster_catalog_execute_query returned unexpected JSON: {type(payload).__name__}"
         )
 
     rows = payload.get("rows")
     if rows is None:
         raise ValueError(
-            "catalog_execute_query envelope missing 'rows'; "
+            "dagster_catalog_execute_query envelope missing 'rows'; "
             f"keys={sorted(payload.keys())[:8]}"
         )
     if not isinstance(rows, list):
-        raise ValueError("catalog_execute_query 'rows' must be an array")
+        raise ValueError("dagster_catalog_execute_query 'rows' must be an array")
     return [r for r in rows if isinstance(r, dict)]
 
 
@@ -112,7 +113,7 @@ async def fetch_catalog_datasets_via_mcp(
     database_name: str = "",
     schema_name: str = "",
 ) -> dict[str, Any]:
-    """Run the list-datasets SQL through ``catalog_execute_query`` and summarize.
+    """Run the list-datasets SQL through ``dagster_catalog_execute_query`` and summarize.
 
     Returns ``{"ok": True, "count": N, "datasets": [...summary...]}`` on success
     where each summary row matches the ``CatalogDatasetSummary`` TypeScript
@@ -127,7 +128,7 @@ async def fetch_catalog_datasets_via_mcp(
     connections = _tool_connections()
     if CATALOG_SERVER_KEY not in connections:
         raise ValueError(
-            f"mcp.json has no {CATALOG_SERVER_KEY!r} server; add catalog-mcp (see project mcp.json)."
+            f"mcp.json has no {CATALOG_SERVER_KEY!r} server; expected dagster-mcp URL (see project mcp.json)."
         )
 
     subset = {CATALOG_SERVER_KEY: connections[CATALOG_SERVER_KEY]}
@@ -151,8 +152,8 @@ async def fetch_catalog_datasets_via_mcp(
     try:
         raw = await tool.ainvoke({"sql": sql, "max_rows": int(limit)})
     except Exception as exc:
-        logger.exception("catalog MCP tool %s failed", CATALOG_EXECUTE_QUERY_TOOL)
-        raise RuntimeError(f"catalog MCP tool failed: {exc}") from exc
+        logger.exception("dagster catalog tool %s failed", CATALOG_EXECUTE_QUERY_TOOL)
+        raise RuntimeError(f"dagster catalog tool failed: {exc}") from exc
 
     text = _extract_tool_text(raw)
     rows = _parse_rows(text)

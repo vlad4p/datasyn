@@ -3,7 +3,7 @@ name: ingest-indec-mercadolaboral
 description: >-
   Ingest INDEC EPH mercado laboral microdata from /data-local/indec/mercado_laboral
   into exactly two tables in gold: indec_eph_usu_hogar and indec_eph_usu_individual.
-  MUST use two separate duckdb_warehouse_query calls per role: (1) CREATE TABLE IF
+  MUST use two separate duckdb_execute_query calls per role: (1) CREATE TABLE IF
   NOT EXISTS gold.<t> AS SELECT * FROM read_csv_auto(..., delim=';', header=true,
   quote='"', decimal_comma=true, sample_size=-1) LIMIT 0; (2) INSERT INTO gold.<t>
   SELECT * FROM read_csv_auto(...). NEVER use CREATE TABLE IF NOT EXISTS ... AS
@@ -17,7 +17,7 @@ description: >-
 
 ## TL;DR — the only allowed ingest SQL (copy these two calls per file)
 
-Fill in **`<DATA_LOCAL_TXT_PATH>`** (e.g. **`/data-local/indec/mercado_laboral/EPH/2025/Q1/EPH_usu_1er_Trim_2025_txt/usu_hogar_T125.txt`**). Run as **two** separate **`duckdb_warehouse_query`** calls — the second call is where rows arrive, **always**.
+Fill in **`<DATA_LOCAL_TXT_PATH>`** (e.g. **`/data-local/indec/mercado_laboral/EPH/2025/Q1/EPH_usu_1er_Trim_2025_txt/usu_hogar_T125.txt`**). Run as **two** separate **`duckdb_execute_query`** calls — the second call is where rows arrive, **always**.
 
 ```sql
 -- Call 1 — bootstrap (idempotent; LIMIT 0 = DDL only, no rows). Run once per role.
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS gold.indec_eph_usu_hogar AS
 SELECT * FROM read_csv_auto('/data-local/.../usu_hogar_T125.txt', delim=';');
 ```
 
-Same rule for **`gold.indec_eph_usu_individual`** and for any multi-statement string that chains **`CREATE SCHEMA …; CREATE TABLE …; CREATE TABLE …;`** in one **`duckdb_warehouse_query`** call.
+Same rule for **`gold.indec_eph_usu_individual`** and for any multi-statement string that chains **`CREATE SCHEMA …; CREATE TABLE …; CREATE TABLE …;`** in one **`duckdb_execute_query`** call.
 
 ---
 
@@ -95,10 +95,10 @@ Example: host path `data-local/.../EPH/2025/Q1/.../usu_hogar_T125.txt` → SQL p
 1. **System prompt bias** — the supervisor loads the full **`AGENTS.md`**; the generic line “prefer **`bronze`** for new file loads” applies unless the **INDEC exception** block is followed.
 2. **Wrong skill pointer (fixed in repo)** — earlier versions of **Scraper discipline** step 3 and the now-deleted **`ingest-csv`** skill implied a generic CSV workflow for EPH; that invited improvised **`bronze.eph_*_YYYY_qN`** tables. Today the **only** ingest skill for **`/data-local/indec/mercado_laboral/EPH/...`** paths is **this** one; there is no **`ingest-csv`** skill anymore.
 3. **`fqn_suggestion` in `metadata.json`** — describes the **zip / folder** naming convention, **not** the warehouse table FQN; using it as a table name yields wrong catalog and wrong mental model.
-4. **Convenience SQL** — chaining **`CREATE SCHEMA` + two `CREATE TABLE`** in one string violates **one statement per `duckdb_warehouse_query`** and hides review.
+4. **Convenience SQL** — chaining **`CREATE SCHEMA` + two `CREATE TABLE`** in one string violates **one statement per `duckdb_execute_query`** and hides review.
 5. **Wrong delimiter** — **`read_csv_auto(..., delim='\t')`** or omitting **`delim`** so DuckDB guesses tab/CSV defaults. EPH usuarios **must** use **`delim = ';'`**.
 
-**Repo alignment (do not delete this skill):** **`AGENTS.md`** states the INDEC exception and scraper discipline; **`agent/graph.py`** injects **`/skills/ingest-indec-mercadolaboral`** (and scrape + catalog skills). The previous **`skills/ingest-csv/`** folder has been removed — generic CSV / TXT loads are handled directly with **`duckdb_warehouse_query`** per **`AGENTS.md`** → **Ingest and delimited data**.
+**Repo alignment (do not delete this skill):** **`AGENTS.md`** states the INDEC exception and scraper discipline; **`agent/graph.py`** injects **`/skills/ingest-indec-mercadolaboral`** (and scrape + catalog skills). The previous **`skills/ingest-csv/`** folder has been removed — generic CSV / TXT loads are handled directly with **`duckdb_execute_query`** per **`AGENTS.md`** → **Ingest and delimited data**.
 
 **Forbidden anti-patterns** (real failure mode: one SQL string with `bronze`, per-quarter table names, and catalog FQNs without `main` / `gold`):
 
@@ -108,7 +108,7 @@ Example: host path `data-local/.../EPH/2025/Q1/.../usu_hogar_T125.txt` → SQL p
 | Tables like **`bronze.eph_hogar_2025_q1`**, **`gold.indec_eph_usu_hogar_2025_q1`** | Period must not be in the **table name**. **Only** **`indec_eph_usu_hogar`** and **`indec_eph_usu_individual`**; filter by **`ANO4`** / **`TRIMESTRE`** in SQL; log path period in catalog **`ingestHistory`**. |
 | **`CREATE TABLE IF NOT EXISTS bronze.eph_* AS SELECT …`** (no **`LIMIT 0`**) as the only load per file | Wrong schema/names; and **`IF NOT EXISTS … AS`** without **`LIMIT 0`** skips **`SELECT`** when the table exists—use **`LIMIT 0`** for bootstrap, **`INSERT`** for data. |
 | **`duckdb-warehouse.bronze.eph_hogar_2025_q1`** (or any FQN without **`main`** and **`gold`**) in the catalog | Catalog must register **`duckdb-warehouse.main.gold.indec_eph_usu_hogar`** / **`…_individual`** only. |
-| Multiple statements in one **`duckdb_warehouse_query`** (e.g. `CREATE SCHEMA; CREATE TABLE; CREATE TABLE`) | **`AGENTS.md`**: **one statement per call** — split into separate invocations. |
+| Multiple statements in one **`duckdb_execute_query`** (e.g. `CREATE SCHEMA; CREATE TABLE; CREATE TABLE`) | **`AGENTS.md`**: **one statement per call** — split into separate invocations. |
 | **`read_csv_auto(..., delim='\t')`** or **`read_csv_auto('...')`** with no **`delim`** | EPH TXT is **`;`**-separated. Use **`delim = ';'`** always (see **Delimiter** above). |
 
 **Pre-flight checklist** (must be true before running ingest SQL):
@@ -119,7 +119,7 @@ Example: host path `data-local/.../EPH/2025/Q1/.../usu_hogar_T125.txt` → SQL p
 - [ ] Table names are **exactly** **`indec_eph_usu_hogar`** and **`indec_eph_usu_individual`** — no suffix for quarter/year (not **`…_q1`**, not **`…_2025`**, not **`…_T125`**).
 - [ ] Catalog **`fully_qualified_name`** uses **`duckdb-warehouse.main.gold.<table>`**.
 
-**Related:** **`./skills/update-catalog/SKILL.md`** and **`./skills/catalog-sql/SKILL.md`** (catalog SQL only via **`catalog_execute_query`**). Generic non-INDEC CSV / TXT loads: use **`duckdb_warehouse_query`** directly per **`AGENTS.md`** → **Ingest and delimited data** — there is no separate **`ingest-csv`** skill.
+**Related:** **`./skills/update-catalog/SKILL.md`** and **`./skills/catalog-sql/SKILL.md`** (catalog SQL only via **`dagster_catalog_execute_query`**). Generic non-INDEC CSV / TXT loads: use **`duckdb_execute_query`** directly per **`AGENTS.md`** → **Ingest and delimited data** — there is no separate **`ingest-csv`** skill.
 
 ---
 
@@ -129,17 +129,17 @@ Example: host path `data-local/.../EPH/2025/Q1/.../usu_hogar_T125.txt` → SQL p
 | Step                 | Server    | Tool                                                                               |
 | -------------------- | --------- | ---------------------------------------------------------------------------------- |
 | List / resolve paths | `duckdb`  | `**duckdb_data_local_ls**` (recursive under `/data-local/indec/mercado_laboral`)   |
-| Ingest + validate    | `duckdb`  | `**duckdb_warehouse_list_tables**`, `**duckdb_warehouse_query**`                   |
-| Catalog              | `catalog` | `**catalog_get_schema**` (once per session if needed), `**catalog_execute_query**` |
+| Ingest + validate    | `duckdb`  | `**duckdb_warehouse_list_tables**`, `**duckdb_execute_query**`                   |
+| Catalog              | `dagster` | `**dagster_catalog_get_schema**` (once per session if needed), `**dagster_catalog_execute_query**` |
 
 
 Do **not** invent catalog helpers beyond SQL; see `**AGENTS.md`** catalog discipline.
 
 ### Warehouse lock and SQL batching
 
-If `**duckdb_get_schema**` or `**duckdb_warehouse_query**` fails with an **IO Error / could not set lock** on `**/data/warehouse.duckdb`**, another container (usually `**duckdb-ui**`) still holds the file. See `**AGENTS.md**` (warehouse file lock): default compose omits the UI profile; stop `**duckdb-ui**` or avoid `**--profile ui**` during ingest.
+If `**duckdb_get_schema**` or `**duckdb_execute_query**` fails with an **IO Error / could not set lock** on `**/data/warehouse.duckdb`**, another container (usually `**duckdb-ui**`) still holds the file. See `**AGENTS.md**` (warehouse file lock): default compose omits the UI profile; stop `**duckdb-ui**` or avoid `**--profile ui**` during ingest.
 
-Use **one statement per `duckdb_warehouse_query`** (e.g. two calls for hogar + individual `CREATE TABLE`, not one string with two semicolon-terminated statements).
+Use **one statement per `duckdb_execute_query`** (e.g. two calls for hogar + individual `CREATE TABLE`, not one string with two semicolon-terminated statements).
 
 ---
 
@@ -154,7 +154,7 @@ Use **one statement per `duckdb_warehouse_query`** (e.g. two calls for hogar + i
 ## 2. Discover schema (read first element / first rows)
 
 1. **Header:** First line is the column list (quoted names separated by `**;`**).
-2. **Probe** without loading everything if needed: `**read_csv_auto`** with a row cap in a CTE, or `**duckdb_warehouse_query**` with `LIMIT 5`, or pandas `**pd.read_csv(..., sep=';', nrows=5000, low_memory=False)**` on the same `**/data-local/...**` path the container uses.
+2. **Probe** without loading everything if needed: `**read_csv_auto`** with a row cap in a CTE, or `**duckdb_execute_query**` with `LIMIT 5`, or pandas `**pd.read_csv(..., sep=';', nrows=5000, low_memory=False)**` on the same `**/data-local/...**` path the container uses.
 3. **DuckDB read options** (EPH usuarios TXT is consistently — **delimiter is always semicolon, never tab**):
   - **`delim = ';'`** (required in SQL; do not use **`delim='\t'`** or skip **`delim`** and let DuckDB guess)
   - **`header=true`**
@@ -299,14 +299,14 @@ Swap the path and table name for each ingest (**`usu_individual_*.txt`** → **`
 
 ## 6. Register / update the catalog (`entity_json`)
 
-Follow **`./skills/update-catalog/SKILL.md`**: introspect columns with **`duckdb_warehouse_query`** (`PRAGMA table_info('gold.<table>')` or **`information_schema.columns`**), build **`columns`** with **`name`**, **`dataType`**, **`description`**, then upsert.
+Follow **`./skills/update-catalog/SKILL.md`**: introspect columns with **`duckdb_execute_query`** (`PRAGMA table_info('gold.<table>')` or **`information_schema.columns`**), build **`columns`** with **`name`**, **`dataType`**, **`description`**, then upsert.
 
 ### Mandatory sequence (no empty `columns`, Langfuse-safe)
 
-1. **`duckdb_warehouse_query`**: build the **`columns`** array from the warehouse (never ship **`"columns": []`** if the table exists). DuckDB can emit JSON in one shot, e.g.  
+1. **`duckdb_execute_query`**: build the **`columns`** array from the warehouse (never ship **`"columns": []`** if the table exists). DuckDB can emit JSON in one shot, e.g.  
    `WITH ordered AS (SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'gold' AND table_name = 'indec_eph_usu_hogar' ORDER BY ordinal_position) SELECT json_group_array(json_object('name', column_name, 'dataType', data_type, 'description', '')) FROM ordered`  
    (mirror for **`indec_eph_usu_individual`**), then map into **`entity_json.columns`**.
-2. **`catalog_execute_query`**: `SELECT id, entity_json FROM dataset_entity WHERE fully_qualified_name = '<fqn>'` and **merge** into the prior document (preserve prior **`ingestHistory`** entries when appending a new quarter).
+2. **`dagster_catalog_execute_query`**: `SELECT id, entity_json FROM dataset_entity WHERE fully_qualified_name = '<fqn>'` and **merge** into the prior document (preserve prior **`ingestHistory`** entries when appending a new quarter).
 3. **One upsert per FQN:** `INSERT INTO dataset_entity (fully_qualified_name, entity_json) VALUES ('<fqn>', '<json>'::jsonb) ON CONFLICT (fully_qualified_name) DO UPDATE SET entity_json = EXCLUDED.entity_json RETURNING id` — do **not** pair a bare **`UPDATE`** on one FQN with a bare **`INSERT`** on the other unless you are certain both paths stay idempotent.
 4. **OpenData / gobierno mínimo:** set **`fullyQualifiedName`**, **`service`**, **`database`**, **`schema`**, **`sourceUrl`** (INDEC portal), **`customProperties.publisher`**, **`customProperties.ingestHistory`** ( **`dataLocalTxtPath`**, **`metadataJsonPath`**, **`year`**, **`quarter`**, **`sourceSha256`** / **`pageUrl`** from **`metadata.json`** when present), **`customProperties.domain`** / **`dataProduct`**.
 5. **`tag_usage`:** after **`RETURNING id`**, refresh tags per **`./skills/update-catalog/SKILL.md`** (e.g. **`Source.INDEC`**, **`Survey.EPH`**).

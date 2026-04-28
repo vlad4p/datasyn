@@ -12,7 +12,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import unquote
 from uuid import uuid4
 
@@ -24,6 +24,7 @@ from pydantic import AliasChoices, BaseModel, Field
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
+from langchain_mcp_adapters.client import MultiServerMCPClient as MultiServerToolClient
 
 from agent.utils.agent_chat import run_agent_chat_turn
 from agent.utils.langfuse_tracing import (
@@ -185,6 +186,10 @@ class ChatRequest(BaseModel):
         min_length=1,
         validation_alias=AliasChoices("message", "user_message"),
     )
+    locale: Literal["en", "es"] = Field(
+        "en",
+        description="Assistant reply language: English or Spanish (UI ES/EN selector).",
+    )
 
 
 class ChatResponse(BaseModel):
@@ -236,6 +241,53 @@ def _mcp_urls_public() -> dict[str, str]:
         return {"_error": str(exc)}
 
 
+def _tool_connections() -> dict[str, Any]:
+    """HTTP connection map from ``mcp.json`` only (``mcpServers`` or ``servers`` block)."""
+    cfg_path = settings.project_root / "mcp.json"
+    if not cfg_path.is_file():
+        raise FileNotFoundError(
+            f"Missing {cfg_path}: define MCP HTTP servers there (see project mcp.json)."
+        )
+    raw = json.loads(cfg_path.read_text(encoding="utf-8"))
+    block = raw.get("mcpServers") or raw.get("servers")
+    if not isinstance(block, dict) or not block:
+        raise ValueError(
+            "mcp.json must contain a non-empty object under 'mcpServers' or 'servers'."
+        )
+    connections: dict[str, Any] = {}
+    for name, spec in block.items():
+        if not isinstance(spec, dict):
+            continue
+        url = spec.get("url")
+        if not url:
+            continue
+        transport = spec.get("transport") or "http"
+        connections[str(name)] = {"transport": transport, "url": str(url)}
+    if not connections:
+        raise ValueError("mcp.json: no entries with a 'url' field.")
+    return connections
+
+
+def _skills_inventory() -> list[dict[str, str]]:
+    """List all skill folders under project ``./skills`` that contain ``SKILL.md``."""
+    root = settings.project_root / "skills"
+    if not root.is_dir():
+        return []
+    out: list[dict[str, str]] = []
+    for child in sorted(root.iterdir(), key=lambda p: p.name.lower()):
+        if not child.is_dir():
+            continue
+        skill_md = child / "SKILL.md"
+        if skill_md.is_file():
+            out.append(
+                {
+                    "name": child.name,
+                    "path": f"skills/{child.name}/SKILL.md",
+                }
+            )
+    return out
+
+
 def _pipeline_snapshot() -> dict[str, Any]:
     """Architecture snapshot: who lists /data-local, MCP URLs, debug flags (no secrets)."""
     duckdb_ui_public = (os.environ.get("DUCKDB_UI_PUBLIC_URL") or "").strip()
@@ -278,9 +330,9 @@ def _pipeline_snapshot() -> dict[str, Any]:
             "ui_lists_files": False,
         },
         "skills": {
-            "where": "./skills/ingest-indec-mercadolaboral/SKILL.md, ./skills/scrape-indec-mercado-laboral/SKILL.md, ./skills/update-catalog/SKILL.md, ./skills/catalog-sql/SKILL.md",
+            "where": "./skills/analyze-indec-eph-hogar/SKILL.md, ./skills/ingest-indec-mercadolaboral/SKILL.md, ./skills/scrape-indec-mercado-laboral/SKILL.md, ./skills/update-catalog/SKILL.md, ./skills/catalog-sql/SKILL.md",
             "how": "Deep Agents `skills=[\"/skills/\"]` on create_deep_agent — SkillsMiddleware treats this as a PARENT directory and auto-discovers every subdir with a SKILL.md "
-            "(currently: ingest-indec-mercadolaboral, scrape-indec-mercado-laboral, update-catalog, catalog-sql). "
+            "(currently: analyze-indec-eph-hogar, ingest-indec-mercadolaboral, scrape-indec-mercado-laboral, update-catalog, catalog-sql). "
             "See also `./skills/langfuse/` (Langfuse observability skill for maintainers; no SKILL.md, not agent-injected).",
         },
     }
@@ -306,6 +358,47 @@ def health_llm_config() -> dict[str, Any]:
 def health_pipeline() -> dict[str, Any]:
     """Same payload as the ``pipeline`` key on ``GET /health`` (alias for scripts and curl)."""
     return _pipeline_snapshot()
+
+
+@app.get("/health/tools")
+async def health_tools() -> dict[str, Any]:
+    """Full tool inventory for UI: all runtime MCP tools + discovered project skills."""
+    mcp_tools: list[dict[str, str]] = []
+    mcp_error: str | None = None
+    try:
+        connections = _tool_connections()
+        client = MultiServerToolClient(connections, tool_name_prefix=True)
+        tools = await client.get_tools()
+        for t in tools:
+            name = str(getattr(t, "name", "") or "").strip()
+            if not name:
+                continue
+            server = name.split("_", 1)[0] if "_" in name else "unknown"
+            mcp_tools.append({"name": name, "server": server, "source": "mcp"})
+        mcp_tools = sorted(mcp_tools, key=lambda x: x["name"])
+    except Exception as exc:
+        mcp_error = str(exc)[:500]
+
+    helper_tools = [
+        {"name": n, "server": "deepagents", "source": "helper"}
+        for n in (
+            "write_todos",
+            "ls",
+            "read_file",
+            "write_file",
+            "edit_file",
+            "glob",
+            "grep",
+            "task",
+        )
+    ]
+    skills = [{"source": "skill", **s} for s in _skills_inventory()]
+    return {
+        "status": "ok",
+        "tools": mcp_tools + helper_tools,
+        "skills": skills,
+        "mcp_error": mcp_error,
+    }
 
 
 @app.get("/health/llm")
@@ -359,6 +452,7 @@ async def agent_chat(request: Request, response: Response, body: ChatRequest) ->
             request_id=request_id,
             langfuse_session_id=session_id,
             langfuse_user_id=user_id,
+            response_locale=body.locale,
         )
     except Exception as exc:
         logger.exception("agent chat failed")

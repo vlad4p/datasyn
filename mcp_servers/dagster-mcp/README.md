@@ -32,7 +32,7 @@ host daemon (mounted via `/var/run/docker.sock`).
 | `dagster_add_schedule`     | `ScheduleDefinition` linked to an existing job (`cron` defaults to `0 9 * * *`). |
 | `dagster_add_sensor`       | `@sensor` linked to an existing job (default body emits `SkipReason`). |
 | `dagster_build_image`      | `docker build`; default tag `<prefix>/<project>:latest`, optional `image_name` (e.g. `dagster_user_code_image`). |
-| `dagster_deploy`           | Run/replace `<prefix>-<project>` on `datacyber_mcp`; optional `image_name` / `rebuild`. |
+| `dagster_deploy`           | Default: `docker build` from the project dir, then replace `<prefix>-<project>` on `datacyber_mcp`. Optional `image_name`; set `rebuild=false` to skip build and only recreate the container. |
 | `dagster_stop` / `dagster_remove` | Lifecycle (`docker stop`, `docker rm -f`, optional image cleanup). |
 | `dagster_logs`             | Tail container logs. |
 | `dagster_status`           | List containers labeled `datacyber.dagster.project`. |
@@ -71,10 +71,10 @@ dagster_add_asset        project="indec_pipeline" name="usu_hogar_raw" group="in
 dagster_add_asset        project="indec_pipeline" name="usu_hogar_clean" group="indec"
 dagster_add_job          project="indec_pipeline" name="indec_full" selection="*"
 dagster_add_schedule     project="indec_pipeline" name="daily_indec" job="indec_full" cron="0 6 * * *"
-dagster_build_image      project="indec_pipeline"
 dagster_build_image      project="indec_pipeline" image_name="dagster_user_code_image"
-dagster_deploy           project="indec_pipeline" host_port=3001 image_name="dagster_user_code_image"
-# → http://127.0.0.1:3001  (Dagster UI)
+dagster_deploy           project="indec_pipeline" host_port=3001 container_port=4000 image_name="dagster_user_code_image"
+# deploy defaults to build-then-replace; omit build_image if you only need one step.
+# → user-code gRPC on host port 3001 (map `container_port` to match your Dockerfile CMD)
 ```
 
 ## Deployment expectations
