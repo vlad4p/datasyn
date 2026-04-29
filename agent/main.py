@@ -31,6 +31,7 @@ from agent.utils.langfuse_tracing import (
     langfuse_tracing_enabled,
     log_langfuse_docker_loopback_hint,
 )
+from agent.utils.otel_tracing import init_otel_tracing
 from agent.utils.litellm_chat import (
     explain_litellm_http_exception,
     probe_litellm_proxy,
@@ -55,6 +56,7 @@ def _configure_logging() -> None:
 
 
 _configure_logging()
+init_otel_tracing()
 
 
 def _log_effective_llm_env() -> None:

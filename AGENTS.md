@@ -215,6 +215,21 @@ or equivalent) and then reuse that exact absolute path under `/data-local/...`.
 
 When the task needs warehouse truth: **`duckdb_get_schema`** or a narrow **`information_schema`** query → **`duckdb_execute_query`** for aggregates (never **`SELECT *`** on wide tables without filters) → **`duckdb_list_data_mount`** only when the user needs a host file tree under **`/data-local`**. Subagents (**`task`**) are optional—use for parallel exploration, not for simple SQL analytics.
 
+### Traceability output (mandatory when requested)
+
+If the user asks for **what was done** (e.g. "list tasks made", "how many model calls", "which skill/tools used"), return a compact execution log with this exact structure:
+
+1. **Tasks list** — ordered steps executed (one line each).
+2. **Model call count** — exact integer when available; if not directly observable, report a best-effort count and label it as estimated.
+3. **Skills used** — list each loaded skill path/name, or `none`.
+4. **Tools used** — list concrete tool names invoked and call counts per tool.
+
+Rules:
+
+- Do not invent calls; if uncertain, say `unknown` and explain why in one line.
+- Prefer evidence from actual tool invocations in the current run.
+- Keep this section concise and in bullet/list format (no long narrative).
+
 ### Dagster project operations (`dagster_*`) — strict sequence
 
 When the user asks to scaffold or modify a Dagster code-location project:
@@ -230,9 +245,16 @@ When the user asks to scaffold or modify a Dagster code-location project:
 
 ## Skills
 
-Skills live under **`./skills/<name>/SKILL.md`**. **`agent/graph.py`** passes **`skills=["/skills/"]`** to Deep Agents so **every** subdirectory containing a **`SKILL.md`** is discovered (today in-repo examples include **`analyze-indec-eph-hogar`**, **`extract-variables-pdf`**, **`ingest-indec-mercadolaboral`**, **`scrape-indec-mercado-laboral`**, **`update-catalog`**). **`catalog-sql`** documents SQL shapes for **`dagster_catalog_execute_query`** / **`dagster_catalog_get_schema`** on **dagster-mcp**—see also **`agent/utils/catalog_sql.py`**. Injected snippets may be short; when a task clearly matches a domain, call **`read_file`** with argument **`file_path`** (required by the tool) using a **virtual absolute path** under the project root, e.g. **`file_path="/skills/analyze-indec-eph-hogar/SKILL.md"`**; do not use a host path like `/Users/.../project/skills/...`. Relative repo paths like `skills/...` are normalized to the same virtual path.
+Skills live under **`./skills/<name>/SKILL.md`**. **`agent/graph.py`** passes **`skills=["/skills/"]`** to Deep Agents so **every** subdirectory containing a **`SKILL.md`** is discovered (today in-repo examples include **`analyze-indec-eph-hogar`**, **`analyze-indec-eph-individual`**, **`extract-variables-pdf`**, **`ingest-indec-mercadolaboral`**, **`scrape-indec-mercado-laboral`**, **`update-catalog`**, **`improve-response-format`**). **`catalog-sql`** documents SQL shapes for **`dagster_catalog_execute_query`** / **`dagster_catalog_get_schema`** on **dagster-mcp**—see also **`agent/utils/catalog_sql.py`**. Injected snippets may be short; when a task clearly matches a domain, call **`read_file`** with argument **`file_path`** (required by the tool) using a **virtual absolute path** under the project root, e.g. **`file_path="/skills/analyze-indec-eph-hogar/SKILL.md"`**; do not use a host path like `/Users/.../project/skills/...`. Relative repo paths like `skills/...` are normalized to the same virtual path.
 
 For **`/data-local/indec/mercado_laboral/`** EPH loads, **`ingest-indec-mercadolaboral`** overrides the generic bronze-first rule. When a task matches a domain, **follow the skill** instead of improvising.
+
+### Skill execution guardrails (mandatory)
+
+- When reading a skill file, call `read_file` with `limit=1000` to avoid truncated instructions.
+- If the user message is only a skill name (e.g. `analyze-indec-eph-individual`), treat it as **execute this skill now** on the relevant dataset/workflow, not as a request to print the skill text.
+- Never return raw `SKILL.md` content as the final answer unless the user explicitly asks to view the file contents.
+- After loading a skill, execute at least the first actionable step (typically tool calls / SQL) before producing a final response.
 
 ### INDEC EPH household analysis (`gold.indec_eph_usu_hogar`)
 
@@ -243,6 +265,12 @@ Use **`./skills/analyze-indec-eph-hogar/SKILL.md`** when the user wants to **ana
 **Canonical numeric casts (memorize):** INDEC TXTs land monetary and many `IV*` / `II*` columns as **`VARCHAR`** in `gold.indec_eph_usu_hogar` because `read_csv_auto` cannot infer types when rows mix numeric strings with empty / placeholder values. Wrap every numeric aggregate in **`TRY_CAST(<col> AS DOUBLE)`** for `ITF`, `IPCF`, `PONDERA`, `PONDIH`, `DECIFR`, `DECCFR`, and any other column you `AVG` / `SUM` / `quantile_cont`. `AVG(IPCF)` without cast triggers `BinderException: avg(VARCHAR)`. Use **`TRY_CAST` (not `CAST`)** so non-numeric placeholders become `NULL` instead of aborting. Confirm types once with `information_schema.columns` and document them in *Método*.
 
 **Recognition to action:** If the request matches the paragraph above, **load** the skill with **`read_file(file_path="/skills/analyze-indec-eph-hogar/SKILL.md")`** (unless you already have the full text), then execute its checklist: resolve the real table name via **`information_schema`**, confirm grain (years by quarter), join **`silver.indec_mercado_laboral_variables`** for definitions, ask **one** focused question for focus + time window unless the user already gave both, run aggregates with **`duckdb_execute_query`** (one statement per call; weighted **`PONDERA`** / **`PONDIH`** per the skill; never **`SELECT *`** on the hogar table), and save artifacts under **`reports/indec_eph_usu_hogar/<topic>/`** via **`write_file`** as specified there.
+
+### INDEC EPH individual analysis (`gold.indec_eph_usu_individual`)
+
+Use **`./skills/analyze-indec-eph-individual/SKILL.md`** when the user asks to analyze, summarize, profile, or tabulate the EPH **individual** table (**`gold.indec_eph_usu_individual`** / `indec_usu_individual`) or explicitly asks to map individual columns against **`silver.indec_mercado_laboral_variables`**.
+
+**Recognition to action:** If the request matches the paragraph above, **load** the skill with **`read_file(file_path="/skills/analyze-indec-eph-individual/SKILL.md")`** (unless already in context) and execute its workflow: confirm table and volume, inventory columns via `information_schema`, LEFT JOIN against `silver.indec_mercado_laboral_variables` by `campo`, compute coverage metrics, and return the final result as a concise narrative plus markdown table(s).
 
 ---
 

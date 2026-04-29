@@ -68,6 +68,19 @@ def _response_language_suffix(locale: str) -> str:
     )
 
 
+def _runtime_skills_inventory() -> list[str]:
+    """Return discovered skill names under ``<project_root>/skills/*/SKILL.md``."""
+    skills_root = settings.project_root / "skills"
+    if not skills_root.is_dir():
+        return []
+    names: list[str] = []
+    for p in sorted(skills_root.glob("*/SKILL.md")):
+        parent = p.parent.name.strip()
+        if parent:
+            names.append(parent)
+    return names
+
+
 def supervisor_system_prompt(
     mcp_tool_names: list[str] | None = None,
     *,
@@ -86,6 +99,16 @@ def supervisor_system_prompt(
         base = load_prompt("supervisor_system_prompt.txt")
 
     parts: list[str] = [base]
+    deepagents_helpers = [
+        "write_todos",
+        "ls",
+        "read_file",
+        "write_file",
+        "edit_file",
+        "glob",
+        "grep",
+        "task",
+    ]
     if mcp_tool_names:
         listed = "\n".join(f"- `{n}`" for n in sorted(mcp_tool_names))
         parts.append(
@@ -99,6 +122,24 @@ def supervisor_system_prompt(
             "`duckdb_warehouse_query`), or any other name not listed below.\n\n"
             f"{listed}"
         )
+        parts.append(
+            "\n\n## Runtime Deep Agents tools (authoritative)\n\n"
+            "These are runtime-provided helper tools available in this process:\n\n"
+            + "\n".join(f"- `{n}`" for n in deepagents_helpers)
+        )
+    skills = _runtime_skills_inventory()
+    if skills:
+        parts.append(
+            "\n\n## Runtime skills (authoritative)\n\n"
+            "These are the skills currently discovered from `/skills/*/SKILL.md`:\n\n"
+            + "\n".join(f"- `{n}`" for n in skills)
+        )
+    else:
+        parts.append(
+            "\n\n## Runtime skills (authoritative)\n\n"
+            "No skills were discovered under `/skills/*/SKILL.md`."
+        )
+    if mcp_tool_names:
         parts.append(
             "\n\n## Dagster project safety\n\n"
             "For Dagster code-location work, operate with `dagster_*` tools only "

@@ -7,6 +7,7 @@ import json
 import os
 import re
 import time
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,7 @@ SCHEMA = "bronze"
 TABLE = f"{SCHEMA}.indec_mercado_laboral_variables"
 PDF_BASENAME = EPH_VARIABLES_REGISTER_BASENAME
 DEFAULT_MODEL = "local/gemini-3.1-pro-preview"
+logger = logging.getLogger(__name__)
 
 
 def _duckdb_path() -> str:
@@ -132,7 +134,47 @@ def _litellm_base() -> str:
 
 
 def _model_id() -> str:
-    return (os.environ.get("LITELLM_VARIABLES_MODEL") or DEFAULT_MODEL).strip()
+    # Keep compatibility with existing project env files that define CHAT_MODEL.
+    return (os.environ.get("LITELLM_VARIABLES_MODEL") or os.environ.get("CHAT_MODEL") or DEFAULT_MODEL).strip()
+
+
+def _litellm_max_retries() -> int:
+    return max(0, int(os.environ.get("LITELLM_VARIABLES_MAX_RETRIES", "3")))
+
+
+def _litellm_retry_base_seconds() -> float:
+    return max(0.0, float(os.environ.get("LITELLM_VARIABLES_RETRY_BASE_SECONDS", "1.5")))
+
+
+def _langfuse_enabled() -> bool:
+    pub = (os.environ.get("LANGFUSE_PUBLIC_KEY") or "").strip()
+    sec = (os.environ.get("LANGFUSE_SECRET_KEY") or "").strip()
+    return bool(pub and sec)
+
+
+def _langfuse_client() -> Any | None:
+    if not _langfuse_enabled():
+        return None
+    try:
+        from langfuse import get_client
+
+        return get_client()
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Langfuse client unavailable: %s: %s", type(exc).__name__, exc)
+        return None
+
+
+def _looks_vision_capable(model: str) -> bool:
+    m = (model or "").strip().lower()
+    if not m:
+        return False
+    # Fast-fail only for known non-vision families we have hit in this project.
+    if "gpt-3.5" in m:
+        return False
+    if "vision" in m or "gemini" in m or "gpt-4o" in m or "o4" in m or "claude-3" in m:
+        return True
+    # Unknown aliases may still be valid behind LiteLLM; do not block them.
+    return True
 
 
 def _render_page_png(pdf: Path, page_index: int, zoom: float = 2.0) -> bytes:
@@ -199,13 +241,41 @@ def _call_litellm_vision(*, png_bytes: bytes, page_number: int, model: str, base
         ],
     }
     timeout = float(os.environ.get("LITELLM_VARIABLES_HTTP_TIMEOUT", "180"))
+    max_retries = _litellm_max_retries()
+    retry_base = _litellm_retry_base_seconds()
+    r: httpx.Response | None = None
     with httpx.Client(timeout=timeout) as client:
-        r = client.post(
-            url,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=body,
+        for attempt in range(max_retries + 1):
+            try:
+                r = client.post(
+                    url,
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json=body,
+                )
+                if r.status_code in (429, 500, 502, 503, 504) and attempt < max_retries:
+                    time.sleep(retry_base * (2**attempt))
+                    continue
+                r.raise_for_status()
+                break
+            except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as e:
+                if attempt < max_retries:
+                    time.sleep(retry_base * (2**attempt))
+                    continue
+                response_preview = ""
+                if isinstance(e, httpx.HTTPStatusError) and e.response is not None:
+                    response_preview = (e.response.text or "").strip()
+                if len(response_preview) > 1200:
+                    response_preview = response_preview[:1200] + "...<truncated>"
+                raise RuntimeError(
+                    "LiteLLM vision request failed "
+                    f"(model={model}, page={page_number}, url={url}, retries={max_retries}). "
+                    f"Error: {type(e).__name__}: {e}. "
+                    f"Response body: {response_preview or '<empty>'}"
+                ) from e
+    if r is None:
+        raise RuntimeError(
+            f"LiteLLM vision request produced no response (model={model}, page={page_number}, url={url})"
         )
-    r.raise_for_status()
     payload = r.json()
     choices = payload.get("choices") or []
     if not choices:
@@ -235,6 +305,12 @@ def variables_eph(context, database: DuckDBResource) -> MaterializeResult:
         raise RuntimeError("Set LITELLM_KEY or LITELLM_PROXY_KEY in the user-code environment.")
     base = _litellm_base()
     model = _model_id()
+    if not _looks_vision_capable(model):
+        raise RuntimeError(
+            f"Model '{model}' is not vision-capable for variables_eph (image_url payload). "
+            "Set LITELLM_VARIABLES_MODEL (or CHAT_MODEL) to a vision model alias available in LiteLLM "
+            "(for example local/gemini-3.1-pro-preview)."
+        )
     start_1, end_1 = _page_range()
     i0 = max(4, start_1 - 1)
     i1 = max(i0, end_1 - 1)
@@ -250,6 +326,25 @@ def variables_eph(context, database: DuckDBResource) -> MaterializeResult:
     delay_s = _page_delay_seconds()
     duck = _duckdb_path()
     rows_written = 0
+    pages_failed = 0
+    lf = _langfuse_client()
+    lf_root = None
+    if lf is not None:
+        try:
+            lf_root = lf.start_as_current_observation(
+                as_type="span",
+                name="datasynk.variables_eph",
+                input={
+                    "source_pdf": str(pdf),
+                    "page_range": f"{start_1}-{end_1}",
+                    "model_id": model,
+                    "litellm_base": base,
+                },
+            )
+            lf_root.__enter__()
+        except Exception as exc:  # pragma: no cover
+            logger.warning("Langfuse root span failed: %s: %s", type(exc).__name__, exc)
+            lf_root = None
     with database.get_connection() as con:
         con.execute(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")
         con.execute(
@@ -273,14 +368,45 @@ def variables_eph(context, database: DuckDBResource) -> MaterializeResult:
         )
         for page_idx in range(i0, i1 + 1):
             page_display = page_idx + 1
-            png = _render_page_png(pdf, page_idx)
-            vars_list = _call_litellm_vision(
-                png_bytes=png,
-                page_number=page_display,
-                model=model,
-                base=base,
-                api_key=key,
-            )
+            lf_page = None
+            if lf_root is not None:
+                try:
+                    lf_page = lf.start_as_current_observation(
+                        as_type="span",
+                        name="datasynk.variables_eph.page",
+                        input={"page_number": page_display, "source_pdf": src, "model_id": model},
+                    )
+                    lf_page.__enter__()
+                except Exception:  # pragma: no cover
+                    lf_page = None
+            try:
+                png = _render_page_png(pdf, page_idx)
+                vars_list = _call_litellm_vision(
+                    png_bytes=png,
+                    page_number=page_display,
+                    model=model,
+                    base=base,
+                    api_key=key,
+                )
+            except Exception as exc:
+                pages_failed += 1
+                context.log.error(
+                    "variables_eph page=%s failed: %s: %s",
+                    page_display,
+                    type(exc).__name__,
+                    exc,
+                )
+                _append_log_line(
+                    log_path,
+                    f"{datetime.now(UTC).replace(tzinfo=None).isoformat()}Z\tpage={page_display}\terror={type(exc).__name__}:{exc}",
+                )
+                vars_list = []
+                if lf_page is not None:
+                    try:
+                        lf_page.__exit__(type(exc), exc, exc.__traceback__)
+                    except Exception:
+                        pass
+                    lf_page = None
             con.execute(
                 f"INSERT INTO {TABLE} (page_number, variables, source_pdf, model_id, extracted_at) VALUES (?, ?, ?, ?, ?)",
                 [page_display, json.dumps(vars_list), src, model, extracted_at],
@@ -290,12 +416,23 @@ def variables_eph(context, database: DuckDBResource) -> MaterializeResult:
                 log_path,
                 f"{datetime.now(UTC).replace(tzinfo=None).isoformat()}Z\tpage={page_display}\tvariables={len(vars_list)}\tduckdb=inserted",
             )
+            if lf_page is not None:
+                try:
+                    lf_page.__exit__(None, None, None)
+                except Exception:
+                    pass
             if page_idx < i1 and delay_s > 0:
                 time.sleep(delay_s)
     _append_log_line(
         log_path,
         f"# variables_eph end ts={datetime.now(UTC).replace(tzinfo=None).isoformat()}Z pages_written={rows_written}",
     )
+    if lf_root is not None:
+        try:
+            lf_root.__exit__(None, None, None)
+            lf.flush()
+        except Exception:
+            pass
     return MaterializeResult(
         metadata={
             "duckdb_path": duck,
@@ -305,6 +442,7 @@ def variables_eph(context, database: DuckDBResource) -> MaterializeResult:
             "model_id": model,
             "litellm_base": base,
             "rows_pages": rows_written,
+            "pages_failed": pages_failed,
             "processed_log": str(log_path),
             "page_delay_seconds": delay_s,
         }

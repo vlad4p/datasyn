@@ -25,7 +25,7 @@ def _path(name: str, default: str) -> Path:
 
 
 def _env_first(*names: str) -> str | None:
-    """First non-empty env value (Ubika-style aliases for LiteLLM key/base)."""
+    """First non-empty env value (Datacyber-style aliases for LiteLLM key/base)."""
     for n in names:
         v = os.environ.get(n)
         if v is not None and str(v).strip():

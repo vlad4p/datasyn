@@ -29,8 +29,8 @@ networks:
 # --- Data layout (validate paths against Dagster / DuckDB code) ---
 #
 # ``/data`` — named volume ``duckdb_data`` mounted here. Holds ``warehouse.duckdb``
-# (the database file). This is **not** the landing zone; do not expect INDEC PDFs
-# or scraped trees under ``/data`` unless you copy them there yourself.
+# (the database file). **This named volume is not ``data-local``** — the DB file lives
+# under ``/data`` only. Landing-zone files (scrapes, CSVs) live under ``/data-local``.
 #
 # ``/data-local`` — **landing zone**: host directory ``../data-local`` (repo
 # ``data-local/``) bind-mounted read-only on ``duckdb``, ``duckdb-ui``, ``duckdb-mcp``,
@@ -41,7 +41,6 @@ networks:
 # MCP-deployed user-code containers therefore see the warehouse but **not** ``/data-local``
 # unless you append a **host-absolute** bind, e.g. in ``mcp_servers/.env``:
 #   DAGSTER_DEPLOY_VOLUMES=datacyber-mcp_duckdb_data:/data;/abs/path/datacyber/data-local:/data-local:ro
-# Ubika ``dagster_user_code`` must mount the same landing tree at ``/data-local`` (or set
 # ``INDEC_EPH_BASE`` / ``INDEC_EPH_VARIABLES_PDF`` to paths that exist in that container).
 
 services:
@@ -154,9 +153,11 @@ services:
       DAGSTER_CONTAINER_PREFIX: dagster
       DAGSTER_DEFAULT_HOST_PORT: "3001"
       DAGSTER_WEBSERVER_PORT: "3000"
-      UBIKA_DAGSTER_COMPOSE_FILE: /ubika-dagster/docker-compose.yaml
-      UBIKA_DAGSTER_COMPOSE_PROJECT: dagster
-      UBIKA_DAGSTER_USER_CODE_SERVICE: dagster_user_code
+      # Optional external compose stack (for user-code force recreate):
+      # set these in your local environment if you use compose_force_recreate.
+      DAGSTER_COMPOSE_FILE: "${DAGSTER_COMPOSE_FILE:-}"
+      DAGSTER_COMPOSE_PROJECT: "${DAGSTER_COMPOSE_PROJECT:-}"
+      DAGSTER_COMPOSE_USER_CODE_SERVICE: "${DAGSTER_COMPOSE_USER_CODE_SERVICE:-dagster_user_code}"
       # Semicolon-separated ``docker run -v`` sources for MCP ``deploy`` (host daemon).
       # Default: warehouse only. Add ``data-local`` with a **host-absolute** path so
       # user-code sees the same landing zone as ``duckdb-mcp`` (``/data-local/indec/...``).
@@ -164,7 +165,8 @@ services:
       DAGSTER_DEPLOY_VOLUMES: "datacyber-mcp_duckdb_data:/data"
     volumes:
       - ./dagster-mcp/projects:/projects
-      - ../../ubika-infra/live/mvp/dagster:/ubika-dagster:ro
+      # Optional: mount your external compose directory when using compose_force_recreate.
+      # - /abs/path/to/your/compose/dir:/dagster-compose:ro
       # Same landing tree as ``duckdb-mcp`` (read-only); path for ``deploy`` is still set via env above.
       - ../data-local:/data-local:ro
       - /var/run/docker.sock:/var/run/docker.sock

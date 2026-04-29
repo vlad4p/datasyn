@@ -13,5 +13,5 @@ RUN pip install --no-cache-dir -e .
 
 EXPOSE 4000
 
-# gRPC code location (Ubika ``dagster_user_code`` service, port 4000).
+# gRPC code location (Datacyber ``dagster_user_code`` service, port 4000).
 CMD ["dagster", "api", "grpc", "-h", "0.0.0.0", "-p", "4000", "-m", "datasynk.definitions"]

@@ -1,15 +1,4 @@
-"""LiteLLM proxy chat - OpenAI-compatible client (same pattern as Ubika-core ``litellm_client.get_chat_model``).
-
-Uses ``langchain_openai.ChatOpenAI`` with ``base_url`` = proxy (e.g. ``http://host:4000/v1``), not
-``ChatLiteLLM``, so traffic goes to your LiteLLM instance instead of ``api.openai.com``.
-
-Model id must match an entry from your LiteLLM proxy (``GET /v1/models``). Set ``CHAT_MODEL`` in the environment.
-
-**Env (Ubika-compatible aliases supported):**
-
-- Key: ``LITELLM_KEY`` or ``LITELLM_PROXY_KEY``
-- Base: ``LITELLM_API_BASE`` or ``LITELLM_PROXY_BASE`` or ``LITELLM_URL`` (must include ``/v1``)
-- Optional: ``LITELLM_REQUEST_TIMEOUT``, ``LITELLM_TEMPERATURE``
+"""LiteLLM proxy chat - OpenAI-compatible client (same pattern as Datacyber-core ``litellm_client.get_chat_model``).
 """
 
 from __future__ import annotations

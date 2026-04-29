@@ -15,7 +15,7 @@ Tools (LangChain prefixes them with the MCP key ``dagster``):
 - ``dagster_build_image``     — ``docker build`` the project image on the host daemon
                                  (optional *image_name*, e.g. ``dagster_user_code_image``).
 - ``dagster_compose_force_recreate`` — ``docker compose up -d --no-build --force-recreate``
-                                 for an external stack (default: Ubika ``dagster_user_code``).
+                                 for an external stack (default:``dagster_user_code``).
 - ``dagster_deploy``          — by default ``docker build`` then ``docker rm -f`` +
                                  ``docker run`` (replace container on ``datacyber_mcp``).
 - ``dagster_stop`` / ``dagster_remove`` / ``dagster_logs`` / ``dagster_status``
@@ -85,17 +85,12 @@ DAGSTER_DEPLOY_VOLUMES = os.environ.get(
     "DAGSTER_DEPLOY_VOLUMES",
     "datacyber-mcp_duckdb_data:/data",
 )
-UBIKA_DAGSTER_COMPOSE_FILE = os.environ.get(
-    "UBIKA_DAGSTER_COMPOSE_FILE",
-    "/ubika-dagster/docker-compose.yaml",
-)
-UBIKA_DAGSTER_USER_CODE_SERVICE = os.environ.get(
-    "UBIKA_DAGSTER_USER_CODE_SERVICE",
+DAGSTER_COMPOSE_FILE = (os.environ.get("DAGSTER_COMPOSE_FILE") or "").strip()
+DAGSTER_COMPOSE_USER_CODE_SERVICE = os.environ.get(
+    "DAGSTER_COMPOSE_USER_CODE_SERVICE",
     "dagster_user_code",
-)
-# Compose project name must match how the stack was first created from the host
-# (directory name is ``dagster`` when the compose file lives in ``.../mvp/dagster/``).
-UBIKA_DAGSTER_COMPOSE_PROJECT = os.environ.get("UBIKA_DAGSTER_COMPOSE_PROJECT", "dagster")
+).strip()
+DAGSTER_COMPOSE_PROJECT = (os.environ.get("DAGSTER_COMPOSE_PROJECT") or "").strip()
 
 LIST_CAP_CATALOG = max(1, min(int(os.environ.get("CATALOG_LIST_CAP", "100")), 500))
 
@@ -111,8 +106,8 @@ mcp = FastMCP(
         "replace any existing container with the same name). Use `build_image` alone "
         "when you only need an image without restarting the container. Use "
         "`compose_force_recreate` after "
-        "tagging an image (e.g. `dagster_user_code_image`) for an external Ubika "
-        "compose stack mounted at `UBIKA_DAGSTER_COMPOSE_FILE`. The MCP itself never "
+        "tagging an image (e.g. `dagster_user_code_image`) for an external "
+        "compose stack configured via `DAGSTER_COMPOSE_FILE`. The MCP itself never "
         "imports Dagster; it only generates code and shells out to `docker`. "
         "Optional PostgreSQL catalog: tools `catalog_get_schema` and `catalog_execute_query` "
         "(prefixed `dagster_` by LangChain) — set DATABASE_URL or CATALOG_DATABASE_URL."
@@ -463,15 +458,19 @@ def compose_force_recreate(
 
     Pass ``services`` (non-empty) to recreate several at once, e.g. user-code plus
     webserver/daemon after a ``workspace.yaml`` bind-mount change. Otherwise pass
-    ``service`` or rely on defaults (Ubika: ``UBIKA_DAGSTER_COMPOSE_FILE`` +
-    ``UBIKA_DAGSTER_USER_CODE_SERVICE``; mount that compose dir into dagster-mcp).
+    ``service`` or rely on defaults (`DAGSTER_COMPOSE_FILE` +
+    `DAGSTER_COMPOSE_USER_CODE_SERVICE`; mount that compose dir into dagster-mcp).
 
-    Set ``compose_project`` (or ``UBIKA_DAGSTER_COMPOSE_PROJECT``) to the same
+    Set ``compose_project`` (or ``DAGSTER_COMPOSE_PROJECT``) to the same
     ``docker compose -p`` name used on the host (default ``dagster`` when the file
     lives in a folder named ``dagster``).
     """
-    cf = compose_file or UBIKA_DAGSTER_COMPOSE_FILE
-    proj = compose_project or UBIKA_DAGSTER_COMPOSE_PROJECT
+    cf = (compose_file or DAGSTER_COMPOSE_FILE or "").strip()
+    proj = (compose_project or DAGSTER_COMPOSE_PROJECT or "").strip()
+    if not cf:
+        raise ValueError(
+            "compose_file is required (or set DAGSTER_COMPOSE_FILE in dagster-mcp env)"
+        )
     if services is not None:
         svcs = [str(s).strip() for s in services if s and str(s).strip()]
         if not svcs:
@@ -479,7 +478,7 @@ def compose_force_recreate(
     elif service and str(service).strip():
         svcs = [str(service).strip()]
     else:
-        svcs = [UBIKA_DAGSTER_USER_CODE_SERVICE]
+        svcs = [DAGSTER_COMPOSE_USER_CODE_SERVICE]
     log.info(
         "tool compose_force_recreate compose_file=%r services=%r with_build=%s",
         cf,
@@ -491,8 +490,8 @@ def compose_force_recreate(
         p = Path(cf)
         if not p.is_file():
             raise FileNotFoundError(
-                f"compose file not found: {cf!r} (mount Ubika dagster dir into "
-                "dagster-mcp, e.g. ../../ubika-infra/live/mvp/dagster:/ubika-dagster:ro)"
+                f"compose file not found: {cf!r} (mount your compose directory into "
+                "dagster-mcp and set DAGSTER_COMPOSE_FILE accordingly)"
             )
         result = docker_ops.compose_force_recreate(
             compose_file=p,
