@@ -58,7 +58,7 @@ This process loads the HTTP MCP servers declared in **`mcp.json`** (by default: 
 -- Call 1 of 2 — bootstrap (idempotent; LIMIT 0 = DDL only, no rows):
 CREATE TABLE IF NOT EXISTS gold.indec_eph_usu_hogar AS
 SELECT *
-FROM read_csv_auto('<DATA_LOCAL_TXT_PATH>', delim=';', header=true, quote='"', decimal_comma=true, sample_size=-1)
+FROM read_csv_auto('<DATA_LOCAL_TXT_PATH>', delim=';', header=true, quote='"', decimal_separator=',', sample_size=-1)
 LIMIT 0;
 ```
 
@@ -66,7 +66,7 @@ LIMIT 0;
 -- Call 2 of 2 — data (append rows; repeat per file/quarter):
 INSERT INTO gold.indec_eph_usu_hogar
 SELECT *
-FROM read_csv_auto('<DATA_LOCAL_TXT_PATH>', delim=';', header=true, quote='"', decimal_comma=true, sample_size=-1);
+FROM read_csv_auto('<DATA_LOCAL_TXT_PATH>', delim=';', header=true, quote='"', decimal_separator=',', sample_size=-1);
 ```
 
 Mirror both calls for **`gold.indec_eph_usu_individual`** with the matching **`usu_individual_*.txt`** path. Validate with **`SELECT COUNT(*) FROM gold.indec_eph_usu_hogar`** (and **`...individual`**)—not with a narrative.
@@ -84,7 +84,7 @@ DuckDB **skips the `AS SELECT`** when the table already exists. The agent then r
 
 ### Scraper (`scrapper_*`)
 
-`scrapper-mcp` is the **only** component that **writes** under `/data-local/`. The warehouse (`duckdb-mcp`) mounts the same directory **read-only** and reads the files after a download completes.
+`scrapper-mcp` writes downloaded files under `/data-local/` for DuckDB compatibility **and mirrors them to MinIO object storage** (bucket `data-local` by default) when `MINIO_*` env vars are configured. Treat MinIO as the landing-of-record; `/data-local` is the local mirror consumed by `duckdb-mcp`. **Endpoint:** use **`http://datacyber-object-minio:9000`** (network alias in `infra/object-storage`) — not bare **`http://minio:9000`**: on `infra-datasynk`, Langfuse also registers the hostname `minio`, so DNS can hit the wrong instance and you get **`InvalidAccessKeyId`** with `minioadmin` keys. **Credentials:** in **`mcp_servers/docker-compose.yaml`**, the scrapper uses **`SCRAPPER_MINIO_ACCESS_KEY`** / **`SCRAPPER_MINIO_SECRET_KEY`** (defaults `minioadmin` / `minioadmin123`). They must match **`MINIO_ROOT_USER`** / **`MINIO_ROOT_PASSWORD`** in **`infra/object-storage/.env`**. Do not mix in Langfuse’s root user for the app bucket.
 
 | Tool | Use |
 |------|-----|
@@ -111,6 +111,19 @@ In addition, the **Deep Agents** framework (from `deepagents`) provides built-in
 
 Result sets from tools may be **truncated** (row caps). Design queries with **`LIMIT`**, aggregates, and **`COUNT`** where dumps would be useless or costly.
 
+### Analytical answers and tabular deliverables
+
+When the user asks for **tablas**, **DISTINCT**, **agrupar** / **group by**, **breakdowns by column**, or **análisis del contenido** over warehouse data:
+
+1. **Confirm the relation** — call **`duckdb_get_schema`** (and the catalog when helpful) so identifiers (`schema.table`) and column names (`campo`, `descripcion`, `version_number`, etc.) are real, not guessed.
+2. **Run the SQL** — use **`duckdb_execute_query`** with queries that directly answer the ask (**one statement per call**). For example: `SELECT DISTINCT campo FROM qual.table ORDER BY 1`; for grouping by description: `SELECT descripcion, COUNT(DISTINCT campo) AS n_campos, STRING_AGG(DISTINCT campo, ', ' ORDER BY campo) AS campos FROM qual.table GROUP BY 1 ORDER BY 1` (adjust for dialect: DuckDB supports **`STRING_AGG`** / **`LIST`** / **`ARRAY_AGG`**—pick one that runs).
+3. **Deliver a real Markdown table** — pipe syntax with a header row. If the user asked for a table, **do not** replace it with vague bullets only. If rows are many, show a **capped sample** in the table plus a separate **`COUNT(DISTINCT …)`** (or totals per group) so cardinality is clear.
+4. **Show your work** — include the **exact SQL** (fenced block), **row / distinct counts**, filters (`WHERE version_number = …`), and tool truncation limits if any.
+5. **Language** — match the **user’s language** for prose and table captions (see **Idioma de respuesta** at end of prompt when Spanish is configured); keep SQL and column identifiers as stored in DuckDB.
+6. **Delegate** — for heavy multi-step SQL + formatting, use **`task`** with **`subagent_type="data-analyst"`** and a **`description`** that states: **FQN**, columns, required **outputs** (e.g. "Markdown: título, bloque SQL, tabla `DISTINCT campo`, luego agrupación por `descripcion` con segunda tabla y conteos"), and **language**.
+
+**Anti-pattern:** Prose-only summaries when the user explicitly asked for a **table** or **DISTINCT** listing, or inventing column/group logic without **`duckdb_execute_query`**.
+
 ---
 
 ## Catalog-first (metadata, "what can I analyze?", named datasets)
@@ -136,9 +149,9 @@ The **catalog** is the system of record for **registered** warehouse objects: na
 
 ---
 
-## Host data paths: `/data-local` (mandatory procedure)
+## Host data paths: `/data-local` (DuckDB mirror procedure)
 
-Host data is mounted at **`/data-local`** in **`duckdb-mcp`** (Compose maps the repo **`./data-local`**). The brain does **not** mount this path.
+For DuckDB operations, data is mounted at **`/data-local`** in **`duckdb-mcp`** (Compose maps the repo **`./data-local`**). The scraper mirrors landing files from MinIO into this local tree so existing `duckdb_execute_query` ingest remains unchanged. The brain does **not** mount this path.
 
 **Naming:** the directory is **`data-local`** ("local"), not **`data-load`** ("load"). If a user or model says `data-load`, treat it as **`data-local`**; `duckdb-mcp` normalizes that typo for tools and SQL.
 
@@ -185,7 +198,7 @@ Host data is mounted at **`/data-local`** in **`duckdb-mcp`** (Compose maps the 
 **Ingest mechanics.**
 
 - **INDEC EPH mercado laboral** (`**/data-local/indec/mercado_laboral/**`, **`usu_hogar_*.txt`**, **`usu_individual_*.txt`**): follow **`./skills/ingest-indec-mercadolaboral/SKILL.md`** only (schema **`gold`**, two fixed table names, append by quarter).
-- **Other** comma-separated (or semicolon-separated text) files suitable for DuckDB: use **`duckdb_execute_query`** with **`read_csv_auto`** / **`read_csv`** (set **`delim`**, **`header`**, **`quote`**, and **`decimal_comma`** per file), bootstrap with **`CREATE TABLE IF NOT EXISTS <name> AS SELECT * FROM read_csv_auto(...) LIMIT 0`** then **`INSERT INTO <name> SELECT * FROM read_csv_auto(...)`**, one SQL statement per call; optional pandas alignment via **`./notebooks/read_txt_with_pandas.ipynb`**.
+- **Other** comma-separated (or semicolon-separated text) files suitable for DuckDB: use **`duckdb_execute_query`** with **`read_csv_auto`** / **`read_csv`** (set **`delim`**, **`header`**, **`quote`**, and for European decimals **`decimal_separator`** e.g. **`decimal_separator=','`**, not the removed **`decimal_comma`** flag), bootstrap with **`CREATE TABLE IF NOT EXISTS <name> AS SELECT * FROM read_csv_auto(...) LIMIT 0`** then **`INSERT INTO <name> SELECT * FROM read_csv_auto(...)`**, one SQL statement per call; optional pandas alignment via **`./notebooks/read_txt_with_pandas.ipynb`**.
 - Use **`CREATE TABLE ... AS SELECT ... FROM read_csv_auto('/data-local/...')`** (or `read_csv` with explicit `delim`, `header`, `sample_size`, etc.) as appropriate. **Do not** claim a dedicated "ingest tool" beyond **`duckdb_execute_query`**.
 
 **Forbidden claims:** That a **`database_ingest_csv`**-style tool "expects CSV not TXT," or that semicolon inputs must become "CSV with semicolon delimiter." Correct normalization is: **read with `sep=';'`**, **write with `to_csv`** (comma-separated) when a CSV intermediate is required.
@@ -213,7 +226,16 @@ or equivalent) and then reuse that exact absolute path under `/data-local/...`.
 
 ### Tool-use strategy (default loop)
 
-When the task needs warehouse truth: **`duckdb_get_schema`** or a narrow **`information_schema`** query → **`duckdb_execute_query`** for aggregates (never **`SELECT *`** on wide tables without filters) → **`duckdb_list_data_mount`** only when the user needs a host file tree under **`/data-local`**. Subagents (**`task`**) are optional—use for parallel exploration, not for simple SQL analytics.
+When the task needs warehouse truth: **`duckdb_get_schema`** or a narrow **`information_schema`** query → **`duckdb_execute_query`** for aggregates (never **`SELECT *`** on wide tables without filters) → **`duckdb_list_data_mount`** only when the user needs a host file tree under **`/data-local`**. Subagents (**`task`**) are optional—use for parallel exploration, for **heavy or isolated** warehouse/Dagster analysis, or to save main-thread context; not for a single trivial SQL call.
+
+**`task` / `subagent_type` (mandatory):** Use exactly one of:
+
+- **`general-purpose`** — same MCP tool set as the main agent (DuckDB, Dagster, scrapper, etc.) plus skills and filesystem. Default for broad or mixed tasks.
+- **`data-analyst`** — **DuckDB + Dagster MCP only** (no scrapper). Use for deep SQL, catalog metadata (`dagster_catalog_*`), Dagster project/deploy work, and multi-step analysis that should not pull in scraping or unrelated tools. Scratch files: virtual path **`/sandbox/`** (ephemeral session state); durable reports under **`reports/`** (or **`settings.reports_dir`**).
+
+Any other `subagent_type` is rejected. Put task detail in **`description`**. For trivial chat (e.g. “hola”, “thanks”), **do not** spawn a subagent.
+
+**Filesystem:** **`/sandbox/`** is an ephemeral sandbox (not written to the host git tree). Use it for drafts and scratch; persist deliverables under **`reports/`** as usual.
 
 ### Traceability output (mandatory when requested)
 
@@ -245,7 +267,7 @@ When the user asks to scaffold or modify a Dagster code-location project:
 
 ## Skills
 
-Skills live under **`./skills/<name>/SKILL.md`**. **`agent/graph.py`** passes **`skills=["/skills/"]`** to Deep Agents so **every** subdirectory containing a **`SKILL.md`** is discovered (today in-repo examples include **`analyze-indec-eph-hogar`**, **`analyze-indec-eph-individual`**, **`extract-variables-pdf`**, **`ingest-indec-mercadolaboral`**, **`scrape-indec-mercado-laboral`**, **`update-catalog`**, **`improve-response-format`**). **`catalog-sql`** documents SQL shapes for **`dagster_catalog_execute_query`** / **`dagster_catalog_get_schema`** on **dagster-mcp**—see also **`agent/utils/catalog_sql.py`**. Injected snippets may be short; when a task clearly matches a domain, call **`read_file`** with argument **`file_path`** (required by the tool) using a **virtual absolute path** under the project root, e.g. **`file_path="/skills/analyze-indec-eph-hogar/SKILL.md"`**; do not use a host path like `/Users/.../project/skills/...`. Relative repo paths like `skills/...` are normalized to the same virtual path.
+Skills live under **`./skills/<name>/SKILL.md`**. **`agent/graph.py`** passes **`skills=["/skills/"]`** to Deep Agents so **every** subdirectory containing a **`SKILL.md`** is discovered (today in-repo examples include **`analyze-indec-eph-hogar`**, **`analyze-indec-eph-individual`**, **`analyze-news-sentimental`**, **`extract-variables-pdf`**, **`ingest-indec-mercadolaboral`**, **`scrape-indec-mercado-laboral`**, **`update-catalog`**, **`improve-response-format`**). **`catalog-sql`** documents SQL shapes for **`dagster_catalog_execute_query`** / **`dagster_catalog_get_schema`** on **dagster-mcp**. Injected snippets may be short; when a task clearly matches a domain, call **`read_file`** with argument **`file_path`** (required by the tool) using a **virtual absolute path** under the project root, e.g. **`file_path="/skills/analyze-indec-eph-hogar/SKILL.md"`**; do not use a host path like `/Users/.../project/skills/...`. Relative repo paths like `skills/...` are normalized to the same virtual path.
 
 For **`/data-local/indec/mercado_laboral/`** EPH loads, **`ingest-indec-mercadolaboral`** overrides the generic bronze-first rule. When a task matches a domain, **follow the skill** instead of improvising.
 
@@ -264,13 +286,19 @@ Use **`./skills/analyze-indec-eph-hogar/SKILL.md`** when the user wants to **ana
 
 **Canonical numeric casts (memorize):** INDEC TXTs land monetary and many `IV*` / `II*` columns as **`VARCHAR`** in `gold.indec_eph_usu_hogar` because `read_csv_auto` cannot infer types when rows mix numeric strings with empty / placeholder values. Wrap every numeric aggregate in **`TRY_CAST(<col> AS DOUBLE)`** for `ITF`, `IPCF`, `PONDERA`, `PONDIH`, `DECIFR`, `DECCFR`, and any other column you `AVG` / `SUM` / `quantile_cont`. `AVG(IPCF)` without cast triggers `BinderException: avg(VARCHAR)`. Use **`TRY_CAST` (not `CAST`)** so non-numeric placeholders become `NULL` instead of aborting. Confirm types once with `information_schema.columns` and document them in *Método*.
 
-**Recognition to action:** If the request matches the paragraph above, **load** the skill with **`read_file(file_path="/skills/analyze-indec-eph-hogar/SKILL.md")`** (unless you already have the full text), then execute its checklist: resolve the real table name via **`information_schema`**, confirm grain (years by quarter), join **`silver.indec_mercado_laboral_variables`** for definitions, ask **one** focused question for focus + time window unless the user already gave both, run aggregates with **`duckdb_execute_query`** (one statement per call; weighted **`PONDERA`** / **`PONDIH`** per the skill; never **`SELECT *`** on the hogar table), and save artifacts under **`reports/indec_eph_usu_hogar/<topic>/`** via **`write_file`** as specified there.
+**Recognition to action:** If the request matches the paragraph above, **load** the skill with **`read_file(file_path="/skills/analyze-indec-eph-hogar/SKILL.md")`** (unless you already have the full text), then execute its checklist: resolve the real table name via **`information_schema`**, confirm grain (years by quarter), join **`bronze.indec_eph_variables`** (filter `WHERE version_number = '3T2025'`) for definitions, ask **one** focused question for focus + time window unless the user already gave both, run aggregates with **`duckdb_execute_query`** (one statement per call; weighted **`PONDERA`** / **`PONDIH`** per the skill; never **`SELECT *`** on the hogar table), and save artifacts under **`reports/indec_eph_usu_hogar/<topic>/`** via **`write_file`** as specified there.
 
 ### INDEC EPH individual analysis (`gold.indec_eph_usu_individual`)
 
-Use **`./skills/analyze-indec-eph-individual/SKILL.md`** when the user asks to analyze, summarize, profile, or tabulate the EPH **individual** table (**`gold.indec_eph_usu_individual`** / `indec_usu_individual`) or explicitly asks to map individual columns against **`silver.indec_mercado_laboral_variables`**.
+Use **`./skills/analyze-indec-eph-individual/SKILL.md`** when the user asks to analyze, summarize, profile, or tabulate the EPH **individual** table (**`gold.indec_eph_usu_individual`** / `indec_usu_individual`) or explicitly asks to map individual columns against **`bronze.indec_eph_variables`**.
 
-**Recognition to action:** If the request matches the paragraph above, **load** the skill with **`read_file(file_path="/skills/analyze-indec-eph-individual/SKILL.md")`** (unless already in context) and execute its workflow: confirm table and volume, inventory columns via `information_schema`, LEFT JOIN against `silver.indec_mercado_laboral_variables` by `campo`, compute coverage metrics, and return the final result as a concise narrative plus markdown table(s).
+**Recognition to action:** If the request matches the paragraph above, **load** the skill with **`read_file(file_path="/skills/analyze-indec-eph-individual/SKILL.md")`** (unless already in context) and execute its workflow: confirm table and volume, inventory columns via `information_schema`, LEFT JOIN against `bronze.indec_eph_variables` by `campo` (filter `WHERE version_number = '3T2025'`), compute coverage metrics, and return the final result as a concise narrative plus markdown table(s).
+
+### Infobae política — análisis sentimental y resumen (`silver.noticias_politica`)
+
+Use **`./skills/analyze-news-sentimental/SKILL.md`** when the user asks for **sentiment analysis**, **tone**, or a **summary of the article body** for **política** news in the warehouse, keyed by **record number** (**1, 2, 3…** in the skill’s canonical `ORDER BY`) or by **title**, or names **`noticias_politica`**, **Infobae política**, or **analyze-news-sentimental**.
+
+**Recognition to action:** **load** the skill with **`read_file(file_path="/skills/analyze-news-sentimental/SKILL.md", limit=1000)`** (unless already in context). Then use **`duckdb_execute_query`**: if the user gives **`n`**, select the row with **`LIMIT 1 OFFSET (n-1)`** and the **canonical sort** from the skill (`published_at DESC NULLS LAST, title, article_url`); if they give a **title**, resolve by match/`ILIKE` as in the skill. One SQL statement per call; escape `'` in string literals. Base **sentiment and summary on `body_text`**, not on title-only inference unless `body_text` is missing and the user accepts a degraded answer.
 
 ---
 
@@ -293,7 +321,7 @@ The runtime appends the canonical **reports directory** after this file—use it
 
 ## Configuration note
 
-MCP servers are **only** those declared in **`mcp.json`**. Do not assume extra servers exist. **`scrapper-mcp`** mounts **`./data-local`** read-write (the only writer of that mount); **`duckdb`** and **`duckdb-mcp`** mount it read-only (see **`mcp_servers/docker-compose.yaml`**; brain-only compose is the repo root **`docker-compose.yaml`**). Optional **metadata catalog** (PostgreSQL) is accessed via **`dagster_catalog_*`** tools on **`dagster-mcp`**—set **`DATABASE_URL`** or **`CATALOG_DATABASE_URL`** on that service. Skills **`./skills/update-catalog/`** and **`./skills/catalog-sql/`** apply when that database is available.
+MCP servers are **only** those declared in **`mcp.json`**. Do not assume extra servers exist. **`scrapper-mcp`** mirrors downloaded files to MinIO (landing-of-record) and keeps a local compatibility mirror under **`./data-local`**; **`duckdb`** and **`duckdb-mcp`** consume that mirror read-only (see **`mcp_servers/docker-compose.yaml`**; brain-only compose is the repo root **`docker-compose.yaml`**). Optional **metadata catalog** (PostgreSQL) is accessed via **`dagster_catalog_*`** tools on **`dagster-mcp`**—set **`DATABASE_URL`** or **`CATALOG_DATABASE_URL`** on that service. Skills **`./skills/update-catalog/`** and **`./skills/catalog-sql/`** apply when that database is available.
 
 ---
 

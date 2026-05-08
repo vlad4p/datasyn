@@ -15,9 +15,12 @@ Tools (LangChain prefixes them with the MCP key ``dagster``):
 - ``dagster_build_image``     — ``docker build`` the project image on the host daemon
                                  (optional *image_name*, e.g. ``dagster_user_code_image``).
 - ``dagster_compose_force_recreate`` — ``docker compose up -d --no-build --force-recreate``
-                                 for an external stack (default:``dagster_user_code``).
+                                 for an external stack (default: ``dagster_user_code``).
+- ``dagster_user_code_refresh`` — ``build_image`` (``datasynk`` → ``dagster_user_code_image``)
+                                 then ``compose_force_recreate`` for ``dagster_user_code``
+                                 (requires ``DAGSTER_COMPOSE_FILE`` mount; see ``mcp_servers/docker-compose.yaml``).
 - ``dagster_deploy``          — by default ``docker build`` then ``docker rm -f`` +
-                                 ``docker run`` (replace container on ``datacyber_mcp``).
+                                 ``docker run`` (replace container on ``infra-datasynk``).
 - ``dagster_stop`` / ``dagster_remove`` / ``dagster_logs`` / ``dagster_status``
                                 — container lifecycle helpers.
 - ``dagster_daemon_info`` — confirm host Docker daemon socket.
@@ -65,14 +68,48 @@ logging.basicConfig(
 )
 log = logging.getLogger("dagster-mcp")
 
+_DEFAULT_PROJECTS_ROOT = Path(__file__).resolve().parent / "projects"
+
+
+def _resolved_projects_root() -> Path:
+    """Effective ``DAGSTER_PROJECTS_ROOT``.
+
+    Dev ``.env`` files often mirror Compose (``DAGSTER_PROJECTS_ROOT=/projects``). Inside
+    the MCP container that path is bind-mounted; on the host it is missing or raises
+    ``PermissionError`` on macOS. Fall back to ``…/dagster-mcp/projects`` when ``/projects``
+    is not a readable directory.
+    """
+    default = _DEFAULT_PROJECTS_ROOT.resolve()
+    raw = (os.environ.get("DAGSTER_PROJECTS_ROOT") or "").strip()
+    if not raw:
+        return default
+    candidate = Path(raw).expanduser().resolve()
+    if candidate != Path("/projects"):
+        return candidate
+    try:
+        if candidate.is_dir():
+            os.listdir(candidate)
+            return candidate
+    except OSError as exc:
+        log.warning(
+            "DAGSTER_PROJECTS_ROOT=/projects not usable (%s); using %s",
+            exc,
+            default,
+        )
+        return default
+    log.warning(
+        "DAGSTER_PROJECTS_ROOT=/projects not present here; using %s",
+        default,
+    )
+    return default
+
+
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8043"))
 MCP_HTTP_PATH = os.environ.get("MCP_HTTP_PATH", "/mcp")
 
-PROJECTS_ROOT = Path(
-    os.environ.get("DAGSTER_PROJECTS_ROOT", "/projects")
-).resolve()
-PROJECT_NETWORK = os.environ.get("DAGSTER_PROJECT_NETWORK", "datacyber_mcp")
+PROJECTS_ROOT = _resolved_projects_root()
+PROJECT_NETWORK = os.environ.get("DAGSTER_PROJECT_NETWORK", "infra-datasynk")
 IMAGE_PREFIX = os.environ.get("DAGSTER_IMAGE_PREFIX", "dagster").rstrip("/")
 CONTAINER_PREFIX = os.environ.get("DAGSTER_CONTAINER_PREFIX", "dagster").rstrip("-")
 DEFAULT_HOST_PORT = int(os.environ.get("DAGSTER_DEFAULT_HOST_PORT", "3001"))
@@ -80,10 +117,10 @@ WEBSERVER_PORT = int(os.environ.get("DAGSTER_WEBSERVER_PORT", "3000"))
 # Semicolon-separated `src:dst[:mode]` mounts passed to `docker run -v` for
 # `dagster_deploy` (paths are resolved on the **host** by the Docker daemon).
 # Example (host shell before `compose up`):
-#   export DAGSTER_DEPLOY_VOLUMES="datacyber-mcp_duckdb_data:/data;/abs/path/datacyber/data-local:/data-local:ro"
+#   export DAGSTER_DEPLOY_VOLUMES="duckdb_data:/data;storage:/storage;/abs/path/datacyber/data-local:/data-local:ro"
 DAGSTER_DEPLOY_VOLUMES = os.environ.get(
     "DAGSTER_DEPLOY_VOLUMES",
-    "datacyber-mcp_duckdb_data:/data",
+    "duckdb_data:/data;storage:/storage",
 )
 DAGSTER_COMPOSE_FILE = (os.environ.get("DAGSTER_COMPOSE_FILE") or "").strip()
 DAGSTER_COMPOSE_USER_CODE_SERVICE = os.environ.get(
@@ -91,6 +128,13 @@ DAGSTER_COMPOSE_USER_CODE_SERVICE = os.environ.get(
     "dagster_user_code",
 ).strip()
 DAGSTER_COMPOSE_PROJECT = (os.environ.get("DAGSTER_COMPOSE_PROJECT") or "").strip()
+# Defaults match ``infra/dagster/docker-compose.yaml`` (``dagster_user_code`` image).
+DAGSTER_USER_CODE_BUILD_PROJECT = (
+    os.environ.get("DAGSTER_USER_CODE_BUILD_PROJECT") or "datasynk"
+).strip()
+DAGSTER_USER_CODE_IMAGE_NAME = (
+    os.environ.get("DAGSTER_USER_CODE_IMAGE_NAME") or "dagster_user_code_image"
+).strip()
 
 LIST_CAP_CATALOG = max(1, min(int(os.environ.get("CATALOG_LIST_CAP", "100")), 500))
 
@@ -100,14 +144,17 @@ mcp = FastMCP(
         "Datacyber Dagster MCP. Generates Dagster code-location projects under "
         "/projects/<name>/ (host-mounted) and drives the host Docker daemon "
         "through a mounted socket to build images and run/replace project "
-        "containers attached to the `datacyber_mcp` network. "
+        "containers attached to the `infra-datasynk` network. "
         "Workflow: `create_project` → `add_asset` / `add_job` / `add_schedule` / "
         "`add_sensor` → `deploy` (default: rebuild image from project context, then "
         "replace any existing container with the same name). Use `build_image` alone "
         "when you only need an image without restarting the container. Use "
         "`compose_force_recreate` after "
         "tagging an image (e.g. `dagster_user_code_image`) for an external "
-        "compose stack configured via `DAGSTER_COMPOSE_FILE`. The MCP itself never "
+        "compose stack configured via `DAGSTER_COMPOSE_FILE` (mount `infra/dagster` into "
+        "this service). Use `user_code_refresh` to build `datasynk` as "
+        "`dagster_user_code_image` and force-recreate `dagster_user_code` in one step. "
+        "The MCP itself never "
         "imports Dagster; it only generates code and shells out to `docker`. "
         "Optional PostgreSQL catalog: tools `catalog_get_schema` and `catalog_execute_query` "
         "(prefixed `dagster_` by LangChain) — set DATABASE_URL or CATALOG_DATABASE_URL."
@@ -366,7 +413,7 @@ def deploy(
       ref as ``dagster_build_image``). Set ``rebuild=False`` to only restart the
       container against an image you already built.
     - ``image_name`` — optional fixed image ref; see ``dagster_build_image``.
-    - The container is attached to the ``datacyber_mcp`` network so it can reach
+    - The container is attached to the ``infra-datasynk`` network so it can reach
       ``duckdb-mcp:8040`` / ``scrapper-mcp:8042`` / etc., and publishes
       ``host_port:container_port``.
 
@@ -508,6 +555,95 @@ def compose_force_recreate(
     except Exception as exc:
         log.exception("compose_force_recreate failed")
         return _err(exc, compose_file=cf)
+
+
+@mcp.tool()
+def user_code_refresh(
+    project: str | None = None,
+    image_name: str | None = None,
+    tag: str | None = None,
+    no_cache: bool = False,
+) -> str:
+    """Build the code-location image and recreate the ``dagster_user_code`` container.
+
+    Runs:
+
+    1. ``docker build`` on *project* (default ``DAGSTER_USER_CODE_BUILD_PROJECT``, usually
+       ``datasynk``), tagging as *image_name* (default ``DAGSTER_USER_CODE_IMAGE_NAME``,
+       usually ``dagster_user_code_image``) — same as ``build_image``.
+    2. ``docker compose … up -d --no-build --force-recreate`` for
+       ``DAGSTER_COMPOSE_USER_CODE_SERVICE`` (default ``dagster_user_code``) using
+       ``DAGSTER_COMPOSE_FILE`` and ``DAGSTER_COMPOSE_PROJECT``.
+
+    Requires ``DAGSTER_COMPOSE_FILE`` to exist inside this container (mount host
+    ``infra/dagster`` at ``/dagster-compose`` — see ``mcp_servers/docker-compose.yaml``).
+    """
+    proj = (project or DAGSTER_USER_CODE_BUILD_PROJECT).strip()
+    img_arg = (image_name or DAGSTER_USER_CODE_IMAGE_NAME).strip()
+    cf = (DAGSTER_COMPOSE_FILE or "").strip()
+    log.info(
+        "tool user_code_refresh project=%r image_name=%r tag=%r compose_file=%r",
+        proj,
+        img_arg,
+        tag,
+        cf,
+    )
+    t0 = time.perf_counter()
+    try:
+        scaffold._ensure_project(PROJECTS_ROOT, proj)  # noqa: SLF001
+        image = _full_image_ref(proj, tag=tag, image_name=img_arg)
+        steps: list[dict[str, Any]] = [
+            {
+                "step": "build_image",
+                "result": docker_ops.build_image(
+                    context_dir=PROJECTS_ROOT / proj,
+                    tag=image,
+                    no_cache=no_cache,
+                    pull=False,
+                ),
+            }
+        ]
+        if not cf:
+            raise ValueError(
+                "DAGSTER_COMPOSE_FILE is not set (mount infra/dagster into dagster-mcp; "
+                "see mcp_servers/docker-compose.yaml)"
+            )
+        p = Path(cf)
+        if not p.is_file():
+            raise FileNotFoundError(
+                f"compose file not found: {cf!r} (mount ../infra/dagster:/dagster-compose:ro "
+                "and set DAGSTER_COMPOSE_FILE=/dagster-compose/docker-compose.yaml)"
+            )
+        proj_name = (DAGSTER_COMPOSE_PROJECT or "").strip() or None
+        steps.append(
+            {
+                "step": "compose_force_recreate",
+                "result": docker_ops.compose_force_recreate(
+                    compose_file=p,
+                    services=[DAGSTER_COMPOSE_USER_CODE_SERVICE],
+                    with_build=False,
+                    project_name=proj_name,
+                ),
+            }
+        )
+        log.info(
+            "user_code_refresh ok image=%s ms=%.2f",
+            image,
+            (time.perf_counter() - t0) * 1000,
+        )
+        return _json(
+            {
+                "ok": True,
+                "image": image,
+                "compose_file": str(p),
+                "services": [DAGSTER_COMPOSE_USER_CODE_SERVICE],
+                "compose_project": proj_name or "",
+                "steps": steps,
+            }
+        )
+    except Exception as exc:
+        log.exception("user_code_refresh failed")
+        return _err(exc, project=proj)
 
 
 @mcp.tool()

@@ -1,0 +1,17 @@
+# LiteLLM proxy — https://docs.litellm.ai/docs/proxy/configs
+# LITELLM_MASTER_KEY / LITELLM_SALT_KEY live in .env (not this file).
+# Set OPENAI_API_KEY in .env for OpenAI models below.
+#
+# Langfuse v3: OTEL callback (env: LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_OTEL_HOST).
+# https://docs.litellm.ai/docs/observability/langfuse_otel_integration
+# https://langfuse.com/integrations/gateways/litellm
+# Remove litellm_settings.callbacks if you are not sending traces to Langfuse.
+
+litellm_settings:
+  callbacks: ["langfuse_otel"]
+
+model_list:
+  - model_name: gpt-3.5-turbo
+    litellm_params:
+      model: gpt-3.5-turbo
+      api_key: os.environ/OPENAI_API_KEY

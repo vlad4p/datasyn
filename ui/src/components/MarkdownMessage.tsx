@@ -7,6 +7,7 @@ import type { VisualizationSpec } from "vega-embed";
 import { prepareMarkdownContent } from "../prepareMarkdown";
 import { ChatChart } from "./ChatChart";
 import { MermaidDiagram } from "./MermaidDiagram";
+import { PlotlyChart } from "./PlotlyChart";
 
 function parseLanguage(className?: string): string | undefined {
   const m = /language-([\w+-]+)/.exec(className ?? "");
@@ -90,6 +91,21 @@ function tryVegaSpec(data: unknown): VisualizationSpec | null {
   return null;
 }
 
+type PlotlySpec = {
+  data: unknown[];
+  layout?: Record<string, unknown>;
+  config?: Record<string, unknown>;
+};
+
+function tryPlotlySpec(data: unknown): PlotlySpec | null {
+  if (!isPlainObject(data)) return null;
+  const o = data as Record<string, unknown>;
+  if (!Array.isArray(o.data)) return null;
+  const layout = isPlainObject(o.layout) ? o.layout : undefined;
+  const config = isPlainObject(o.config) ? o.config : undefined;
+  return { data: o.data, layout, config };
+}
+
 function CodeBlock({ className, children }: { className?: string; children?: ReactNode }) {
   const text = String(children).replace(/\n$/, "");
   const lang = chartLanguage(parseLanguage(className));
@@ -113,11 +129,28 @@ function CodeBlock({ className, children }: { className?: string; children?: Rea
     );
   }
 
+  if (lang === "plotly" || lang === "plotly-json" || lang === "plot") {
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      const plotSpec = tryPlotlySpec(parsed);
+      if (plotSpec) return <PlotlyChart spec={plotSpec} />;
+    } catch {
+      /* fall through */
+    }
+    return (
+      <pre className="code-block">
+        <code className={className}>{children}</code>
+      </pre>
+    );
+  }
+
   if (lang === "json") {
     try {
       const data = JSON.parse(text) as unknown;
       const vega = tryVegaSpec(data);
       if (vega) return <ChatChart spec={vega} />;
+      const plotSpec = tryPlotlySpec(data);
+      if (plotSpec) return <PlotlyChart spec={plotSpec} />;
       if (Array.isArray(data) && data.length > 0 && isPlainObject(data[0])) {
         return <JsonArrayTable rows={data as Record<string, unknown>[]} />;
       }
@@ -184,12 +217,18 @@ const mdComponents: Components = {
   },
 };
 
-type Props = { content: string; role: "user" | "assistant" };
+type Props = {
+  content: string;
+  role: "user" | "assistant";
+  /** Nests under assistant for delegated subagent text (Deep Agents `task` stream). */
+  variant?: "default" | "subagent";
+};
 
-export function MarkdownMessage({ content, role }: Props) {
+export function MarkdownMessage({ content, role, variant = "default" }: Props) {
   const prepared = prepareMarkdownContent(content);
+  const sub = role === "assistant" && variant === "subagent" ? " subagent" : "";
   return (
-    <div className={`bubble ${role}`}>
+    <div className={`bubble ${role}${sub}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={mdComponents}

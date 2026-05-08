@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ubika-dagster"
+version = "0.1.0"
+description = "Dagster code location for the ubika-infra MVP deployment."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "Ubika" }]
+dependencies = [
+    "dagster>=1.13",
+    "dagster-graphql>=1.13",
+    "dagster-postgres>=0.27",
+    "dagster-docker>=0.27",
+]
+
+[project.optional-dependencies]
+webserver = ["dagster-webserver>=1.13"]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["ubika_dagster*"]
+
+[tool.dagster]
+module_name = "ubika_dagster.definitions"
+code_location_name = "ubika_dagster"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

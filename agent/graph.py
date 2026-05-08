@@ -6,11 +6,11 @@ import logging
 from pathlib import Path
 
 from deepagents import create_deep_agent
-from deepagents.backends import FilesystemBackend
 from langchain_core.tools import BaseTool
 
 from agent.utils.load_prompt import supervisor_system_prompt
 from agent.utils.litellm_chat import build_chat_model
+from agent.utils.subagents_spec import build_composite_backend, data_analyst_subagent
 from agent.config import settings
 
 logger = logging.getLogger(__name__)
@@ -30,13 +30,14 @@ def build_agent(tools: list[BaseTool], *, response_locale: str = "en"):
         tool_names,
         root,
     )
-    backend = FilesystemBackend(root_dir=str(root), virtual_mode=True)
+    backend = build_composite_backend(project_root=root)
     model = build_chat_model()
     return create_deep_agent(
         model=model,
         tools=tools,
         system_prompt=supervisor_system_prompt(mcp_tool_names=tool_names, response_locale=response_locale),
         backend=backend,
+        subagents=[data_analyst_subagent(tools=tools)],
         name="datacyber-brain",
         skills=["/skills/"],
     )

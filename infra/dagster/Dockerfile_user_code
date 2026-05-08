@@ -1,0 +1,30 @@
+# Image for the gRPC server that exposes user code (assets, jobs, schedules,
+# sensors) to dagster-webserver and dagster-daemon. Reused by DockerRunLauncher
+# for per-run containers because docker-compose.yaml sets DAGSTER_CURRENT_IMAGE
+# to this image.
+#
+# Project layout follows https://docs.dagster.io/guides/build/projects:
+#   src/ubika_dagster/
+#       __init__.py
+#       definitions.py
+#       defs/
+#           __init__.py
+#           csv_pipeline/...
+# The package is `pip install`ed so it is importable as `ubika_dagster`.
+
+FROM python:3.11-slim
+
+WORKDIR /opt/dagster/app
+
+COPY pyproject.toml /opt/dagster/app/pyproject.toml
+COPY README.md /opt/dagster/app/README.md
+COPY src /opt/dagster/app/src
+
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir .
+
+EXPOSE 4000
+
+# Load the code location by module so Dagster picks up the installed package
+# (matches `tool.dagster.module_name` in pyproject.toml).
+CMD ["dagster", "api", "grpc", "-h", "0.0.0.0", "-p", "4000", "-m", "ubika_dagster.definitions"]

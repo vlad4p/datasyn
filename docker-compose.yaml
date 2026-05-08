@@ -1,19 +1,56 @@
-# Datacyber agent (brain) only. MCP services live in `mcp_servers/docker-compose.yaml`.
+# Datacyber aggregator compose (agent + ui + optional integrations).
 #
 # Start order:
-#   1. docker compose -f mcp_servers/docker-compose.yaml up -d
-#   2. docker compose up -d
+#   1. docker compose -f infra/object-storage/docker-compose.yaml up -d
+#   2. docker compose -f mcp_servers/docker-compose.yaml up -d
+#   3. docker compose up -d
 #
-# Both stacks attach to the external network `datacyber_mcp` (created by the MCP compose file).
+# All stacks share external network `infra-datasynk`.
+#
+# Optional Telegram bot (warehouse Q&A via brain):
+#   cp bot_integrations/telegram/.env.example bot_integrations/telegram/.env
+#   # set TELEGRAM_BOT_TOKEN in .env
+#   docker compose --profile telegram up -d telegram-bot
+#
+# MinIO object storage (landing zone):
+#   cp infra/object-storage/.env.example infra/object-storage/.env
+#   docker compose up -d minio
+#
+# JupyterLab (optional analysis notebooks): publish :8888, work persisted in volume `jupyter_work`.
+# Set `JUPYTER_TOKEN` in `.env` (optional `VITE_JUPYTER_TOKEN` same value so the embedded Lab iframe logs in;
+# token is embedded in the UI bundle — use only on trusted networks).
 
 name: datacyber
 
 networks:
-  mcp:
-    name: datacyber_mcp
+  infra:
+    name: infra-datasynk
     external: true
 
+volumes:
+  storage:
+    external: true
+    name: storage
+  jupyter_work:
+
 services:
+  telegram-bot:
+    profiles:
+      - telegram
+    build:
+      context: ./bot_integrations/telegram
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: ./bot_integrations/telegram/.env
+        required: false
+    environment:
+      BRAIN_BASE_URL: http://brain:8000
+    depends_on:
+      - brain
+    networks:
+      - infra
+
   brain:
     build:
       context: .
@@ -23,14 +60,13 @@ services:
     env_file:
       - compose.env
       - .env
+    environment:
+      LITELLM_PROXY_BASE: ${LITELLM_PROXY_BASE:-http://litellm:4000}
+      LITELLM_API_BASE: ${LITELLM_API_BASE:-http://litellm:4000}
     networks:
-      - mcp
+      - infra
     volumes:
       - ./.env:/project/.env:ro
-      # Skills (deepagents SkillsMiddleware reads /project/skills/*/SKILL.md per agent/graph.py)
-      # and AGENTS.md (system prompt source, see agent/utils/load_prompt.py). Bind-mounted RO so
-      # edits are picked up by `docker compose up -d --force-recreate brain` without a rebuild.
-      # The Dockerfile bakes both into the image; these mounts override with the live working copy.
       - ./skills:/project/skills:ro
       - ./AGENTS.md:/project/AGENTS.md:ro
     command:
@@ -46,3 +82,37 @@ services:
       ]
     ports:
       - "8002:8000"
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+      args:
+        VITE_JUPYTER_URL: ${VITE_JUPYTER_URL:-http://localhost:8888}
+        VITE_JUPYTER_TOKEN: ${VITE_JUPYTER_TOKEN:-}
+    environment:
+      VITE_PROXY_TARGET: http://brain:8000
+    depends_on:
+      - brain
+      - jupyter
+    networks:
+      - infra
+    ports:
+      - "8003:8003"
+
+  jupyter:
+    image: quay.io/jupyter/scipy-notebook:latest
+    restart: unless-stopped
+    env_file:
+      - compose.env
+      - path: .env
+        required: false
+    environment:
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN:-}
+    volumes:
+      - jupyter_work:/home/jovyan/work
+      - ./jupyter/jupyter_server_config.py:/home/jovyan/.jupyter/jupyter_server_config.py:ro
+    networks:
+      - infra
+    ports:
+      - "8888:8888"

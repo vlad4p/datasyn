@@ -1,0 +1,53 @@
+services:
+  duckdb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    volumes:
+      - duckdb_data:/data
+    env_file:
+      - .env
+    networks:
+      - infra
+
+  # DuckDB Local UI (same image as MCP stack ``duckdb-ui``). Profile ``ui``: opt-in so the warehouse
+  # file is not locked when only batch/MCP workloads run. **Do not run with ``duckdb-mcp`` up** on the
+  # same DB file — stop MCP first: ``docker compose -f mcp_servers/docker-compose.yaml stop duckdb-mcp``.
+  # https://duckdb.org/docs/current/connect/concurrency.html
+  # Host URL (default): http://127.0.0.1:4213  →  ``make infra-duckdb-ui-up`` or
+  # ``docker compose --profile ui up -d duckdb-ui``
+  duckdb-ui:
+    profiles:
+      - ui
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - duckdb
+    ports:
+      - "${DUCKDB_UI_PUBLISH_PORT:-4213}:4214"
+    environment:
+      DUCKDB_PATH: /data/warehouse.duckdb
+      DUCKDB_UI_PROXY_PORT: "4214"
+      DUCKDB_UI_DUCK_PORT: "4213"
+    volumes:
+      - duckdb_data:/data
+      - storage:/storage:ro
+      - ../../data-local:/data-local:ro
+    networks:
+      - infra
+
+volumes:
+  duckdb_data:
+    external: true
+    name: duckdb_data
+  storage:
+    external: true
+    name: storage
+
+networks:
+  infra:
+    name: infra-datasynk
+    external: true

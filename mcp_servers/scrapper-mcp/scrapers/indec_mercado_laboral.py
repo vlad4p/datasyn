@@ -10,7 +10,9 @@ Scope: **Microdatos (2016 … current year)** in TXT format. Older periods (2003
 REDATAM 2010-2014) use different conventions and live in different paths; this
 module refuses them with a clear error rather than fetching a wrong dataset.
 
-Output layout under ``DATA_LOCAL_ROOT`` (written by this MCP, read by duckdb-mcp):
+Output layout under ``DATA_LOCAL_ROOT`` (local mirror written by this MCP, read by duckdb-mcp).
+Each successful download is also mirrored to MinIO object storage when ``MINIO_*``
+env vars are configured.
 
     <root>/indec/mercado_laboral/EPH/<YEAR>/Q<N>/
         EPH_usu_<N>_Trim_<YEAR>_txt.zip        # original archive
@@ -31,6 +33,7 @@ import httpx
 
 from utils.download import DownloadResult, download_to, head_probe, safe_unzip
 from utils.http import build_client
+from utils.minio_sync import sync_tree_to_minio
 from utils.paths import data_local_root, resolve_under_root
 from utils.period import PeriodItem, parse_period
 
@@ -244,6 +247,8 @@ def download(period: str, *, overwrite: bool = False, unzip: bool = True) -> dic
                 }
             if res.get("ok"):
                 ok_count += 1
+                # Landing-of-record is MinIO object storage; keep local mirror for DuckDB ingestion.
+                res["object_storage"] = sync_tree_to_minio(cand.output_dir, root=root)
             results.append(res)
     return {
         "source": SOURCE_NAME,

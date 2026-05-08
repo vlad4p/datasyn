@@ -79,6 +79,22 @@ def _rewrite_litellm_host_for_docker(url: str) -> str:
     return u.replace("localhost", "host.docker.internal")
 
 
+def _model_provider() -> str:
+    """LLM backend: ``litellm``, ``openrouter`` (direct OpenRouter API), or ``gemini``."""
+    raw = (os.environ.get("MODEL_PROVIDER") or "litellm").strip().lower()
+    if raw in ("or", "openrouter"):
+        return "openrouter"
+    if raw in ("litellm", "gemini"):
+        return raw
+    raise ValueError(
+        f"MODEL_PROVIDER must be 'litellm', 'openrouter', or 'gemini', got {raw!r}"
+    )
+
+
+def _gemini_api_key() -> str | None:
+    return _env_first("GEMINI_API_KEY", "GOOGLE_API_KEY")
+
+
 def _cors_extra_origins() -> tuple[str, ...]:
     """Comma-separated extra browser origins for the FastAPI brain (e.g. Vite on LAN IP)."""
     raw = os.environ.get("CORS_EXTRA_ORIGINS", "").strip()
@@ -100,15 +116,32 @@ def _litellm_base_from_env() -> str | None:
     return _rewrite_litellm_host_for_docker(normalized)
 
 
+OPENROUTER_DEFAULT_API_BASE = "https://openrouter.ai/api/v1"
+
+
+def _openrouter_base_from_env() -> str | None:
+    """OpenRouter OpenAI-compatible root (typically ``…/api/v1``)."""
+    raw = _env_first("OPENROUTER_BASE_URL")
+    if not raw:
+        return None
+    normalized = _normalize_litellm_base(raw)
+    normalized = _rewrite_all_interfaces_litellm_host(normalized)
+    return _rewrite_litellm_host_for_docker(normalized)
+
+
 @dataclass(frozen=True)
 class Settings:
     project_root: Path
     reports_dir: Path
     inbox_dir: Path
     jobs_dir: Path
+    model_provider: str
     chat_model: str | None
     litellm_key: str | None
     litellm_api_base: str | None
+    openrouter_api_key: str | None
+    openrouter_api_base: str | None
+    gemini_api_key: str | None
     duckdb_path_in_process: str
     sql_row_cap: int
     warehouse_api_url: str
@@ -125,9 +158,13 @@ class Settings:
             reports_dir=_path("REPORTS_DIR", str(project_root / "reports")),
             inbox_dir=_path("INBOX_DIR", str(project_root / "inbox")),
             jobs_dir=_path("JOBS_DIR", str(project_root / "tmp" / "process_jobs")),
+            model_provider=_model_provider(),
             chat_model=((os.environ.get("CHAT_MODEL") or "").strip() or None),
             litellm_key=_env_first("LITELLM_KEY", "LITELLM_PROXY_KEY"),
             litellm_api_base=_litellm_base_from_env(),
+            openrouter_api_key=_env_first("OPENROUTER_API_KEY", "OPENROUTER_KEY"),
+            openrouter_api_base=_openrouter_base_from_env(),
+            gemini_api_key=_gemini_api_key(),
             duckdb_path_in_process=os.environ.get("DUCKDB_PATH", "/data/warehouse.duckdb"),
             sql_row_cap=int(os.environ.get("SQL_ROW_CAP", "500")),
             warehouse_api_url=os.environ.get("WAREHOUSE_API_URL", "http://127.0.0.1:8080"),

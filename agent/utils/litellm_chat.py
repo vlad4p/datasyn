@@ -13,7 +13,9 @@ import httpx
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 
-from agent.config import settings
+from agent.config import OPENROUTER_DEFAULT_API_BASE, settings
+
+_GEMINI_DEFAULT_MODEL = "gemini-2.0-flash"
 
 logger = logging.getLogger(__name__)
 
@@ -182,8 +184,64 @@ def explain_litellm_http_exception(exc: BaseException) -> str | None:
     return None
 
 
+def _openrouter_optional_headers() -> dict[str, str]:
+    """OpenRouter rankings / attribution (optional)."""
+    out: dict[str, str] = {}
+    ref = (os.getenv("OPENROUTER_HTTP_REFERER") or "").strip()
+    title = (os.getenv("OPENROUTER_APP_TITLE") or "Datacyber").strip()
+    if ref:
+        out["HTTP-Referer"] = ref
+    if title:
+        out["X-Title"] = title
+    return out
+
+
 async def probe_litellm_proxy() -> dict[str, Any]:
     """GET OpenAI-compatible ``/v1/models``; use ``GET /health/llm`` to debug connection from this process."""
+    if settings.model_provider == "gemini":
+        return {
+            "ok": True,
+            "model_provider": "gemini",
+            "note": "MODEL_PROVIDER=gemini — brain calls Google AI directly; LiteLLM probe skipped.",
+            "chat_model": settings.chat_model or _GEMINI_DEFAULT_MODEL,
+        }
+    if settings.model_provider == "openrouter":
+        base = (settings.openrouter_api_base or OPENROUTER_DEFAULT_API_BASE).strip().rstrip("/")
+        key = settings.openrouter_api_key
+        extra = _openrouter_optional_headers()
+        out: dict[str, Any] = {
+            "model_provider": "openrouter",
+            "openrouter_base": base,
+            "has_key": bool(key),
+            "in_docker": running_in_docker(),
+            "chat_model": settings.chat_model,
+        }
+        if not key:
+            out["ok"] = False
+            out["error"] = (
+                "Set OPENROUTER_API_KEY (or OPENROUTER_KEY). Optional: OPENROUTER_BASE_URL "
+                f"(default {OPENROUTER_DEFAULT_API_BASE})."
+            )
+            return out
+        url = f"{base}/models"
+        try:
+            t = httpx.Timeout(12.0, connect=6.0)
+            headers = {"Authorization": f"Bearer {key}", **extra}
+            async with httpx.AsyncClient(timeout=t, trust_env=False) as client:
+                r = await client.get(url, headers=headers)
+            out["status_code"] = r.status_code
+            out["ok"] = 200 <= r.status_code < 300
+            if not out["ok"]:
+                text = r.text or ""
+                out["body_preview"] = text[:800]
+                parsed = parse_litellm_proxy_response_body(text)
+                if parsed:
+                    out["upstream_error_parsed"] = parsed
+                    out["hint"] = hint_for_litellm_parsed_error(parsed)
+        except Exception as exc:
+            out["ok"] = False
+            out["error"] = str(exc)[:500]
+        return out
     base = settings.litellm_api_base
     key = settings.litellm_key
     out: dict[str, Any] = {
@@ -223,6 +281,15 @@ def _request_timeout() -> float:
         return 300.0
 
 
+def _validate_chat_model_id(model_name: str, *, via: str) -> None:
+    """Reject patterns that always fail upstream (e.g. Vertex: unexpected model name format)."""
+    if "*" in model_name:
+        raise RuntimeError(
+            f"CHAT_MODEL must not contain '*' ({via}). "
+            "Use an exact model id from your provider's catalog (not a glob like gemini/*)."
+        )
+
+
 def _temperature() -> float:
     raw = os.getenv("LITELLM_TEMPERATURE", "0.2")
     try:
@@ -231,8 +298,8 @@ def _temperature() -> float:
         return 0.2
 
 
-def build_chat_model() -> BaseChatModel:
-    """Return a LangChain chat model that talks only to the LiteLLM OpenAI-compatible proxy."""
+def _build_litellm_chat_model() -> BaseChatModel:
+    """LangChain chat model via LiteLLM OpenAI-compatible proxy."""
     if not settings.litellm_key:
         raise RuntimeError(
             "Set LITELLM_KEY or LITELLM_PROXY_KEY to your LiteLLM proxy API key."
@@ -254,6 +321,7 @@ def build_chat_model() -> BaseChatModel:
         raise RuntimeError(
             "Set CHAT_MODEL in the environment to a model id your LiteLLM proxy serves (see GET /v1/models)."
         )
+    _validate_chat_model_id(model_name, via="LiteLLM")
     timeout = _request_timeout()
 
     api_key = settings.litellm_key
@@ -273,7 +341,6 @@ def build_chat_model() -> BaseChatModel:
         api_key[-4:] if len(api_key) >= 4 else api_key,
     )
 
-    # No custom httpx: some LangChain builds reject ``http_async_client`` and 500 every request.
     common = dict(
         base_url=base,
         api_key=api_key,
@@ -284,3 +351,86 @@ def build_chat_model() -> BaseChatModel:
         return ChatOpenAI(**common, timeout=timeout)
     except TypeError:
         return ChatOpenAI(**common, request_timeout=timeout)
+
+
+def _build_openrouter_chat_model() -> BaseChatModel:
+    """OpenRouter via OpenAI-compatible API (https://openrouter.ai/docs)."""
+    key = settings.openrouter_api_key
+    if not key:
+        raise RuntimeError(
+            "MODEL_PROVIDER=openrouter requires OPENROUTER_API_KEY (or OPENROUTER_KEY)."
+        )
+    base = (settings.openrouter_api_base or OPENROUTER_DEFAULT_API_BASE).strip().rstrip("/")
+    if "/v1" not in base:
+        logger.warning(
+            "[OpenRouter] base_url %r does not contain /v1; OpenAI-compatible clients expect "
+            "e.g. https://openrouter.ai/api/v1",
+            base,
+        )
+    model_name = (settings.chat_model or "").strip()
+    if not model_name:
+        raise RuntimeError(
+            "Set CHAT_MODEL to an OpenRouter model id (see https://openrouter.ai/models)."
+        )
+    _validate_chat_model_id(model_name, via="OpenRouter")
+    timeout = _request_timeout()
+    extra_h = _openrouter_optional_headers()
+    logger.info(
+        "[OpenRouter] ChatOpenAI model=%s base_url=%s api_key_suffix=…%s",
+        model_name,
+        base,
+        key[-4:] if len(key) >= 4 else key,
+    )
+    common: dict[str, Any] = dict(
+        base_url=base,
+        api_key=key,
+        model=model_name,
+        temperature=_temperature(),
+    )
+    if extra_h:
+        common["default_headers"] = extra_h
+    try:
+        return ChatOpenAI(**common, timeout=timeout)
+    except TypeError:
+        try:
+            return ChatOpenAI(**common, request_timeout=timeout)
+        except TypeError:
+            common.pop("default_headers", None)
+            try:
+                return ChatOpenAI(**common, timeout=timeout)
+            except TypeError:
+                return ChatOpenAI(**common, request_timeout=timeout)
+
+
+def _build_gemini_chat_model() -> BaseChatModel:
+    """Google Generative Language API via ``langchain-google-genai`` (no LiteLLM)."""
+    key = settings.gemini_api_key
+    if not key:
+        raise RuntimeError(
+            "MODEL_PROVIDER=gemini requires GEMINI_API_KEY (or GOOGLE_API_KEY)."
+        )
+    model_name = (settings.chat_model or "").strip() or _GEMINI_DEFAULT_MODEL
+    _validate_chat_model_id(model_name, via="Gemini")
+    timeout = _request_timeout()
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    logger.info(
+        "[Gemini] ChatGoogleGenerativeAI model=%s google_api_key_suffix=…%s",
+        model_name,
+        key[-4:] if len(key) >= 4 else key,
+    )
+    return ChatGoogleGenerativeAI(
+        model=model_name,
+        google_api_key=key,
+        temperature=_temperature(),
+        timeout=timeout,
+    )
+
+
+def build_chat_model() -> BaseChatModel:
+    """Chat model: LiteLLM proxy (default), OpenRouter direct, or Gemini."""
+    if settings.model_provider == "gemini":
+        return _build_gemini_chat_model()
+    if settings.model_provider == "openrouter":
+        return _build_openrouter_chat_model()
+    return _build_litellm_chat_model()

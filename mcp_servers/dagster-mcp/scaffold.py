@@ -118,10 +118,30 @@ def _write(path: Path, contents: str, *, overwrite: bool = False) -> dict[str, A
 
 
 def list_projects(root: str | Path) -> dict[str, Any]:
-    """List every directory under *root* that looks like a Dagster project."""
-    base = _projects_root(root)
+    """List every directory under *root* that looks like a Dagster project.
+
+    Does not create *root* (unlike ``_projects_root``): listing must never call
+    ``mkdir`` on e.g. ``/projects`` on the host, which macOS denies.
+    """
+    base = Path(root).resolve()
+    if not base.exists():
+        return {
+            "root": str(base),
+            "projects": [],
+            "note": "projects root does not exist; set DAGSTER_PROJECTS_ROOT or create/mount it",
+        }
+    if not base.is_dir():
+        raise ValueError(f"projects root is not a directory: {base}")
     entries = []
-    for child in sorted(base.iterdir()):
+    try:
+        children = sorted(base.iterdir())
+    except PermissionError as exc:
+        return {
+            "root": str(base),
+            "projects": [],
+            "note": f"permission denied listing projects root ({exc})",
+        }
+    for child in children:
         if not child.is_dir():
             continue
         if _package_root(child) is None:

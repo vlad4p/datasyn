@@ -1,0 +1,7 @@
+load_from:
+  # Each entry corresponds to a user-code service in docker-compose.yaml.
+  # Add more entries (on different ports) to load additional code locations.
+  - grpc_server:
+      host: dagster_user_code
+      port: 4000
+      location_name: "indec_mercado_laboral"

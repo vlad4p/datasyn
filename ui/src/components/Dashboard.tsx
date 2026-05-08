@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { BrainHealth, SkillInventoryItem, ToolInventoryItem } from "../api";
-import { getHealth, getToolsInventory } from "../api";
+import type {
+  BrainHealth,
+  SkillInventoryItem,
+  ToolInventoryItem,
+  WarehouseTablesResponse,
+} from "../api";
+import { getHealth, getToolsInventory, getWarehouseTables } from "../api";
 
 import type { UiLocale } from "../locale";
 import { uiStrings } from "../locale";
 
-type Props = { className?: string; locale: UiLocale };
+type Props = { className?: string; locale: UiLocale; id?: string };
 type ToolMeta = {
   name: string;
   category: "mcp" | "helper" | "skill";
@@ -100,16 +105,24 @@ function inferToolMeta(name: string): ToolMeta {
   };
 }
 
-export function Dashboard({ className, locale }: Props) {
+const EMPTY_WAREHOUSE: WarehouseTablesResponse = {
+  status: "ok",
+  layers: { bronze: [], silver: [], gold: [] },
+  other: [],
+};
+
+export function Dashboard({ className, locale, id }: Props) {
   const d = uiStrings(locale).dashboard;
   const [health, setHealth] = useState<string>("—");
   const [healthError, setHealthError] = useState<string | null>(null);
   const [, setHealthPayload] = useState<BrainHealth | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedTool, setSelectedTool] = useState<string | null>(null);
+  /** Selected MCP server key, or ``__helpers__`` / ``__skills__`` for non-MCP groups. */
+  const [selectedServer, setSelectedServer] = useState<string | null>(null);
   const [inventoryTools, setInventoryTools] = useState<ToolInventoryItem[]>([]);
   const [inventorySkills, setInventorySkills] = useState<SkillInventoryItem[]>([]);
   const [inventoryError, setInventoryError] = useState<string | null>(null);
+  const [warehouse, setWarehouse] = useState<WarehouseTablesResponse>(EMPTY_WAREHOUSE);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -136,6 +149,16 @@ export function Dashboard({ className, locale }: Props) {
       setInventoryTools([]);
       setInventorySkills([]);
       setInventoryError(String(e));
+    }
+    try {
+      const w = await getWarehouseTables();
+      setWarehouse(w);
+    } catch (e) {
+      setWarehouse({
+        ...EMPTY_WAREHOUSE,
+        status: "error",
+        error: String(e),
+      });
     }
 
     setLoading(false);
@@ -169,30 +192,53 @@ export function Dashboard({ className, locale }: Props) {
     for (const row of [...fromInventory, ...skillRows]) {
       if (!map.has(row.name)) map.set(row.name, row);
     }
-    const categoryOrder: Record<ToolMeta["category"], number> = {
-      mcp: 0,
-      skill: 1,
-      helper: 2, // Deep Agents helpers at the bottom
-    };
-    return Array.from(map.values()).sort((a, b) => {
-      const diff = categoryOrder[a.category] - categoryOrder[b.category];
-      if (diff !== 0) return diff;
-      return a.name.localeCompare(b.name);
-    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [d.skillBlurb, d.skillExample, inventorySkills, inventoryTools]);
-  const selectedMeta = useMemo(
-    () => toolRows.find((t) => t.name === selectedTool) ?? toolRows[0] ?? null,
-    [toolRows, selectedTool],
-  );
+
+  const serverGroups = useMemo(() => {
+    const mcp = new Set<string>();
+    for (const t of inventoryTools) {
+      if (t.source === "mcp") {
+        const s = (t.server || "").trim() || inferToolMeta(t.name).mcpServer;
+        mcp.add(s);
+      }
+    }
+    const priority = ["duckdb", "scrapper", "dagster"];
+    const ordered = priority.filter((x) => mcp.has(x));
+    const rest = [...mcp].filter((x) => !priority.includes(x)).sort((a, b) => a.localeCompare(b));
+    const out = [...ordered, ...rest];
+    if (inventoryTools.some((t) => t.source === "helper")) out.push("__helpers__");
+    if (inventorySkills.length > 0) out.push("__skills__");
+    return out;
+  }, [inventoryTools, inventorySkills]);
+
+  const toolsForServer = useMemo(() => {
+    if (!selectedServer) return [];
+    if (selectedServer === "__helpers__") return toolRows.filter((t) => t.category === "helper");
+    if (selectedServer === "__skills__") return toolRows.filter((t) => t.category === "skill");
+    return toolRows.filter((t) => t.category === "mcp" && t.mcpServer === selectedServer);
+  }, [toolRows, selectedServer]);
 
   useEffect(() => {
-    if (!selectedTool && toolRows.length > 0) {
-      setSelectedTool(toolRows[0].name);
+    if (serverGroups.length === 0) {
+      setSelectedServer(null);
+      return;
     }
-  }, [selectedTool, toolRows]);
+    setSelectedServer((prev) => (prev && serverGroups.includes(prev) ? prev : serverGroups[0]!));
+  }, [serverGroups]);
+
+  const serverChipLabel = useCallback(
+    (key: string) => {
+      if (key === "__helpers__") return d.helpersGroup;
+      if (key === "__skills__") return d.skillsGroup;
+      const pretty: Record<string, string> = { duckdb: "DuckDB", scrapper: "Scrapper", dagster: "Dagster" };
+      return pretty[key] ?? (key.charAt(0).toUpperCase() + key.slice(1));
+    },
+    [d.helpersGroup, d.skillsGroup],
+  );
 
   return (
-    <aside className={`dashboard ${className ?? ""}`}>
+    <aside id={id} className={`dashboard ${className ?? ""}`}>
       <div className="dashboard-header">
         <h2>{d.title}</h2>
         <button type="button" className="btn ghost" onClick={() => void refresh()} disabled={loading}>
@@ -200,77 +246,113 @@ export function Dashboard({ className, locale }: Props) {
         </button>
       </div>
 
-      <section className="dash-card">
-        <h3>{d.toolsInModel}</h3>
-        <dl className="dash-dl">
+      <section className="dash-card warehouse-panel" aria-label={d.warehouseTitle}>
+        <h3>{d.warehouseTitle}</h3>
+        <p className="small muted mt0">{d.warehouseHint}</p>
+        {(warehouse.status === "error" || warehouse.error) && (
+          <p className="error small dash-detail">{warehouse.error ?? "Warehouse unavailable"}</p>
+        )}
+        <div className="warehouse-layer-stack">
+          {(["bronze", "silver", "gold"] as const).map((layer) => {
+            const title =
+              layer === "bronze" ? d.layerBronze : layer === "silver" ? d.layerSilver : d.layerGold;
+            const items = warehouse.layers[layer];
+            return (
+              <div key={layer} className={`warehouse-layer layer-${layer}`}>
+                <div className="warehouse-layer-head">
+                  <h4>{title}</h4>
+                  <span className="tiny muted">{items.length}</span>
+                </div>
+                <ul className="warehouse-table-list">
+                  {items.length === 0 ? (
+                    <li className="tiny muted">{d.emptyLayer}</li>
+                  ) : (
+                    items.map((t) => (
+                      <li key={`${layer}-${t.name}`}>
+                        <span className="mono name">{t.name}</span>
+                        <span className="warehouse-kind">{t.table_type.replace(/^BASE\s+/i, "")}</span>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+        {warehouse.other.length > 0 && (
+          <details className="dash-details warehouse-other">
+            <summary>
+              {d.layerOther} ({warehouse.other.length})
+            </summary>
+            <ul className="warehouse-table-list tight">
+              {warehouse.other.map((t) => (
+                <li key={`${t.schema}.${t.name}`}>
+                  <span className="mono schema">{t.schema}</span>
+                  <span className="mono name">{t.name}</span>
+                  <span className="warehouse-kind">{t.table_type.replace(/^BASE\s+/i, "")}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </section>
+
+      <section className="dash-card mcp-panel" aria-label={d.mcpSectionTitle}>
+        <h3>{d.mcpSectionTitle}</h3>
+        <dl className="dash-dl compact-status">
           <dt>{d.status}</dt>
           <dd>
             <span className={`pill ${health === "ok" ? "ok" : "bad"}`}>{loading ? "…" : health}</span>
           </dd>
         </dl>
-        {healthError && (
-          <p className="error small dash-detail">
-            {healthError}
-          </p>
-        )}
-        <p className="small muted mt">
-          {d.toolsBlurb}
-        </p>
+        {healthError && <p className="error small dash-detail">{healthError}</p>}
+        <p className="small muted mt0">{d.mcpSectionBlurb}</p>
         {inventoryError && <p className="error small dash-detail">{inventoryError}</p>}
-        <p className="tiny muted mt">
-          {d.tableHint(toolRows.length)}
-        </p>
-        <div className="dash-table-wrap compact scroll-10">
-          <table className="dash-table compact">
-            <thead>
-              <tr>
-                <th>{d.colTool}</th>
-                <th>{d.colType}</th>
-                <th>{d.colMcp}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {toolRows.map((tool) => (
-                <tr
-                  key={tool.name}
-                  className={selectedMeta?.name === tool.name ? "selected" : ""}
-                  onClick={() => setSelectedTool(tool.name)}
-                >
-                  <td className="mono">{tool.name}</td>
-                  <td>{tool.category}</td>
-                  <td>{tool.mcpServer}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+        <div className="mcp-pick-row">
+          <span className="tiny muted pick-label">{d.pickServer}</span>
+          <div className="mcp-server-chips" role="tablist" aria-label={d.pickServer}>
+            {serverGroups.map((key) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={selectedServer === key}
+                className={`mcp-server-chip ${selectedServer === key ? "selected" : ""}`}
+                onClick={() => setSelectedServer(key)}
+              >
+                {serverChipLabel(key)}
+              </button>
+            ))}
+          </div>
         </div>
-        {selectedMeta && (
-          <article className="tool-card unified">
-            <header className="tool-card-header">
-              <h4 className="mono">{selectedMeta.title}</h4>
-              <span className={`pill cat-${selectedMeta.category}`}>{selectedMeta.category}</span>
-            </header>
-            <p className="small">{selectedMeta.description}</p>
-            <dl className="dash-dl tool-card-info">
-              <dt>{d.name}</dt>
-              <dd className="mono">{selectedMeta.name}</dd>
-              <dt>{d.type}</dt>
-              <dd>{selectedMeta.category}</dd>
-              <dt>{d.mcpServer}</dt>
-              <dd>{selectedMeta.mcpServer}</dd>
-              {selectedMeta.sourcePath && (
-                <>
-                  <dt>{d.path}</dt>
-                  <dd className="mono">{selectedMeta.sourcePath}</dd>
-                </>
-              )}
-            </dl>
-            <div className="tool-card-section">
-              <h5>{d.exampleUsage}</h5>
-              <p className="small muted">{selectedMeta.example}</p>
-            </div>
-          </article>
-        )}
+
+        <p className="tiny muted mcp-tool-count">{d.toolCount(toolsForServer.length)}</p>
+
+        <div className="mcp-tool-cards-grid">
+          {toolsForServer.length === 0 ? (
+            <p className="small muted mcp-empty">{loading ? "…" : "—"}</p>
+          ) : (
+            toolsForServer.map((tool) => (
+              <article key={tool.name} className="mcp-tool-card">
+                <header className="mcp-tool-card-head">
+                  <span className="mono mcp-tool-name">{tool.name}</span>
+                  <span className={`pill sm cat-${tool.category}`}>{tool.category}</span>
+                </header>
+                <p className="mcp-tool-desc">{tool.description}</p>
+                {tool.sourcePath && (
+                  <p className="mcp-tool-path mono tiny muted">
+                    {tool.sourcePath}
+                  </p>
+                )}
+                <div className="mcp-tool-example">
+                  <span className="tiny muted">{d.exampleUsage}</span>
+                  <p className="small muted">{tool.example}</p>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
       </section>
     </aside>
   );

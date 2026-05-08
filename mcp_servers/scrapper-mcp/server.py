@@ -1,9 +1,9 @@
 """Scrapper MCP (FastMCP HTTP): web scrapers for Datacyber sources.
 
 Currently ships one scraper: ``indec_mercado_laboral`` — INDEC Encuesta Permanente
-de Hogares (EPH), microdatos en formato TXT. Each scraper writes to the shared
-``/data-local/`` mount so the warehouse (duckdb-mcp) can read the files through
-``read_csv_auto`` / ``glob``.
+de Hogares (EPH), microdatos en formato TXT. The scraper writes to local
+``/data-local/`` (for DuckDB compatibility) and mirrors files to MinIO object
+storage when configured (landing-of-record).
 
 Tools (LangChain prefixes them with the MCP key ``scrapper``):
 
@@ -44,12 +44,15 @@ HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8042"))
 MCP_HTTP_PATH = os.environ.get("MCP_HTTP_PATH", "/mcp")
 DATA_LOCAL_ROOT = Path(os.environ.get("DATA_LOCAL_ROOT", "/data-local")).resolve()
+MINIO_ENDPOINT = (os.environ.get("MINIO_ENDPOINT") or "").strip()
+MINIO_BUCKET = (os.environ.get("MINIO_BUCKET") or "data-local").strip()
 
 mcp = FastMCP(
     name="scrapper-mcp",
     instructions=(
         "Datacyber scraper MCP: downloads published datasets into /data-local/ so the "
-        "warehouse (duckdb-mcp) can read them. Sources: INDEC EPH microdatos (TXT). "
+        "warehouse (duckdb-mcp) can read them, and mirrors those files to MinIO object "
+        "storage (`MINIO_*` envs) as landing-of-record. Sources: INDEC EPH microdatos (TXT). "
         "Use `list_sources` to see what is supported, `indec_mercado_laboral_list` to "
         "preview candidates (no download), and `indec_mercado_laboral_download` to "
         "persist the ZIPs + extracted TXT + metadata.json. Period input examples: "
@@ -71,6 +74,11 @@ def list_sources() -> str:
     return _json(
         {
             "data_local_root": str(DATA_LOCAL_ROOT),
+            "landing_of_record": {
+                "type": "minio" if MINIO_ENDPOINT else "local-only",
+                "endpoint": MINIO_ENDPOINT or None,
+                "bucket": MINIO_BUCKET if MINIO_ENDPOINT else None,
+            },
             "sources": [
                 {
                     "key": "indec_mercado_laboral",

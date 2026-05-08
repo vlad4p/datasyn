@@ -32,7 +32,7 @@ host daemon (mounted via `/var/run/docker.sock`).
 | `dagster_add_schedule`     | `ScheduleDefinition` linked to an existing job (`cron` defaults to `0 9 * * *`). |
 | `dagster_add_sensor`       | `@sensor` linked to an existing job (default body emits `SkipReason`). |
 | `dagster_build_image`      | `docker build`; default tag `<prefix>/<project>:latest`, optional `image_name` (e.g. `dagster_user_code_image`). |
-| `dagster_deploy`           | Default: `docker build` from the project dir, then replace `<prefix>-<project>` on `datacyber_mcp`. Optional `image_name`; set `rebuild=false` to skip build and only recreate the container. |
+| `dagster_deploy`           | Default: `docker build` from the project dir, then replace `<prefix>-<project>` on `infra-datasynk`. Optional `image_name`; set `rebuild=false` to skip build and only recreate the container. |
 | `dagster_stop` / `dagster_remove` | Lifecycle (`docker stop`, `docker rm -f`, optional image cleanup). |
 | `dagster_logs`             | Tail container logs. |
 | `dagster_status`           | List containers labeled `datacyber.dagster.project`. |
@@ -79,7 +79,7 @@ dagster_deploy           project="indec_pipeline" host_port=3001 container_port=
 
 ## Deployment expectations
 
-The Dagster project containers join the `datacyber_mcp` Docker network so
+The Dagster project containers join the `infra-datasynk` Docker network so
 they can reach the rest of the stack by hostname (`duckdb-mcp:8040`,
 `scrapper-mcp:8042`).
 
@@ -94,7 +94,7 @@ The Dagster UI ports start at `3001` to avoid colliding with `langfuse` on
 | `PORT`                         | `8043`                | FastMCP HTTP port. |
 | `MCP_HTTP_PATH`                | `/mcp`                | FastMCP HTTP path. |
 | `DAGSTER_PROJECTS_ROOT`        | `/projects`           | Host-mounted volume containing scaffolded projects. |
-| `DAGSTER_PROJECT_NETWORK`      | `datacyber_mcp`       | Docker network the deployed containers join. |
+| `DAGSTER_PROJECT_NETWORK`      | `infra-datasynk`      | Docker network the deployed containers join. |
 | `DAGSTER_IMAGE_PREFIX`         | `dagster`             | Image name = `<prefix>/<project>:<tag>`. |
 | `DAGSTER_CONTAINER_PREFIX`     | `dagster`             | Container name = `<prefix>-<project>`. |
 | `DAGSTER_DEFAULT_HOST_PORT`    | `3001`                | Used when `dagster_deploy host_port=0`. |

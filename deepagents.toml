@@ -6,6 +6,7 @@
 #   2. "## Runtime MCP tools (authoritative)" — concrete tool names from the bound LangChain tools
 #   3. Reports directory line from agent.config.settings.reports_dir
 # Skills discovery: agent/graph.py passes skills=["/skills/"] so every ./skills/*/SKILL.md is injected.
+# Backend: CompositeBackend — host project root + ephemeral `/sandbox/` (StateBackend). Subagent `data-analyst`: DuckDB+Dagster MCP tools only (`agent/utils/subagents_spec.py`).
 
 [agent]
 name = "datacyber-brain"

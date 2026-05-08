@@ -31,7 +31,6 @@ COPY templates ./templates
 ENV HOST=0.0.0.0 \
     PORT=8043 \
     MCP_HTTP_PATH=/mcp \
-    DAGSTER_PROJECTS_ROOT=/projects \
     DAGSTER_PROJECT_NETWORK=datacyber_mcp \
     DAGSTER_IMAGE_PREFIX=dagster \
     DAGSTER_CONTAINER_PREFIX=dagster \

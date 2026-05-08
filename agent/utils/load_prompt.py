@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 from agent.config import settings
+from agent.deep_agent_constants import DATA_ANALYST_SUBAGENT_TYPE, SANDBOX_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,23 @@ def supervisor_system_prompt(
             "\n\n## Runtime Deep Agents tools (authoritative)\n\n"
             "These are runtime-provided helper tools available in this process:\n\n"
             + "\n".join(f"- `{n}`" for n in deepagents_helpers)
+            + "\n\n### Filesystem: sandbox (ephemeral)\n\n"
+            f"Virtual path **`{SANDBOX_PREFIX}`** is a **session sandbox** (not persisted to disk). "
+            "Use it for scratch notes, intermediate extracts, and drafts. "
+            f"Final user-facing reports and artifacts go under `{settings.reports_dir}` (or paths you agree with the user). "
+            "The main project tree is still available for reading skills, `AGENTS.md`, and existing reports.\n\n"
+            "### `task`: `subagent_type` (mandatory — pick one)\n\n"
+            "The **`task`** tool delegates work to a short-lived subagent. **`subagent_type`** must be "
+            "exactly one of the configured types below—anything else fails.\n\n"
+            "- **`general-purpose`** — Full MCP tool set (same servers as this agent): scraping, DuckDB, Dagster, "
+            "skills, filesystem. Use for complex multi-step work that benefits from isolation, parallel delegations, "
+            "or heavy context.\n\n"
+            f"- **`{DATA_ANALYST_SUBAGENT_TYPE}`** — **DuckDB + Dagster MCP tools only** (no scrapper). "
+            "Use for deep warehouse analytics, multi-step SQL, catalog/metadata lookups via "
+            "`dagster_catalog_*`, and Dagster code-location operations—especially when you want to keep "
+            "the main thread small or delegate pipeline/database analysis without scraper noise.\n\n"
+            "Put detailed instructions in **`description`** (goal, constraints, expected return shape). "
+            "For trivial chat or one-off tool calls, answer directly—do **not** spawn a subagent."
         )
     skills = _runtime_skills_inventory()
     if skills:
@@ -148,8 +166,17 @@ def supervisor_system_prompt(
             "to modify `/projects/...` because that path belongs to the dagster-mcp container "
             "mount and helper-tool updates there can be misleading.\n\n"
             "Never execute SQL/code with placeholder paths (`path/to/...`, `your_file_here`, etc.). "
-            "First resolve a real absolute path from tool output (typically under `/data-local/...`) "
-            "and then reuse that exact path."
+            "First resolve a real absolute path from tool output (typically under `/data-local/...`, "
+            "which is the DuckDB compatibility mirror of MinIO landing data) "
+            "and then reuse that exact path.\n\n"
+            "## Delegation hint\n\n"
+            f"When the user needs substantial **database analytics**, **catalog SQL**, or **Dagster pipeline work**, "
+            f"prefer spawning **`task`** with **`subagent_type=\"{DATA_ANALYST_SUBAGENT_TYPE}\"`** so analysis runs "
+            "in an isolated context with only DuckDB and Dagster tools; handle scraping and mixed workflows "
+            "yourself or via **`general-purpose`**.\n\n"
+            "If they ask for **tablas**, **DISTINCT**, **agrupar por descripción**, or similar: put in **`description`** "
+            "the **fully qualified table**, columns, and that the return must include **Markdown pipe tables** "
+            "plus **fenced SQL** and counts—not prose-only summaries."
         )
     parts.append(f"\n\nWrite Markdown reports under: `{settings.reports_dir}`.")
     parts.append(_response_language_suffix(response_locale))

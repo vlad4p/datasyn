@@ -16,15 +16,21 @@
 # Stop `duckdb-ui` (or run without profile `ui`) before agent ingest if you see
 # warehouse lock errors — https://duckdb.org/docs/current/connect/concurrency.html
 #
-# Shares network `datacyber_mcp` with the root `docker-compose.yaml` (brain) so
+# Shares network `infra-datasynk` with root and infra stacks so
 # mcp.json hostnames like `duckdb-mcp` resolve.
+#
+# MinIO (``scrapper-mcp``): use ``SCRAPPER_MINIO_ACCESS_KEY`` / ``SCRAPPER_MINIO_SECRET_KEY``
+# (see ``mcp_servers/.env.example``). Do **not** reuse root ``MINIO_ROOT_*`` from Langfuse
+# — those often target a different MinIO and cause ``InvalidAccessKeyId`` on
+# ``http://datacyber-object-minio:9000`` (``infra/object-storage``; avoid bare ``minio``
+# on ``infra-datasynk`` when Langfuse also publishes ``minio``).
 
 name: datacyber-mcp
 
 networks:
   mcp:
-    name: datacyber_mcp
-    driver: bridge
+    name: infra-datasynk
+    external: true
 
 # --- Data layout (validate paths against Dagster / DuckDB code) ---
 #
@@ -32,25 +38,31 @@ networks:
 # (the database file). **This named volume is not ``data-local``** — the DB file lives
 # under ``/data`` only. Landing-zone files (scrapes, CSVs) live under ``/data-local``.
 #
-# ``/data-local`` — **landing zone**: host directory ``../data-local`` (repo
-# ``data-local/``) bind-mounted read-only on ``duckdb``, ``duckdb-ui``, ``duckdb-mcp``,
-# and read-write on ``scrapper-mcp``. DuckDB MCP sets ``DATA_LOCAL_ROOT=/data-local``.
-# INDEC paths in code default to ``/data-local/indec/...`` (PDF variables, EPH base).
+# ``/data-local`` — local mirror for compatibility: host directory ``../data-local`` bind-mounted
+# read-only on ``duckdb``, ``duckdb-ui``, ``duckdb-mcp``,
+# and read-write on ``scrapper-mcp``. Primary landing-of-record is MinIO object storage
+# (service ``minio`` in root compose); ``scrapper-mcp`` mirrors downloaded files there.
+# INDEC paths in code default to ``/data-local/indec/...`` for DuckDB ingestion.
 #
 # ``dagster-mcp`` ``DAGSTER_DEPLOY_VOLUMES`` defaults to only ``duckdb_data:/data``.
 # MCP-deployed user-code containers therefore see the warehouse but **not** ``/data-local``
 # unless you append a **host-absolute** bind, e.g. in ``mcp_servers/.env``:
-#   DAGSTER_DEPLOY_VOLUMES=datacyber-mcp_duckdb_data:/data;/abs/path/datacyber/data-local:/data-local:ro
+#   DAGSTER_DEPLOY_VOLUMES=duckdb_data:/data;/abs/path/datacyber/data-local:/data-local:ro
 # ``INDEC_EPH_BASE`` / ``INDEC_EPH_VARIABLES_PDF`` to paths that exist in that container).
+#
+# ``dagster-mcp`` also mounts ``../infra/dagster`` at ``/dagster-compose`` so
+# ``compose_force_recreate`` and ``user_code_refresh`` can drive the host
+# ``dagster`` compose project (``dagster_user_code`` service).
 
 services:
   duckdb:
     build:
-      context: ../docker/duckdb
+      context: ../infra/duckdb
       dockerfile: Dockerfile
     restart: unless-stopped
     volumes:
       - duckdb_data:/data
+      - storage:/storage:ro
       - ../data-local:/data-local:ro
     environment:
       DUCKDB_PATH: /data/warehouse.duckdb
@@ -66,7 +78,7 @@ services:
     profiles:
       - ui
     build:
-      context: ./duckdb-ui
+      context: ../infra/duckdb/ui
       dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
@@ -79,6 +91,7 @@ services:
       DUCKDB_UI_DUCK_PORT: "4213"
     volumes:
       - duckdb_data:/data
+      - storage:/storage:ro
       - ../data-local:/data-local:ro
     networks:
       - mcp
@@ -102,6 +115,7 @@ services:
       MCP_HTTP_PATH: /mcp
     volumes:
       - duckdb_data:/data
+      - storage:/storage:ro
       - ../data-local:/data-local:ro
     networks:
       - mcp
@@ -115,19 +129,51 @@ services:
       - "8042:8042"
     environment:
       DATA_LOCAL_ROOT: /data-local
+      MINIO_SYNC_ENABLED: "true"
+      MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://datacyber-object-minio:9000}"
+      # Credentials for ``infra/object-storage`` MinIO only (defaults match its .env.example).
+      MINIO_ACCESS_KEY: "${SCRAPPER_MINIO_ACCESS_KEY:-minioadmin}"
+      MINIO_SECRET_KEY: "${SCRAPPER_MINIO_SECRET_KEY:-minioadmin123}"
+      MINIO_BUCKET: "${MINIO_BUCKET:-data-local}"
+      MINIO_SECURE: "${MINIO_SECURE:-false}"
+      MINIO_PREFIX: "${MINIO_PREFIX:-}"
       HOST: "0.0.0.0"
       PORT: "8042"
       MCP_HTTP_PATH: /mcp
       HTTP_TIMEOUT_SECONDS: "60"
       HTTP_USER_AGENT: "Datacyber-Scrapper/1.0 (+https://github.com/datacyber)"
     volumes:
+      - storage:/storage:ro
       - ../data-local:/data-local
+    networks:
+      - mcp
+
+  storage-mcp:
+    build:
+      context: ./storage-mcp
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8044:8044"
+    environment:
+      MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://datacyber-object-minio:9000}"
+      MINIO_ACCESS_KEY: "${SCRAPPER_MINIO_ACCESS_KEY:-minioadmin}"
+      MINIO_SECRET_KEY: "${SCRAPPER_MINIO_SECRET_KEY:-minioadmin123}"
+      MINIO_DEFAULT_BUCKET: "${MINIO_BUCKET:-data-local}"
+      MINIO_SECURE: "${MINIO_SECURE:-false}"
+      HOST: "0.0.0.0"
+      PORT: "8044"
+      MCP_HTTP_PATH: /mcp
+      MAX_TEXT_BYTES: "5242880"
+      LIST_PAGE_SIZE: "1000"
+    volumes:
+      - storage:/storage
     networks:
       - mcp
 
   # Dagster MCP: scaffolds Dagster projects under `dagster-mcp/projects/` and
   # drives the host Docker daemon (mounted socket) to build images and run/replace
-  # project containers. Project containers join the same `datacyber_mcp` network
+  # project containers. Project containers join the same `infra-datasynk` network
   # so they can reach `duckdb-mcp:8040`, `scrapper-mcp:8042`, etc.
   #
   # Security note: this service mounts /var/run/docker.sock and therefore has
@@ -148,25 +194,29 @@ services:
       DATABASE_URL: "${DATABASE_URL:-}"
       CATALOG_DATABASE_URL: "${CATALOG_DATABASE_URL:-}"
       DAGSTER_PROJECTS_ROOT: /projects
-      DAGSTER_PROJECT_NETWORK: datacyber_mcp
+      DAGSTER_PROJECT_NETWORK: infra-datasynk
       DAGSTER_IMAGE_PREFIX: dagster
       DAGSTER_CONTAINER_PREFIX: dagster
       DAGSTER_DEFAULT_HOST_PORT: "3001"
       DAGSTER_WEBSERVER_PORT: "3000"
-      # Optional external compose stack (for user-code force recreate):
-      # set these in your local environment if you use compose_force_recreate.
-      DAGSTER_COMPOSE_FILE: "${DAGSTER_COMPOSE_FILE:-}"
-      DAGSTER_COMPOSE_PROJECT: "${DAGSTER_COMPOSE_PROJECT:-}"
+      # External compose stack: mount ``../infra/dagster`` → ``/dagster-compose`` and point here so
+      # ``compose_force_recreate`` / ``user_code_refresh`` can recreate ``dagster_user_code``.
+      DAGSTER_COMPOSE_FILE: "${DAGSTER_COMPOSE_FILE:-/dagster-compose/docker-compose.yaml}"
+      DAGSTER_COMPOSE_PROJECT: "${DAGSTER_COMPOSE_PROJECT:-dagster}"
       DAGSTER_COMPOSE_USER_CODE_SERVICE: "${DAGSTER_COMPOSE_USER_CODE_SERVICE:-dagster_user_code}"
+      # ``user_code_refresh``: ``docker build`` context project name + image repo (matches infra ``dagster_user_code``).
+      DAGSTER_USER_CODE_BUILD_PROJECT: "${DAGSTER_USER_CODE_BUILD_PROJECT:-datasyn}"
+      DAGSTER_USER_CODE_IMAGE_NAME: "${DAGSTER_USER_CODE_IMAGE_NAME:-dagster_user_code_image}"
       # Semicolon-separated ``docker run -v`` sources for MCP ``deploy`` (host daemon).
       # Default: warehouse only. Add ``data-local`` with a **host-absolute** path so
       # user-code sees the same landing zone as ``duckdb-mcp`` (``/data-local/indec/...``).
-      # Example (``mcp_servers/.env``): …duckdb_data:/data;/abs/.../datacyber/data-local:/data-local:ro
-      DAGSTER_DEPLOY_VOLUMES: "datacyber-mcp_duckdb_data:/data"
+      # Example (``mcp_servers/.env``): …duckdb_data:/data;storage:/storage;/abs/.../datacyber/data-local:/data-local:ro
+      DAGSTER_DEPLOY_VOLUMES: "duckdb_data:/data;storage:/storage"
     volumes:
       - ./dagster-mcp/projects:/projects
-      # Optional: mount your external compose directory when using compose_force_recreate.
-      # - /abs/path/to/your/compose/dir:/dagster-compose:ro
+      # Infra Dagster stack (host repo ``infra/dagster``) — required for ``compose_force_recreate`` /
+      # ``user_code_refresh`` to find ``docker-compose.yaml`` inside the container.
+      - ../infra/dagster:/dagster-compose:ro
       # Same landing tree as ``duckdb-mcp`` (read-only); path for ``deploy`` is still set via env above.
       - ../data-local:/data-local:ro
       - /var/run/docker.sock:/var/run/docker.sock
@@ -175,3 +225,8 @@ services:
 
 volumes:
   duckdb_data:
+    external: true
+    name: duckdb_data
+  storage:
+    external: true
+    name: storage

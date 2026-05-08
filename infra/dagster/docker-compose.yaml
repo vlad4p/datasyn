@@ -1,0 +1,239 @@
+# Aligned with https://github.com/dagster-io/dagster/tree/master/examples/deploy_docker
+# Three long-running services (postgres, user-code gRPC server, webserver, daemon)
+# plus per-run containers launched by DockerRunLauncher via /var/run/docker.sock.
+#
+# Co-location with ../langfuse/docker-compose.yml and ../litellm/docker-compose.yaml:
+#   Langfuse binds 3000, 3030, 5432, 6379, 8123, 9000, 9090, 9091 on localhost.
+#   LiteLLM  binds 4000 and 127.0.0.1:5434.
+#   Dagster webserver is exposed on host port 3001 (mapped to container 3000)
+#   so it does not clash with Langfuse on 3000. Postgres is kept internal
+#   (no host port) to avoid any clash with the other Postgres services.
+
+services:
+  # Postgres DB used by Dagster for run storage, schedule storage, and event log storage.
+  dagster_postgresql:
+    image: postgres:16-alpine
+    container_name: dagster_postgresql
+    environment:
+      POSTGRES_USER: "postgres_user"
+      POSTGRES_PASSWORD: "postgres_password"
+      POSTGRES_DB: "postgres_db"
+    volumes:
+      - dagster-db-data:/var/lib/postgresql/data
+    networks:
+      - infra
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres_user -d postgres_db"]
+      interval: 10s
+      timeout: 8s
+      retries: 5
+    restart: unless-stopped
+
+  # gRPC server that loads user code. DAGSTER_CURRENT_IMAGE tells the DockerRunLauncher
+  # to reuse this same image for per-run containers. Add more user-code services on
+  # their own ports and entries in workspace.yaml for additional code locations.
+  dagster_user_code:
+    # build:
+    #   context: .
+    #   dockerfile: ./Dockerfile_user_code
+    container_name: dagster_user_code
+    image: dagster_user_code_image
+    restart: always
+    # User-code gRPC loads full defs; align with per-run job limits in ``dagster.yaml``.
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 8G
+        reservations:
+          cpus: "0.25"
+          memory: 512M
+    env_file:
+      - .env
+    environment:
+      DAGSTER_POSTGRES_USER: "postgres_user"
+      DAGSTER_POSTGRES_PASSWORD: "postgres_password"
+      DAGSTER_POSTGRES_DB: "postgres_db"
+      DAGSTER_CURRENT_IMAGE: "dagster_user_code_image"
+      DUCKDB_PATH: "/data/warehouse.duckdb"
+      # LITELLM_KEY / LITELLM_PROXY_BASE come **only** from ``env_file`` (``infra/dagster/.env``).
+      # If listed here with ``${VAR:-…}`` the project-root ``.env`` (or host shell exports)
+      # silently win and the per-run containers point at the wrong proxy (e.g. 127.0.0.1:4000).
+      # MinIO (``infra/object-storage`` stack, service name ``minio`` on ``infra-datasynk``).
+      # Must match ``MINIO_ROOT_USER`` / ``MINIO_ROOT_PASSWORD`` there when using defaults.
+      MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://datacyber-object-minio:9000}"
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin123}"
+      MINIO_BUCKET: "${MINIO_BUCKET:-data-local}"
+      MINIO_SECURE: "${MINIO_SECURE:-false}"
+      # INDEC EPH trimestral landing tree (see ``data_local_root()``).
+      DATA_LOCAL_ROOT: "${DATA_LOCAL_ROOT:-/data-local}"
+      # OpenRouter / INDEC EPH variables: **only** from ``env_file`` (``.env`` next to
+      # this compose file). Do not list them under ``environment`` with ``${VAR:-…}`` —
+      # host-shell ``export OPENROUTER_MODEL=…`` overrides ``env_file`` and caused stale
+      # models (e.g. removed ``gemini-2.0-flash-exp:free``) to win over ``infra/dagster/.env``.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Same named volume as Datacyber ``duckdb`` service (warehouse file).
+      - duckdb_data:/data
+      # Shared object storage volume (MinIO data) for landing access if needed.
+      - storage:/storage
+      # Absolute host path — set ``DATACYBER_DATA_LOCAL_HOST`` in ``.env`` if your tree differs.
+      # RW: ``indec_eph_trimestral_files`` writes ZIPs/TXTs under ``landing/indec/eph/<year>/Q<n>/``.
+      - ${DATACYBER_DATA_LOCAL_HOST:-/Users/vlad/project/datacyber/data-local}:/data-local
+    healthcheck:
+      # Avoid daemon/webserver gRPC race: they must not connect before ``dagster api grpc``
+      # is listening on 4000 (otherwise DagsterUserCodeUnreachableError / UNAVAILABLE).
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import socket;s=socket.socket();s.settimeout(3);s.connect(('127.0.0.1',4000));s.close()\"",
+        ]
+      interval: 10s
+      timeout: 8s
+      retries: 6
+      start_period: 120s
+    networks:
+      - infra
+
+  # dagster-webserver (UI + GraphQL). Uses QueuedRunCoordinator, so runs it submits
+  # are queued and later dequeued by dagster-daemon.
+  dagster_webserver:
+    build:
+      context: .
+      dockerfile: ./Dockerfile_dagster
+    entrypoint:
+      - dagster-webserver
+      - -h
+      - "0.0.0.0"
+      - -p
+      - "3000"
+      # Explicit workspace: same file is COPY'd to $DAGSTER_HOME by Dockerfile_dagster;
+      # default is also ./workspace.yaml when WORKDIR is $DAGSTER_HOME, but -w avoids surprises.
+      # - -w
+      # - workspace.yaml
+    container_name: dagster_webserver
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
+        reservations:
+          cpus: "0.1"
+          memory: 256M
+    expose:
+      - "3000"
+    ports:
+      - "3001:3000"
+    environment:
+      DAGSTER_POSTGRES_USER: "postgres_user"
+      DAGSTER_POSTGRES_PASSWORD: "postgres_password"
+      DAGSTER_POSTGRES_DB: "postgres_db"
+      # Same forwarded set as ``dagster_daemon`` so behavior is consistent if the
+      # webserver ever launches runs directly.
+      # LITELLM_KEY / LITELLM_PROXY_BASE come **only** from ``env_file`` (``infra/dagster/.env``).
+      DUCKDB_PATH: "/data/warehouse.duckdb"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Host ``dagster.yaml`` must be live; ``Dockerfile_dagster`` only COPYs at build
+      # time. Without this mount, ``env_vars`` (e.g. MINIO_*) stays stale and
+      # DockerRunLauncher will not forward them to per-run containers.
+      - ./dagster.yaml:/opt/dagster/dagster_home/dagster.yaml:ro
+      - ./workspace.yaml:/opt/dagster/dagster_home/workspace.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/io_manager_storage:/tmp/io_manager_storage
+      - /tmp/dagster_data:/opt/dagster/data
+      - duckdb_data:/data
+      - storage:/storage
+    networks:
+      - infra
+    depends_on:
+      dagster_postgresql:
+        condition: service_healthy
+      dagster_user_code:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # dagster-daemon dequeues runs and evaluates schedules/sensors.
+  dagster_daemon:
+    build:
+      context: .
+      dockerfile: ./Dockerfile_dagster
+    entrypoint:
+      - dagster-daemon
+      - run
+      # - -w
+      # - workspace.yaml
+    container_name: dagster_daemon
+    restart: on-failure
+    # Dequeues runs, launches DockerRunLauncher children; give headroom for orchestration + API.
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+        reservations:
+          cpus: "0.25"
+          memory: 512M
+    ## add the .env file to the environment
+    env_file:
+      - .env
+    environment:
+      DAGSTER_POSTGRES_USER: "postgres_user"
+      DAGSTER_POSTGRES_PASSWORD: "postgres_password"
+      DAGSTER_POSTGRES_DB: "postgres_db"
+      # ``DockerRunLauncher.env_vars`` forwards these from the daemon's own
+      # environment into per-run containers spawned for assets like
+      # ``indec_eph_variables``. Keep in sync with ``dagster.yaml``.
+      # LITELLM_KEY / LITELLM_PROXY_BASE come **only** from ``env_file`` (``infra/dagster/.env``)
+      # to avoid project-root ``.env`` / host shell shadowing the value (e.g. 127.0.0.1:4000).
+      DUCKDB_PATH: "/data/warehouse.duckdb"
+      MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://datacyber-object-minio:9000}"
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin123}"
+      MINIO_BUCKET: "${MINIO_BUCKET:-data-local}"
+      MINIO_SECURE: "${MINIO_SECURE:-false}"
+      # INDEC EPH trimestral landing tree root (read by ``data_local_root()``).
+      DATA_LOCAL_ROOT: "${DATA_LOCAL_ROOT:-/data-local}"
+      # ``indec_eph_variables`` (single LiteLLM call, whole PDF inline).
+      INDEC_EPH_VARIABLES_QUARTER: "${INDEC_EPH_VARIABLES_QUARTER:-3}"
+      INDEC_EPH_VARIABLES_URL: "${INDEC_EPH_VARIABLES_URL:-}"
+      # Iceberg REST (optional; bronze TXT assets use native DuckDB if unset).
+      ICEBERG_REST_ENDPOINT: "${ICEBERG_REST_ENDPOINT:-}"
+      ICEBERG_REST_TOKEN: "${ICEBERG_REST_TOKEN:-}"
+      ICEBERG_REST_WAREHOUSE: "${ICEBERG_REST_WAREHOUSE:-}"
+      ICEBERG_ATTACH_ALIAS: "${ICEBERG_ATTACH_ALIAS:-}"
+      ICEBERG_REST_SECRET_NAME: "${ICEBERG_REST_SECRET_NAME:-}"
+      ICEBERG_REST_CLIENT_ID: "${ICEBERG_REST_CLIENT_ID:-}"
+      ICEBERG_REST_CLIENT_SECRET: "${ICEBERG_REST_CLIENT_SECRET:-}"
+      ICEBERG_REST_OAUTH_URI: "${ICEBERG_REST_OAUTH_URI:-}"
+      # OpenRouter / INDEC EPH: from ``env_file`` only — see comment on ``dagster_user_code``.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./dagster.yaml:/opt/dagster/dagster_home/dagster.yaml:ro
+      - ./workspace.yaml:/opt/dagster/dagster_home/workspace.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/io_manager_storage:/tmp/io_manager_storage
+      - /tmp/dagster_data:/opt/dagster/data
+    networks:
+      - infra
+    depends_on:
+      dagster_postgresql:
+        condition: service_healthy
+      dagster_user_code:
+        condition: service_healthy
+
+networks:
+  infra:
+    name: infra-datasynk
+    external: true
+
+volumes:
+  dagster-db-data:
+  duckdb_data:
+    external: true
+  storage:
+    external: true

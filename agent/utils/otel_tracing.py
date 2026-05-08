@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import base64
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -52,7 +53,8 @@ def init_otel_tracing() -> None:
     )
 
     provider = TracerProvider(resource=resource)
-    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+    exporter_kwargs = _resolve_otlp_exporter_kwargs()
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(**exporter_kwargs)))
     trace.set_tracer_provider(provider)
 
     # Propagate trace context in outbound HTTPX calls (LiteLLM, MCP servers, etc.).
@@ -66,4 +68,24 @@ def init_otel_tracing() -> None:
 
     _BOOTSTRAPPED = True
     logger.info("OTEL tracing initialized service.name=%s", service_name)
+
+
+def _resolve_otlp_exporter_kwargs() -> dict[str, dict[str, str]]:
+    """Populate OTLP headers from Langfuse keys when unset or placeholder-valued."""
+    headers = (os.environ.get("OTEL_EXPORTER_OTLP_HEADERS") or "").strip()
+    if headers and "<BASE64_PUBLIC_COLON_SECRET>" not in headers:
+        return {}
+
+    pub = (os.environ.get("LANGFUSE_PUBLIC_KEY") or "").strip()
+    sec = (os.environ.get("LANGFUSE_SECRET_KEY") or "").strip()
+    if not (pub and sec):
+        if headers:
+            logger.warning(
+                "OTEL_EXPORTER_OTLP_HEADERS still contains placeholder but Langfuse keys are missing; "
+                "tracing export may fail with 401."
+            )
+        return {}
+
+    token = base64.b64encode(f"{pub}:{sec}".encode("utf-8")).decode("ascii")
+    return {"headers": {"Authorization": f"Basic {token}"}}
 

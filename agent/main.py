@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import sys
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import unquote
@@ -19,19 +20,21 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import AliasChoices, BaseModel, Field
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 from langchain_mcp_adapters.client import MultiServerMCPClient as MultiServerToolClient
 
-from agent.utils.agent_chat import run_agent_chat_turn
+from agent.utils.agent_chat import run_agent_chat_turn, stream_agent_chat_sse_events
 from agent.utils.langfuse_tracing import (
     langfuse_tracing_enabled,
     log_langfuse_docker_loopback_hint,
 )
+from agent.utils.mcp_connections import load_mcp_tool_connections
 from agent.utils.otel_tracing import init_otel_tracing
+from agent.utils.warehouse_schema import warehouse_tables_payload
 from agent.utils.litellm_chat import (
     explain_litellm_http_exception,
     probe_litellm_proxy,
@@ -40,6 +43,7 @@ from agent.utils.litellm_chat import (
 from agent.config import (
     ENV_DOTENV_LOADED_AT_IMPORT,
     ENV_DOTENV_RESOLVED_PATH,
+    OPENROUTER_DEFAULT_API_BASE,
     settings,
 )
 
@@ -53,6 +57,28 @@ def _configure_logging() -> None:
         stream=sys.stderr,
         force=True,
     )
+    _silence_langchain_genai_schema_key_warnings()
+
+
+def _silence_langchain_genai_schema_key_warnings() -> None:
+    """``langchain_google_genai`` warns per JSON Schema key Gemini omits (e.g. ``additionalProperties``). Tools still work; noise only."""
+
+    class _DropUnsupportedSchemaKeyWarning(logging.Filter):
+        _needle = "not supported in schema, ignoring"
+
+        def filter(self, record: logging.LogRecord) -> bool:
+            if not record.name.startswith("langchain_google_genai."):
+                return True
+            try:
+                msg = record.getMessage()
+            except Exception:
+                return True
+            return self._needle not in msg
+
+    lg = logging.getLogger("langchain_google_genai._function_utils")
+    lg.addFilter(_DropUnsupportedSchemaKeyWarning())
+    # Same messages can propagate via parent loggers depending on config.
+    lg.propagate = True
 
 
 _configure_logging()
@@ -60,7 +86,38 @@ init_otel_tracing()
 
 
 def _log_effective_llm_env() -> None:
-    """One-line proof of which LiteLLM key/model the process actually loaded (suffix matches proxy error snippets)."""
+    """One-line proof of which LLM key/model the process loaded."""
+    if settings.model_provider == "gemini":
+        key = settings.gemini_api_key or ""
+        if len(key) > 12:
+            masked = f"{key[:7]}...{key[-4:]}"
+        elif key:
+            masked = "(set, short)"
+        else:
+            masked = "(unset)"
+        logger.info(
+            "Effective LLM env: MODEL_PROVIDER=gemini CHAT_MODEL=%r GEMINI_API_KEY=%s",
+            settings.chat_model,
+            masked,
+        )
+        return
+    if settings.model_provider == "openrouter":
+        key = settings.openrouter_api_key or ""
+        if len(key) > 12:
+            masked = f"{key[:7]}...{key[-4:]}"
+        elif key:
+            masked = "(set, short)"
+        else:
+            masked = "(unset)"
+        logger.info(
+            "Effective LLM env: MODEL_PROVIDER=openrouter CHAT_MODEL=%r LITELLM_TEMPERATURE=%s "
+            "OPENROUTER_API_KEY=%s OPENROUTER_BASE=%r",
+            settings.chat_model,
+            os.environ.get("LITELLM_TEMPERATURE", "(unset)"),
+            masked,
+            settings.openrouter_api_base or OPENROUTER_DEFAULT_API_BASE,
+        )
+        return
     key = settings.litellm_key or ""
     if len(key) > 12:
         masked = f"{key[:7]}...{key[-4:]}"
@@ -69,7 +126,7 @@ def _log_effective_llm_env() -> None:
     else:
         masked = "(unset)"
     logger.info(
-        "Effective LLM env: CHAT_MODEL=%r LITELLM_TEMPERATURE=%s LITELLM_KEY=%s LITELLM_BASE=%r",
+        "Effective LLM env: MODEL_PROVIDER=litellm CHAT_MODEL=%r LITELLM_TEMPERATURE=%s LITELLM_KEY=%s LITELLM_BASE=%r",
         settings.chat_model,
         os.environ.get("LITELLM_TEMPERATURE", "(unset)"),
         masked,
@@ -83,6 +140,17 @@ log_langfuse_docker_loopback_hint()
 
 def _litellm_connection_error_hint() -> str:
     """Extra context when ChatOpenAI cannot reach LiteLLM (port down, wrong host for Docker, etc.)."""
+    if settings.model_provider == "gemini":
+        return (
+            "MODEL_PROVIDER=gemini uses Google AI directly; LiteLLM loopback hints do not apply. "
+            "Verify GEMINI_API_KEY and CHAT_MODEL (optional; defaults to gemini-2.0-flash)."
+        )
+    if settings.model_provider == "openrouter":
+        return (
+            "MODEL_PROVIDER=openrouter uses OpenRouter's HTTPS API (OPENROUTER_BASE_URL or "
+            f"{OPENROUTER_DEFAULT_API_BASE}). Verify OPENROUTER_API_KEY, CHAT_MODEL "
+            "(see https://openrouter.ai/models), and outbound TLS from this process."
+        )
     base = (settings.litellm_api_base or "").lower()
     in_container = running_in_docker()
     bits = [
@@ -182,6 +250,13 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
+class ChatHistoryTurn(BaseModel):
+    """Prior turns only (excludes the current ``message``); maps to HumanMessage / AIMessage."""
+
+    role: Literal["user", "assistant"]
+    content: str = Field(default="", description="Plain text body for this role.")
+
+
 class ChatRequest(BaseModel):
     message: str = Field(
         ...,
@@ -191,6 +266,10 @@ class ChatRequest(BaseModel):
     locale: Literal["en", "es"] = Field(
         "en",
         description="Assistant reply language: English or Spanish (UI ES/EN selector).",
+    )
+    history: list[ChatHistoryTurn] = Field(
+        default_factory=list,
+        description="Completed user/assistant pairs before the current user ``message``.",
     )
 
 
@@ -207,16 +286,25 @@ class ChatResponse(BaseModel):
 
 
 def _llm_config_snapshot() -> dict[str, Any]:
-    """Static LiteLLM settings (no network)."""
+    """Static LLM settings (no network)."""
     key = settings.litellm_key or ""
-    # Last 4 chars — compare to LiteLLM 401 messages (`...RbPw` vs current key) without exposing the full secret.
     key_suffix = key[-4:] if len(key) >= 8 else None
+    gkey = settings.gemini_api_key or ""
+    gemini_suffix = gkey[-4:] if len(gkey) >= 8 else None
+    or_key = settings.openrouter_api_key or ""
+    or_suffix = or_key[-4:] if len(or_key) >= 8 else None
     oai = (os.getenv("OPENAI_API_KEY") or "").strip()
     oai_suffix = oai[-4:] if len(oai) >= 8 else None
     return {
+        "model_provider": settings.model_provider,
         "litellm_base": settings.litellm_api_base,
         "has_key": bool(settings.litellm_key),
         "litellm_key_suffix": key_suffix,
+        "gemini_key_suffix": gemini_suffix,
+        "has_gemini_key": bool(settings.gemini_api_key),
+        "openrouter_base": settings.openrouter_api_base or OPENROUTER_DEFAULT_API_BASE,
+        "has_openrouter_key": bool(settings.openrouter_api_key),
+        "openrouter_key_suffix": or_suffix,
         "openai_api_key_env_set": bool(oai),
         "openai_api_key_env_suffix": oai_suffix,
         "in_docker": running_in_docker(),
@@ -226,48 +314,17 @@ def _llm_config_snapshot() -> dict[str, Any]:
 
 
 def _mcp_urls_public() -> dict[str, str]:
-    """URLs from mcp.json (for debugging; no secrets)."""
-    cfg = settings.project_root / "mcp.json"
-    if not cfg.is_file():
-        return {}
+    """Effective MCP base URLs (after host-side rewrite when brain runs on host)."""
     try:
-        raw = json.loads(cfg.read_text(encoding="utf-8"))
-        block = raw.get("mcpServers") or raw.get("servers") or {}
-        out: dict[str, str] = {}
-        if isinstance(block, dict):
-            for name, spec in block.items():
-                if isinstance(spec, dict) and spec.get("url"):
-                    out[str(name)] = str(spec["url"])
-        return out
+        conns = load_mcp_tool_connections(settings.project_root)
+        return {k: str(v.get("url") or "") for k, v in conns.items()}
     except Exception as exc:
         return {"_error": str(exc)}
 
 
 def _tool_connections() -> dict[str, Any]:
-    """HTTP connection map from ``mcp.json`` only (``mcpServers`` or ``servers`` block)."""
-    cfg_path = settings.project_root / "mcp.json"
-    if not cfg_path.is_file():
-        raise FileNotFoundError(
-            f"Missing {cfg_path}: define MCP HTTP servers there (see project mcp.json)."
-        )
-    raw = json.loads(cfg_path.read_text(encoding="utf-8"))
-    block = raw.get("mcpServers") or raw.get("servers")
-    if not isinstance(block, dict) or not block:
-        raise ValueError(
-            "mcp.json must contain a non-empty object under 'mcpServers' or 'servers'."
-        )
-    connections: dict[str, Any] = {}
-    for name, spec in block.items():
-        if not isinstance(spec, dict):
-            continue
-        url = spec.get("url")
-        if not url:
-            continue
-        transport = spec.get("transport") or "http"
-        connections[str(name)] = {"transport": transport, "url": str(url)}
-    if not connections:
-        raise ValueError("mcp.json: no entries with a 'url' field.")
-    return connections
+    """Same as chat/agent runtime — respects ``MCP_*`` env and host URL rewriting."""
+    return load_mcp_tool_connections(settings.project_root)
 
 
 def _skills_inventory() -> list[dict[str, str]]:
@@ -291,7 +348,7 @@ def _skills_inventory() -> list[dict[str, str]]:
 
 
 def _pipeline_snapshot() -> dict[str, Any]:
-    """Architecture snapshot: who lists /data-local, MCP URLs, debug flags (no secrets)."""
+    """Architecture snapshot: MinIO landing + /data-local mirror usage, MCP URLs, debug flags."""
     duckdb_ui_public = (os.environ.get("DUCKDB_UI_PUBLIC_URL") or "").strip()
     if not duckdb_ui_public:
         port = (os.environ.get("DUCKDB_UI_PUBLISH_PORT") or "4213").strip() or "4213"
@@ -326,15 +383,16 @@ def _pipeline_snapshot() -> dict[str, Any]:
         "listing_data_local": {
             "filesystem_tool": "duckdb-mcp exposes `list_data_mount(path)` — read-only directory listing under DATA_LOCAL_ROOT (default /data-local).",
             "who_runs_glob": "duckdb-mcp `execute_query` runs DuckDB SQL; `glob()` reads the container filesystem.",
+            "landing_of_record": "MinIO object storage (`minio` service, bucket usually `data-local`) with local mirror at /data-local for DuckDB compatibility.",
             "brain_mounts_data_local": False,
             "duckdb_service_mounts_data_local": True,
             "duckdb_mcp_mounts_data_local": True,
             "ui_lists_files": False,
         },
         "skills": {
-            "where": "./skills/analyze-indec-eph-hogar/SKILL.md, ./skills/ingest-indec-mercadolaboral/SKILL.md, ./skills/scrape-indec-mercado-laboral/SKILL.md, ./skills/update-catalog/SKILL.md, ./skills/catalog-sql/SKILL.md",
+            "where": "./skills/analyze-indec-eph-hogar/SKILL.md, ./skills/analyze-news-sentimental/SKILL.md, ./skills/ingest-indec-mercadolaboral/SKILL.md, ./skills/scrape-indec-mercado-laboral/SKILL.md, ./skills/update-catalog/SKILL.md, ./skills/catalog-sql/SKILL.md",
             "how": "Deep Agents `skills=[\"/skills/\"]` on create_deep_agent — SkillsMiddleware treats this as a PARENT directory and auto-discovers every subdir with a SKILL.md "
-            "(currently: analyze-indec-eph-hogar, ingest-indec-mercadolaboral, scrape-indec-mercado-laboral, update-catalog, catalog-sql). "
+            "(immediate children only; e.g. analyze-indec-eph-hogar, analyze-news-sentimental, ingest-indec-mercadolaboral, scrape-indec-mercado-laboral, update-catalog, catalog-sql). "
             "See also `./skills/langfuse/` (Langfuse observability skill for maintainers; no SKILL.md, not agent-injected).",
         },
     }
@@ -360,6 +418,22 @@ def health_llm_config() -> dict[str, Any]:
 def health_pipeline() -> dict[str, Any]:
     """Same payload as the ``pipeline`` key on ``GET /health`` (alias for scripts and curl)."""
     return _pipeline_snapshot()
+
+
+@app.get("/health/warehouse/tables")
+async def health_warehouse_tables() -> dict[str, Any]:
+    """DuckDB tables grouped by medallion schema (bronze / silver / gold) for the UI panel."""
+    try:
+        return await warehouse_tables_payload()
+    except Exception as exc:
+        logger.warning("GET /health/warehouse/tables failed: %s", exc)
+        return {
+            "status": "error",
+            "layers": {"bronze": [], "silver": [], "gold": []},
+            "other": [],
+            "raw_line_count": 0,
+            "error": str(exc)[:500],
+        }
 
 
 @app.get("/health/tools")
@@ -410,7 +484,12 @@ async def health_llm() -> dict:
         return await probe_litellm_proxy()
     except Exception as exc:
         logger.exception("health/llm probe failed")
-        return {"ok": False, "error": str(exc)[:500], "litellm_base": settings.litellm_api_base}
+        return {
+            "ok": False,
+            "error": str(exc)[:500],
+            "litellm_base": settings.litellm_api_base,
+            "openrouter_base": settings.openrouter_api_base or OPENROUTER_DEFAULT_API_BASE,
+        }
 
 
 @app.get("/artifacts/file")
@@ -451,6 +530,7 @@ async def agent_chat(request: Request, response: Response, body: ChatRequest) ->
     try:
         result = await run_agent_chat_turn(
             body.message,
+            history=[h.model_dump() for h in body.history],
             request_id=request_id,
             langfuse_session_id=session_id,
             langfuse_user_id=user_id,
@@ -478,6 +558,48 @@ async def agent_chat(request: Request, response: Response, body: ChatRequest) ->
         reply=result.reply,
         request_id=result.request_id,
         debug=result.debug,
+    )
+
+
+@app.post("/agent/chat/stream")
+async def agent_chat_stream(request: Request, body: ChatRequest) -> StreamingResponse:
+    """Stream agent run as Server-Sent Events (JSON per line, ``text/event-stream``)."""
+    request_id = request.headers.get("X-Request-ID") or str(uuid4())
+    session_id = (request.headers.get("X-Langfuse-Session-Id") or "").strip() or None
+    user_id = (request.headers.get("X-Langfuse-User-Id") or "").strip() or None
+    logger.info(
+        "POST /agent/chat/stream request_id=%s message_chars=%s pipeline_debug=%s",
+        request_id,
+        len(body.message),
+        settings.pipeline_debug,
+    )
+
+    async def sse_bytes() -> AsyncIterator[bytes]:
+        try:
+            async for evt in stream_agent_chat_sse_events(
+                body.message,
+                history=[h.model_dump() for h in body.history],
+                request_id=request_id,
+                langfuse_session_id=session_id,
+                langfuse_user_id=user_id,
+                response_locale=body.locale,
+            ):
+                line = json.dumps(evt, ensure_ascii=False)
+                yield f"data: {line}\n\n".encode("utf-8")
+        except Exception as exc:
+            logger.exception("agent chat stream generator failed")
+            err = {"event": "error", "message": _format_agent_error(exc).strip()[:2000], "request_id": request_id}
+            yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n".encode("utf-8")
+
+    return StreamingResponse(
+        sse_bytes(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "X-Request-ID": request_id,
+        },
     )
 
 

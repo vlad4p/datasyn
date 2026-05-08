@@ -1,0 +1,136 @@
+scheduler:
+  module: dagster.core.scheduler
+  class: DagsterDaemonScheduler
+
+run_coordinator:
+  module: dagster.core.run_coordinator
+  class: QueuedRunCoordinator
+
+# DuckDB file at DUCKDB_PATH allows only one writer; pool all warehouse assets (see datasynk ``pool=``).
+# https://docs.dagster.io/guides/operate/managing-concurrency/concurrency-pools
+concurrency:
+  pools:
+    default_limit: 1
+  runs:
+    # Single file ``warehouse.duckdb``: two DockerRunLauncher containers must not open it RW at once.
+    # Raise only if you move the warehouse off file-backed DuckDB (e.g. MotherDuck) or drop writers to one.
+    max_concurrent_runs: 1
+    tag_concurrency_limits:
+      - key: "operation"
+        value: "example"
+        limit: 5
+
+run_monitoring:
+  enabled: true
+  poll_interval_seconds: 60
+  # Release concurrency pool slots if a run is cancelled (avoids deadlock with pool limit 1).
+  free_slots_after_run_end_seconds: 300
+
+run_launcher:
+  module: dagster_docker
+  class: DockerRunLauncher
+  config:
+    env_vars:
+      - DAGSTER_POSTGRES_USER
+      - DAGSTER_POSTGRES_PASSWORD
+      - DAGSTER_POSTGRES_DB
+      - DUCKDB_PATH
+      - LITELLM_KEY
+      - LITELLM_PROXY_BASE
+      # Keep in sync with ``dagster_daemon`` ``environment`` in ``docker-compose.yaml``:
+      # each name must be **set** on the daemon (even to empty) or launch_run fails.
+      # Optional tuning is read in user code with ``os.environ.get`` defaults.
+      # **Do not** list a name here unless it is **always set** on ``dagster_daemon``
+      # (e.g. in ``infra/dagster/.env``); otherwise ``launch_run`` raises "was not set".
+      - MINIO_ENDPOINT
+      - MINIO_ACCESS_KEY
+      - MINIO_SECRET_KEY
+      - MINIO_BUCKET
+      - MINIO_SECURE
+      # INDEC EPH trimestral landing root (see ``data_local_root()`` and ``discover_txt_paths``).
+      - DATA_LOCAL_ROOT
+      # ``indec_eph_variables`` (single LiteLLM call, whole PDF inline → bronze.indec_eph_variables).
+      # Do not list GOOGLE_API_KEY / GEMINI_API_KEY here unless every daemon has them set;
+      # assets use LITELLM_KEY + LITELLM_PROXY_BASE in Docker runs when using the proxy.
+      - INDEC_EPH_VARIABLES_LITELLM_MODEL
+      - INDEC_EPH_VARIABLES_LITELLM_KEY
+      - INDEC_EPH_VARIABLES_LITELLM_HTTP_TIMEOUT
+      - INDEC_EPH_VARIABLES_LITELLM_MAX_TOKENS
+      - INDEC_EPH_VARIABLES_MAX_RETRIES
+      - INDEC_EPH_VARIABLES_QUARTER
+      - INDEC_EPH_VARIABLES_URL
+      # DuckDB → Iceberg REST (``indec_usu_hogar`` / ``indec_usu_individual`` when endpoint set).
+      - ICEBERG_REST_ENDPOINT
+      - ICEBERG_REST_TOKEN
+      - ICEBERG_REST_WAREHOUSE
+      - ICEBERG_ATTACH_ALIAS
+      - ICEBERG_REST_SECRET_NAME
+      - ICEBERG_REST_CLIENT_ID
+      - ICEBERG_REST_CLIENT_SECRET
+      - ICEBERG_REST_OAUTH_URI
+    network: infra-datasynk
+    container_kwargs:
+      # Per-run job containers (assets). Tune if LiteLLM/PDF steps OOM.
+      # https://docker-py.readthedocs.io/en/stable/containers.html — passed to ``containers.create``.
+      mem_limit: "8g"
+      nano_cpus: 4000000000
+      # ``host.docker.internal`` lets per-run containers reach LiteLLM on the host.
+      extra_hosts:
+        host.docker.internal: host-gateway
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+        - /tmp/io_manager_storage:/tmp/io_manager_storage
+        # Shared CSV input/output for csv_pipeline. Host path must be identical
+        # across all dev machines, hence /tmp/dagster_data (auto-shared on
+        # Docker Desktop). Override by editing this file if you need a different
+        # location; container_kwargs.volumes does not support env interpolation.
+        - /tmp/dagster_data:/opt/dagster/data
+        # Same warehouse and INDEC landing tree as the ``dagster_user_code`` service.
+        # ``container_kwargs.volumes`` does not support env interpolation, so the
+        # ``data-local`` host path is hard-coded; align with the Datacyber repo or
+        # use a symlink if your tree differs.
+        - duckdb_data:/data
+        # RW: ``indec_eph_trimestral_files`` writes under ``landing/indec/eph/<year>/Q<n>/``.
+        - /Users/vlad/project/datacyber/data-local:/data-local
+
+run_storage:
+  module: dagster_postgres.run_storage
+  class: PostgresRunStorage
+  config:
+    postgres_db:
+      hostname: dagster_postgresql
+      username:
+        env: DAGSTER_POSTGRES_USER
+      password:
+        env: DAGSTER_POSTGRES_PASSWORD
+      db_name:
+        env: DAGSTER_POSTGRES_DB
+      port: 5432
+
+schedule_storage:
+  module: dagster_postgres.schedule_storage
+  class: PostgresScheduleStorage
+  config:
+    postgres_db:
+      hostname: dagster_postgresql
+      username:
+        env: DAGSTER_POSTGRES_USER
+      password:
+        env: DAGSTER_POSTGRES_PASSWORD
+      db_name:
+        env: DAGSTER_POSTGRES_DB
+      port: 5432
+
+event_log_storage:
+  module: dagster_postgres.event_log
+  class: PostgresEventLogStorage
+  config:
+    postgres_db:
+      hostname: dagster_postgresql
+      username:
+        env: DAGSTER_POSTGRES_USER
+      password:
+        env: DAGSTER_POSTGRES_PASSWORD
+      db_name:
+        env: DAGSTER_POSTGRES_DB
+      port: 5432

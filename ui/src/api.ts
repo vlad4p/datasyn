@@ -57,11 +57,132 @@ export type PipelineTrace = {
 
 export type ChatLocale = "en" | "es";
 
+/** Prior turns for multi-turn chat (same shape as brain ``ChatRequest.history``). */
+export type ChatHistoryTurn = { role: "user" | "assistant"; content: string };
+
+/** One SSE JSON payload from ``POST /agent/chat/stream`` (LangGraph v2 + subgraphs). */
+export type ChatStreamEvent =
+  | { event: "start"; request_id: string }
+  | {
+      event: "token";
+      source: "main" | "subagent";
+      text?: string;
+      ns?: string[];
+    }
+  | { event: "step"; source: "main" | "subagent"; node: string; ns?: string[] }
+  | {
+      event: "tool_delta";
+      source: "main" | "subagent";
+      tool_name?: string;
+      args_fragment?: string;
+      ns?: string[];
+    }
+  | {
+      event: "done";
+      reply: string;
+      subagent_reply: string;
+      request_id: string;
+      debug?: Record<string, unknown> | null;
+    }
+  | { event: "error"; message: string; request_id: string };
+
+/**
+ * Stream an agent turn (SSE). Calls ``onEvent`` for each JSON object; resolves when the stream ends.
+ * The server usually ends with ``done`` or ``error``.
+ */
+export async function postChatStream(
+  message: string,
+  options: {
+    locale?: ChatLocale;
+    /** Completed turns before ``message`` (user + assistant pairs). */
+    history?: ChatHistoryTurn[];
+    signal?: AbortSignal;
+    onEvent: (ev: ChatStreamEvent) => void;
+  },
+): Promise<void> {
+  const locale = options.locale === "es" ? "es" : "en";
+  const history = options.history ?? [];
+  const userSignal = options.signal;
+  const ctrl = new AbortController();
+  const to = window.setTimeout(() => ctrl.abort(), CHAT_FETCH_MS);
+  if (userSignal) {
+    if (userSignal.aborted) {
+      window.clearTimeout(to);
+      throw new DOMException("Aborted", "AbortError");
+    }
+    userSignal.addEventListener(
+      "abort",
+      () => {
+        window.clearTimeout(to);
+        ctrl.abort();
+      },
+      { once: true },
+    );
+  }
+  const dec = new TextDecoder();
+  let buf = "";
+  try {
+    const res = await fetch(brainApiUrl("/agent/chat/stream"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, locale, history }),
+      signal: ctrl.signal,
+    });
+    const t0 = performance.now();
+    if (import.meta.env.DEV) {
+      console.info(
+        "[datacyber] POST /agent/chat/stream",
+        res.status,
+        res.headers.get("X-Request-ID"),
+        `${Math.round(performance.now() - t0)}ms (headers)`,
+      );
+    }
+    if (!res.ok) {
+      throw new Error(await readFetchError(res));
+    }
+    const reader = res.body?.getReader();
+    if (!reader) {
+      throw new Error("No response body");
+    }
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const blocks = buf.split("\n\n");
+      buf = blocks.pop() ?? "";
+      for (const block of blocks) {
+        for (const line of block.split("\n")) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) continue;
+          const payload = trimmed.slice(5).trim();
+          if (!payload) continue;
+          try {
+            const ev = JSON.parse(payload) as ChatStreamEvent;
+            options.onEvent(ev);
+          } catch {
+            /* ignore malformed chunk */
+          }
+        }
+      }
+    }
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error(
+        `Chat stream aborted or timed out after ${CHAT_FETCH_MS / 1000}s (see api.ts CHAT_FETCH_MS).`,
+      );
+    }
+    throw e;
+  } finally {
+    window.clearTimeout(to);
+  }
+}
+
 export async function postChat(
   message: string,
-  options?: { locale?: ChatLocale },
+  options?: { locale?: ChatLocale; history?: ChatHistoryTurn[] },
 ): Promise<ChatResponsePayload> {
   const locale = options?.locale === "es" ? "es" : "en";
+  const history = options?.history ?? [];
   const ctrl = new AbortController();
   const t = window.setTimeout(() => ctrl.abort(), CHAT_FETCH_MS);
   const t0 = performance.now();
@@ -69,7 +190,7 @@ export async function postChat(
     const res = await fetch(brainApiUrl("/agent/chat"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, locale }),
+      body: JSON.stringify({ message, locale, history }),
       signal: ctrl.signal,
     });
     if (import.meta.env.DEV) {
@@ -116,10 +237,16 @@ export async function readFetchError(res: Response): Promise<string> {
 /** ``GET /health`` — includes LLM snapshot and optional ``pipeline`` (architecture / MCP URLs). */
 export type BrainHealth = {
   status: string;
+  /** `litellm` (default), `openrouter`, or `gemini` — see brain `MODEL_PROVIDER`. */
+  model_provider?: string;
   litellm_base?: string | null;
   has_key?: boolean;
   /** Last 4 chars of `LITELLM_KEY` loaded by the brain (compare to LiteLLM 401 messages like `...RbPw`). */
   litellm_key_suffix?: string | null;
+  /** OpenRouter API base (default `https://openrouter.ai/api/v1` when using `MODEL_PROVIDER=openrouter`). */
+  openrouter_base?: string | null;
+  has_openrouter_key?: boolean;
+  openrouter_key_suffix?: string | null;
   /** If set, LangChain may read `OPENAI_API_KEY` for other code paths; ChatOpenAI uses `LITELLM_KEY` explicitly. */
   openai_api_key_env_set?: boolean;
   openai_api_key_env_suffix?: string | null;
@@ -149,9 +276,13 @@ export type ToolInventoryResponse = {
 };
 
 export type LlmConfig = {
+  model_provider?: string;
   litellm_base: string | null;
+  openrouter_base?: string | null;
   has_key: boolean;
+  has_openrouter_key?: boolean;
   litellm_key_suffix: string | null;
+  openrouter_key_suffix?: string | null;
   openai_api_key_env_set: boolean;
   openai_api_key_env_suffix: string | null;
   in_docker: boolean;
@@ -181,10 +312,15 @@ export function llmConfigFromHealth(h: BrainHealth): LlmConfig | null {
     return null;
   }
   return {
+    model_provider: h.model_provider,
     litellm_base: h.litellm_base ?? null,
+    openrouter_base: h.openrouter_base ?? null,
     has_key: Boolean(h.has_key),
+    has_openrouter_key: Boolean(h.has_openrouter_key),
     litellm_key_suffix:
       typeof h.litellm_key_suffix === "string" ? h.litellm_key_suffix : null,
+    openrouter_key_suffix:
+      typeof h.openrouter_key_suffix === "string" ? h.openrouter_key_suffix : null,
     openai_api_key_env_set: Boolean(h.openai_api_key_env_set),
     openai_api_key_env_suffix:
       typeof h.openai_api_key_env_suffix === "string" ? h.openai_api_key_env_suffix : null,
@@ -207,10 +343,15 @@ export async function getLlmConfig(cachedHealth?: BrainHealth): Promise<LlmConfi
   if (!res.ok) throw new Error(await readFetchError(res));
   const raw = (await res.json()) as Record<string, unknown>;
   return {
+    model_provider: raw.model_provider as string | undefined,
     litellm_base: (raw.litellm_base as string | null) ?? null,
+    openrouter_base: (raw.openrouter_base as string | null) ?? null,
     has_key: Boolean(raw.has_key),
+    has_openrouter_key: Boolean(raw.has_openrouter_key),
     litellm_key_suffix:
       typeof raw.litellm_key_suffix === "string" ? raw.litellm_key_suffix : null,
+    openrouter_key_suffix:
+      typeof raw.openrouter_key_suffix === "string" ? raw.openrouter_key_suffix : null,
     openai_api_key_env_set: Boolean(raw.openai_api_key_env_set),
     openai_api_key_env_suffix:
       typeof raw.openai_api_key_env_suffix === "string" ? raw.openai_api_key_env_suffix : null,
@@ -239,5 +380,36 @@ export async function getToolsInventory(): Promise<ToolInventoryResponse> {
   const res = await fetch(brainApiUrl("/health/tools"));
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json() as Promise<ToolInventoryResponse>;
+}
+
+/** Row from ``duckdb_get_schema`` grouped under a medallion schema. */
+export type WarehouseLayerTable = {
+  name: string;
+  table_type: string;
+};
+
+export type WarehouseOtherTable = {
+  schema: string;
+  name: string;
+  table_type: string;
+};
+
+/** ``GET /health/warehouse/tables`` — tables in bronze/silver/gold plus other schemas. */
+export type WarehouseTablesResponse = {
+  status: string;
+  layers: {
+    bronze: WarehouseLayerTable[];
+    silver: WarehouseLayerTable[];
+    gold: WarehouseLayerTable[];
+  };
+  other: WarehouseOtherTable[];
+  raw_line_count?: number;
+  error?: string | null;
+};
+
+export async function getWarehouseTables(): Promise<WarehouseTablesResponse> {
+  const res = await fetch(brainApiUrl("/health/warehouse/tables"));
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<WarehouseTablesResponse>;
 }
 

@@ -1,33 +1,35 @@
 """One-turn chat: load remote HTTP tool servers and run the Deep Agent.
 
-**Flow (UI → LiteLLM)** — only the **brain** talks to LiteLLM; the browser never sends ``LITELLM_KEY``.
+**Flow (UI → LLM)** — only the **brain** calls the configured provider; the browser never sends API keys.
 
-1. Browser: ``POST /api/agent/chat`` (Vite proxy) → brain ``POST /agent/chat`` with JSON ``{ "message": "...", "locale": "en"|"es" }`` (optional ``locale``, default ``en``).
+1. Browser: ``POST /api/agent/chat`` (Vite proxy) → brain ``POST /agent/chat`` with JSON
+   ``{ "message": "...", "locale": "en"|"es", "history": [ { "role": "user"|"assistant", "content": "..." }, ... ] }``.
+   ``history`` holds prior turns only; the brain merges them into LangGraph ``messages`` before the new user message (same shape as Deep Agent state).
 2. Brain: ``run_agent_chat_turn`` loads MCP tools from ``mcp.json``, builds ``create_deep_agent`` with
-   ``build_chat_model()`` → ``langchain_openai.ChatOpenAI`` (``base_url`` = LiteLLM proxy, ``api_key`` = ``LITELLM_KEY``).
-3. Agent graph invokes that model for LLM turns; MCP tools hit ``duckdb-mcp`` etc. No separate "model service" in front.
+   ``build_chat_model()`` — **LiteLLM** (``langchain_openai.ChatOpenAI`` + ``LITELLM_KEY``) when ``MODEL_PROVIDER=litellm`` (default), **OpenRouter** (``ChatOpenAI`` + ``OPENROUTER_API_KEY``, base ``OPENROUTER_BASE_URL`` or ``https://openrouter.ai/api/v1``) when ``MODEL_PROVIDER=openrouter``, or **Gemini** (``langchain_google_genai.ChatGoogleGenerativeAI`` + ``GEMINI_API_KEY``) when ``MODEL_PROVIDER=gemini``.
+3. Agent graph invokes that model for LLM turns; MCP tools hit ``duckdb-mcp`` etc.
 
-If LiteLLM returns ``401 Received API Key = sk-…XXXX``, ``XXXX`` is the key **this process** sent in the
-``Authorization: Bearer`` header — compare to ``litellm_key_suffix`` on ``GET /health``. If your code hardcodes a
-different key but the error still shows an old suffix, the running container/image is stale: rebuild the brain.
+If LiteLLM returns ``401 Received API Key = sk-…XXXX``, ``XXXX`` is the key **this process** sent — compare to ``litellm_key_suffix`` on ``GET /health``.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import asyncio
 import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import AsyncIterator
 from typing import Any
 
-from langchain_core.messages import HumanMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient as MultiServerToolClient
 from opentelemetry import trace
 
 from agent.graph import build_agent
+from agent.utils.chat_history import build_agent_invoke_messages
+from agent.utils.chat_stream_events import langgraph_stream_part_to_events
+from agent.utils.mcp_connections import load_mcp_tool_connections
 from agent.utils.messages import resolve_assistant_reply, summarize_messages_for_debug
 from agent.utils.mcp_tool_log import MCPToolResponseLogger
 from agent.utils.langfuse_tracing import (
@@ -48,30 +50,8 @@ def _project_root() -> Path:
 
 
 def _tool_connections() -> dict[str, Any]:
-    """HTTP connection map from ``mcp.json`` only (``mcpServers`` or ``servers`` block)."""
-    cfg_path = _project_root() / "mcp.json"
-    if not cfg_path.is_file():
-        raise FileNotFoundError(
-            f"Missing {cfg_path}: define MCP HTTP servers there (see project mcp.json)."
-        )
-    raw = json.loads(cfg_path.read_text(encoding="utf-8"))
-    block = raw.get("mcpServers") or raw.get("servers")
-    if not isinstance(block, dict) or not block:
-        raise ValueError(
-            "mcp.json must contain a non-empty object under 'mcpServers' or 'servers'."
-        )
-    connections: dict[str, Any] = {}
-    for name, spec in block.items():
-        if not isinstance(spec, dict):
-            continue
-        url = spec.get("url")
-        if not url:
-            continue
-        transport = spec.get("transport") or "http"
-        connections[str(name)] = {"transport": transport, "url": str(url)}
-    if not connections:
-        raise ValueError("mcp.json: no entries with a 'url' field.")
-    return connections
+    """HTTP connection map from ``mcp.json`` (with host-side URL rewrites when not in Docker)."""
+    return load_mcp_tool_connections(_project_root())
 
 
 @dataclass(frozen=True)
@@ -120,6 +100,7 @@ async def _ainvoke_with_empty_generation_retry(
 async def run_agent_chat_turn(
     message: str,
     *,
+    history: list[dict[str, Any]] | None = None,
     request_id: str | None = None,
     langfuse_session_id: str | None = None,
     langfuse_user_id: str | None = None,
@@ -142,9 +123,17 @@ async def run_agent_chat_turn(
     with tracer.start_as_current_span("brain.run_agent_chat_turn") as span:
         span.set_attribute("datacyber.request_id", rid)
         span.set_attribute("datacyber.message_chars", len(message))
+        span.set_attribute("datacyber.history_turns", len(history or []))
         span.set_attribute("datacyber.response_locale", response_locale or "en")
 
-        logger.info("[%s] chat_turn start message_chars=%s", rid, len(message))
+        invoke_messages = build_agent_invoke_messages(history, message)
+        logger.info(
+            "[%s] chat_turn start message_chars=%s history_items=%s lc_messages=%s",
+            rid,
+            len(message),
+            len(history or []),
+            len(invoke_messages),
+        )
 
         connections = _tool_connections()
         logger.info("[%s] mcp.json server keys=%s", rid, list(connections.keys()))
@@ -182,6 +171,9 @@ async def run_agent_chat_turn(
                 request_id=rid,
                 session_id=langfuse_session_id,
                 user_id=langfuse_user_id,
+                response_locale=loc,
+                feature="agent-chat",
+                endpoint="api-agent-chat",
             )
             invoke_config["run_name"] = "datacyber-agent-chat"
             record("langfuse_callbacks_attached", tags=invoke_config["metadata"].get("langfuse_tags"))
@@ -199,7 +191,7 @@ async def run_agent_chat_turn(
                         ):
                             state = await _ainvoke_with_empty_generation_retry(
                                 agent,
-                                {"messages": [HumanMessage(content=message)]},
+                                {"messages": invoke_messages},
                                 config=invoke_config,
                                 request_id=rid,
                             )
@@ -208,7 +200,7 @@ async def run_agent_chat_turn(
                 else:
                     state = await _ainvoke_with_empty_generation_retry(
                         agent,
-                        {"messages": [HumanMessage(content=message)]},
+                        {"messages": invoke_messages},
                         config=invoke_config,
                         request_id=rid,
                     )
@@ -253,11 +245,182 @@ async def run_agent_chat_turn(
                 "messages": msg_summary,
                 "skills": (
                     "Deep Agents `skills=[\"/skills/\"]` (parent dir; SkillsMiddleware auto-discovers "
-                    "every subdir with a SKILL.md — e.g. analyze-indec-eph-hogar, ingest-indec-mercadolaboral, "
-                    "scrape-indec-mercado-laboral, update-catalog, catalog-sql). "
-                    "There is no separate skill HTTP endpoint."
+                    "every subdir with a SKILL.md). Subagents: `task(subagent_type=\"general-purpose\"|\"data-analyst\")`; "
+                    "`data-analyst` uses DuckDB+Dagster MCP tools only. Sandbox virtual path: `/sandbox/`."
                 ),
                 "steps": steps,
             }
 
         return ChatTurnResult(reply=reply, request_id=rid, debug=debug)
+
+
+_STREAM_MODES = ["messages", "updates", "values"]
+
+
+async def stream_agent_chat_sse_events(
+    message: str,
+    *,
+    history: list[dict[str, Any]] | None = None,
+    request_id: str | None = None,
+    langfuse_session_id: str | None = None,
+    langfuse_user_id: str | None = None,
+    response_locale: str = "en",
+) -> AsyncIterator[dict[str, Any]]:
+    """Yield JSON-serializable event dicts for SSE (start → stream → done | error).
+
+    Uses LangGraph v2 streaming with ``subgraphs=True`` so subagent ``task`` runs surface
+    under separate namespaces (see Deep Agents streaming docs).
+    """
+    rid = request_id or str(uuid.uuid4())
+    t0 = time.perf_counter()
+    steps: list[dict[str, Any]] = []
+
+    def record(step: str, **extra: Any) -> None:
+        entry = {
+            "step": step,
+            "ms_from_start": round((time.perf_counter() - t0) * 1000, 2),
+            **extra,
+        }
+        steps.append(entry)
+        logger.info("[%s] stream %s %s", rid, step, extra)
+
+    with tracer.start_as_current_span("brain.stream_agent_chat_sse_events") as span:
+        span.set_attribute("datacyber.request_id", rid)
+        span.set_attribute("datacyber.message_chars", len(message))
+        span.set_attribute("datacyber.history_turns", len(history or []))
+
+        invoke_messages = build_agent_invoke_messages(history, message)
+
+        yield {"event": "start", "request_id": rid}
+
+        connections = _tool_connections()
+        record("mcp_config_loaded", servers=list(connections.keys()))
+
+        client = MultiServerToolClient(connections, tool_name_prefix=True)
+        with tracer.start_as_current_span("brain.mcp_get_tools_stream"):
+            tools = await client.get_tools()
+        tool_names = sorted([getattr(t, "name", repr(t)) for t in tools])
+        record("mcp_get_tools", tool_count=len(tools), tool_names=tool_names)
+
+        loc = "es" if (response_locale or "en").strip().lower() == "es" else "en"
+        agent = build_agent(tools, response_locale=loc)
+
+        lf_handler = create_langchain_callback_handler()
+        callbacks: list[Any] = [MCPToolResponseLogger(rid)]
+        invoke_config: dict[str, Any] = {"callbacks": callbacks}
+        if lf_handler:
+            callbacks.append(lf_handler)
+            invoke_config["metadata"] = build_langfuse_run_metadata(
+                request_id=rid,
+                session_id=langfuse_session_id,
+                user_id=langfuse_user_id,
+                response_locale=loc,
+                feature="agent-chat-stream",
+                endpoint="api-agent-chat-stream",
+            )
+            invoke_config["run_name"] = "datacyber-agent-chat-stream"
+
+        payload = {"messages": invoke_messages}
+        last_root_state: dict[str, Any] | None = None
+        main_acc: list[str] = []
+        sub_acc: list[str] = []
+
+        t_invoke = time.perf_counter()
+        reply = ""
+        stream_error: Exception | None = None
+        try:
+            if lf_handler:
+                from langfuse import propagate_attributes
+
+                with root_chat_observation(request_id=rid, user_message=message) as root_obs:
+                    with propagate_attributes(
+                        session_id=langfuse_session_id,
+                        user_id=langfuse_user_id,
+                    ):
+                        async for part in agent.astream(
+                            payload,
+                            config=invoke_config,
+                            stream_mode=_STREAM_MODES,
+                            subgraphs=True,
+                            version="v2",
+                        ):
+                            if not isinstance(part, dict):
+                                continue
+                            if part.get("type") == "values" and not part.get("ns"):
+                                data = part.get("data")
+                                if isinstance(data, dict):
+                                    last_root_state = data
+                            for evt in langgraph_stream_part_to_events(part):
+                                if evt.get("event") == "token":
+                                    if evt.get("source") == "main":
+                                        main_acc.append(evt.get("text") or "")
+                                    else:
+                                        sub_acc.append(evt.get("text") or "")
+                                yield evt
+                        reply = (
+                            resolve_assistant_reply(last_root_state)
+                            if last_root_state is not None
+                            else ""
+                        )
+                        if not (reply or "").strip():
+                            reply = "".join(main_acc)
+                        finalize_root_observation(root_obs, reply=reply)
+            else:
+                async for part in agent.astream(
+                    payload,
+                    config=invoke_config,
+                    stream_mode=_STREAM_MODES,
+                    subgraphs=True,
+                    version="v2",
+                ):
+                    if not isinstance(part, dict):
+                        continue
+                    if part.get("type") == "values" and not part.get("ns"):
+                        data = part.get("data")
+                        if isinstance(data, dict):
+                            last_root_state = data
+                    for evt in langgraph_stream_part_to_events(part):
+                        if evt.get("event") == "token":
+                            if evt.get("source") == "main":
+                                main_acc.append(evt.get("text") or "")
+                            else:
+                                sub_acc.append(evt.get("text") or "")
+                        yield evt
+                reply = (
+                    resolve_assistant_reply(last_root_state) if last_root_state is not None else ""
+                )
+                if not (reply or "").strip():
+                    reply = "".join(main_acc)
+        except Exception as exc:
+            stream_error = exc
+            logger.exception("[%s] agent stream failed", rid)
+            yield {"event": "error", "message": str(exc).strip()[:2000], "request_id": rid}
+        finally:
+            flush_langfuse()
+
+        if stream_error is not None:
+            return
+
+        invoke_ms = round((time.perf_counter() - t_invoke) * 1000, 2)
+        record("agent_astream", ms=invoke_ms)
+        total_ms = round((time.perf_counter() - t0) * 1000, 2)
+
+        msg_summary = summarize_messages_for_debug(last_root_state or {})
+        debug: dict[str, Any] | None = None
+        if settings.pipeline_debug:
+            debug = {
+                "request_id": rid,
+                "total_ms": total_ms,
+                "invoke_ms": invoke_ms,
+                "tool_names": tool_names,
+                "messages": msg_summary,
+                "steps": steps,
+            }
+
+        yield {
+            "event": "done",
+            "reply": reply,
+            "subagent_reply": "".join(sub_acc),
+            "request_id": rid,
+            "debug": debug,
+        }
