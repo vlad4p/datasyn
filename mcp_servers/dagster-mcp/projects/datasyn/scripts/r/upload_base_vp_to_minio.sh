@@ -3,7 +3,8 @@
 # Requires: Docker, network infra-datasynk, bucket data-local, object-storage defaults.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR" && git rev-parse --show-toplevel)"
 CSV="${BASE_VP_CSV:-$ROOT/data-local/landing/indec/censo_2022/base_vp.csv}"
 ENDPOINT="${MINIO_ENDPOINT:-http://datacyber-object-minio:9000}"
 BUCKET="${MINIO_BUCKET:-data-local}"
@@ -11,7 +12,7 @@ KEY="${S3_KEY:-landing/indec/censo_2022/base_vp.csv}"
 
 if [[ ! -f "$CSV" ]]; then
   echo "File not found: $CSV" >&2
-  echo "Run: Rscript $ROOT/r-scripts/export_base_vp_to_csv.R" >&2
+  echo "Run: Rscript $SCRIPT_DIR/export_base_vp_to_csv.R" >&2
   exit 1
 fi
 

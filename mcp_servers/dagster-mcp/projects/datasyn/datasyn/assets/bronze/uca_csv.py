@@ -1,6 +1,6 @@
 """Bronze: CSV UCA desde MinIO → tablas ``bronze.uca_*`` (DuckDB nativo o Iceberg REST).
 
-Origen: ``landing/indec/censo/uca/<archivo>.csv`` (``r-scripts/upload_uca_to_minio.sh``).
+Origen: ``landing/indec/censo/uca/<archivo>.csv`` (``scripts/r/upload_uca_to_minio.sh`` en el proyecto datasyn).
 
 ``UCA_FILES_LOCAL_DIR`` + mismo nombre de archivo omite MinIO en desarrollo.
 ``read_csv_auto``: ``sample_size=-1``, ``all_varchar=true`` (igual que otros CSV bronze).

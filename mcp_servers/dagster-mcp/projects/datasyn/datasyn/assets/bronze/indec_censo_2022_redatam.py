@@ -1,7 +1,7 @@
 """Bronze: INDEC Censo 2022 Base_VP — CSV en landing → ``bronze.indec_censo_2022_vp``.
 
 Origen: MinIO ``landing/indec/censo_2022/base_vp.csv`` (generado con
-``r-scripts/export_base_vp_to_csv.R`` + ``redatamx``). Por defecto el CSV es **narrow**:
+``scripts/r/export_base_vp_to_csv.R`` + ``redatamx``). Por defecto el CSV es **narrow**:
 ``entity``, ``variable``, ``value_code``, ``value_label``, ``count``. Snapshots locales
 bajo ``.../censo_2022/snapshots/``.
 

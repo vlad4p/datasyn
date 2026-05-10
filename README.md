@@ -15,7 +15,7 @@ Make it easier to **discover, load, and reason about** public datasets with repr
 | `mcp_servers/dagster-mcp/projects/datasyn/` | Dagster code location (bronze assets, jobs, schedules) |
 | `infra/` | Optional Docker stacks (object storage, DuckDB, Dagster, Langfuse, etc.) |
 | `skills/` | Deep Agents `SKILL.md` playbooks (ingest, catalog, analysis) |
-| `r-scripts/` | R/shell helpers (e.g. REDATAM export, uploads to MinIO) |
+| `mcp_servers/dagster-mcp/projects/datasyn/scripts/r/` | R/shell helpers for census/UCA (REDATAM export, MinIO upload) |
 | `ui/` | Vite frontend |
 | `data-local/` | **Local data mirror** (gitignored; see `.gitignore`) |
 | `AGENTS.md` | Instructions for the warehouse/agent runtime |

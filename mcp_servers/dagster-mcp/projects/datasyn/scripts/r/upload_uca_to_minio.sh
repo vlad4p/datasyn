@@ -4,15 +4,16 @@
 # Defaults match the bronze assets in datasyn/assets/bronze/uca_csv.py unless UCA_LANDING_PREFIX
 # is overridden there / here.
 #
-# Usage:
-#   UCA_LOCAL_DIR=/path/to/uca ./r-scripts/upload_uca_to_minio.sh          # upload missing only
-#   FORCE=1 ./r-scripts/upload_uca_to_minio.sh                             # re-upload all
+# Usage (from repo root or any cwd):
+#   UCA_LOCAL_DIR=/path/to/uca ./mcp_servers/dagster-mcp/projects/datasyn/scripts/r/upload_uca_to_minio.sh
+#   FORCE=1 ./mcp_servers/dagster-mcp/projects/datasyn/scripts/r/upload_uca_to_minio.sh
 #
 # Requires: Docker, network infra-datasynk, object-storage defaults (see upload_base_vp_to_minio.sh).
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-UCA_LOCAL_DIR="${UCA_LOCAL_DIR:-/Users/vlad/project/datasynk/data-local/uca}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR" && git rev-parse --show-toplevel)"
+UCA_LOCAL_DIR="${UCA_LOCAL_DIR:-$ROOT/data-local/uca}"
 PREFIX="${UCA_S3_PREFIX:-landing/indec/censo/uca}"
 PREFIX="${PREFIX#/}"
 PREFIX="${PREFIX%/}"
