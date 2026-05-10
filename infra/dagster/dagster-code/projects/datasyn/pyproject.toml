@@ -1,0 +1,26 @@
+[project]
+name = "datasyn"
+version = "0.1.0"
+description = "Datasyn code location."
+requires-python = ">=3.11"
+dependencies = [
+    "dagster>=1.9,<2",
+    "dagster-postgres>=0.29,<0.30",
+    "dagster-webserver>=1.9,<2",
+    "dagster-duckdb>=0.29,<0.30",
+    "duckdb>=1.4.2",
+    "httpx>=0.28.1",
+    "boto3>=1.43.5",
+    "pdfplumber>=0.11.4",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.dagster]
+module_name = "datasyn.definitions"
+code_location_name = "datasyn"
+
+[tool.setuptools.packages.find]
+include = ["datasyn*"]
