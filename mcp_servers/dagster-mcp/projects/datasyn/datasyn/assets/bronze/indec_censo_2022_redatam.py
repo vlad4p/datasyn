@@ -1,10 +1,15 @@
-"""Bronze: radios censales CSV desde MinIO → ``bronze.radios_censales`` en DuckDB o Iceberg REST.
+"""Bronze: INDEC Censo 2022 Base_VP — CSV en landing → ``bronze.indec_censo_2022_vp``.
 
-Misma ruta de ingest que ``indec_censo_2022_redatam``: ``read_csv_auto`` con
-``sample_size=-1`` y ``all_varchar=true``; si ``ICEBERG_REST_ENDPOINT`` está definido,
-se adjunta el catálogo y la tabla vive bajo el alias Iceberg.
+Origen: MinIO ``landing/indec/censo_2022/base_vp.csv`` (generado con
+``r-scripts/export_base_vp_to_csv.R`` + ``redatamx``). Por defecto el CSV es **narrow**:
+``entity``, ``variable``, ``value_code``, ``value_label``, ``count``. Snapshots locales
+bajo ``.../censo_2022/snapshots/``.
 
-Override local: ``RADIOS_CENSALES_LOCAL_PATH`` (archivo absoluto) omite MinIO.
+``read_csv_auto`` usa ``sample_size=-1`` y ``all_varchar=true`` para no perder columnas
+ni forzar tipos que recorten códigos.
+
+Si ``ICEBERG_REST_ENDPOINT`` está definido, la tabla se escribe en el catálogo Iceberg;
+si no, DuckDB nativo.
 """
 
 from __future__ import annotations
@@ -20,10 +25,10 @@ from dagster_duckdb import DuckDBResource
 from datasyn.iceberg_bronze_lib import attach_iceberg_catalog, iceberg_publish_configured
 
 BRONZE_SCHEMA = "bronze"
-TABLE_NAME = "radios_censales"
-DEFAULT_OBJECT_KEY = "landing/radio_censal/radios-censales.csv"
-_OBJECT_KEY_ENV = "RADIOS_CENSALES_OBJECT_KEY"
-_LOCAL_PATH_ENV = "RADIOS_CENSALES_LOCAL_PATH"
+TABLE_NAME = "indec_censo_2022_vp"
+DEFAULT_OBJECT_KEY = "landing/indec/censo_2022/base_vp.csv"
+_OBJECT_KEY_ENV = "INDEC_CENSO_2022_VP_OBJECT_KEY"
+_LOCAL_PATH_ENV = "INDEC_CENSO_2022_VP_LOCAL_PATH"
 
 
 def _bucket() -> str:
@@ -40,8 +45,8 @@ def _s3_client():
     secret_key = (os.environ.get("MINIO_SECRET_KEY") or "").strip()
     if not endpoint or not access_key or not secret_key:
         raise Failure(
-            "MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY must be set for radios_censales "
-            f"(unless {_LOCAL_PATH_ENV} points to a file)."
+            "MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY must be set for "
+            "indec_censo_2022_vp (unless INDEC_CENSO_2022_VP_LOCAL_PATH points to a file)."
         )
     return boto3.client(
         "s3",
@@ -54,7 +59,7 @@ def _s3_client():
 
 def _download_csv_bytes(context: AssetExecutionContext, bucket: str, key: str) -> bytes:
     client = _s3_client()
-    context.log.info("radios_censales fetching s3://%s/%s", bucket, key)
+    context.log.info("indec_censo_2022_vp fetching s3://%s/%s", bucket, key)
     try:
         resp = client.get_object(Bucket=bucket, Key=key)
     except ClientError as exc:
@@ -88,12 +93,13 @@ def _ensure_schema(con, catalog_alias: str | None) -> None:
     group_name="bronze",
     compute_kind="s3",
     description=(
-        "Lee ``landing/radio_censal/radios-censales.csv`` desde MinIO "
-        f"(clave {_OBJECT_KEY_ENV}) y materializa ``{BRONZE_SCHEMA}.{TABLE_NAME}``. "
-        f"Override local: {_LOCAL_PATH_ENV}. Iceberg si ``ICEBERG_REST_ENDPOINT``."
+        "Lee ``landing/indec/censo_2022/base_vp.csv`` desde MinIO (clave configurable con "
+        f"{_OBJECT_KEY_ENV}) y materializa ``{BRONZE_SCHEMA}.{TABLE_NAME}`` vía "
+        "``read_csv_auto``. Opcional: ``INDEC_CENSO_2022_VP_LOCAL_PATH`` = ruta absoluta al "
+        "CSV para omitir MinIO en desarrollo."
     ),
 )
-def radios_censales(context, database: DuckDBResource):
+def indec_censo_2022_vp(context, database: DuckDBResource):
     duck_path = os.environ.get("DUCKDB_PATH", "/data/warehouse.duckdb").strip()
     local_override = (os.environ.get(_LOCAL_PATH_ENV) or "").strip()
 
@@ -161,7 +167,7 @@ def radios_censales(context, database: DuckDBResource):
             row_count = con.execute(f"SELECT COUNT(*) FROM {fqn}").fetchone()[0]
 
         storage = "iceberg_rest" if catalog_alias else "duckdb_native"
-        meta: dict = {
+        meta = {
             "duckdb_path": duck_path,
             "source": source,
             "table": MetadataValue.text(f"{BRONZE_SCHEMA}.{TABLE_NAME}"),

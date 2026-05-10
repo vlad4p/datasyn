@@ -10,12 +10,17 @@ Pipeline (single LiteLLM call, whole PDF inline):
    arrays into ``VariableRow`` and ingest into ``bronze.indec_eph_variables`` (DuckDB native
    by default; Iceberg REST when ``ICEBERG_REST_ENDPOINT`` is set).
 4. Surface the Spanish ``anexo_summary`` in materialization metadata.
+
+Storage follows ``materialize_bronze_rows``: Iceberg REST when configured, else native DuckDB
+``bronze.indec_eph_variables``.
 """
+
+from __future__ import annotations
 
 import os
 from pathlib import Path
 
-from dagster import AssetExecutionContext, MaterializeResult, MetadataValue, asset
+from dagster import MaterializeResult, MetadataValue, asset
 from dagster_duckdb import DuckDBResource
 
 from datasyn.iceberg_bronze_lib import materialize_bronze_rows
@@ -55,10 +60,7 @@ _VARIABLES_PLACEHOLDERS = "?, ?, ?, ?, ?, ?, ?, ?"
         "pagina, year, quarter); the anexo summary is stored in materialization metadata."
     ),
 )
-def indec_eph_variables(
-    context: AssetExecutionContext,
-    database: DuckDBResource,
-) -> MaterializeResult:
+def indec_eph_variables(context, database: DuckDBResource) -> MaterializeResult:
     year = _int_env("INDEC_EPH_TRIMESTRAL_YEAR", 2025)
     quarter = _int_env("INDEC_EPH_VARIABLES_QUARTER", 3)
 

@@ -1,15 +1,21 @@
 """Bronze: INDEC EPH trimestral — landing files + bronze tables in DuckDB or Iceberg REST.
 
 When ``ICEBERG_REST_ENDPOINT`` is set, TXT rows are written via DuckDB Iceberg REST attach.
-Otherwise rows go to native DuckDB tables under schema ``bronze`` (same ``read_csv_auto`` ingest).
+Otherwise rows go to native DuckDB tables under schema ``bronze`` (``read_csv_auto`` on
+semicolon-separated INDEC TXT).
+
+Assets: ``indec_eph_trimestral_files`` (download/unzip/MinIO mirror) → ``indec_usu_hogar`` →
+``indec_usu_individual`` (ordered dependency chain).
 
 https://duckdb.org/2025/11/28/iceberg-writes-in-duckdb
 https://duckdb.org/docs/current/core_extensions/iceberg/iceberg_rest_catalogs.html
 """
 
+from __future__ import annotations
+
 import os
 
-from dagster import AssetExecutionContext, Failure, MaterializeResult, MetadataValue, asset
+from dagster import Failure, MaterializeResult, MetadataValue, asset
 from dagster_duckdb import DuckDBResource
 
 from datasyn.iceberg_bronze_lib import materialize_bronze_from_txt
@@ -52,7 +58,7 @@ def _trim_quarters() -> tuple[int, ...]:
         "when configured; layout: DATA_LOCAL_ROOT/landing/indec/eph/<year>/Q<n>/."
     ),
 )
-def indec_eph_trimestral_files(context: AssetExecutionContext):
+def indec_eph_trimestral_files(context):
     year = _trim_year()
     quarters = _trim_quarters()
     data_root = os.environ.get("DATA_LOCAL_ROOT", "/data-local")

@@ -7,6 +7,14 @@ ui/.env
 ui/.env.local
 ui/.env.*.local
 
+# Keys and material that must never be committed
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_rsa.pub
+*.pem.enc
+
 # Python
 __pycache__/
 *.py[cod]
