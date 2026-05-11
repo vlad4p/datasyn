@@ -6,14 +6,42 @@ services:
     restart: unless-stopped
     volumes:
       - duckdb_data:/data
+      - storage:/storage:ro
+      - ../../data-local:/data-local:ro
     env_file:
       - .env
     networks:
       - infra
 
-  # DuckDB Local UI (same image as MCP stack ``duckdb-ui``). Profile ``ui``: opt-in so the warehouse
-  # file is not locked when only batch/MCP workloads run. **Do not run with ``duckdb-mcp`` up** on the
-  # same DB file — stop MCP first: ``docker compose -f mcp_servers/docker-compose.yaml stop duckdb-mcp``.
+  # DuckDB warehouse MCP (FastMCP HTTP). Publishes host :8040 → ``mcp.json`` URL ``http://duckdb-mcp:8040/mcp``.
+  duckdb-mcp:
+    build:
+      context: ./mcp
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - duckdb
+    ports:
+      - "8040:8040"
+    env_file:
+      - path: ./mcp/.env
+        required: false
+    environment:
+      DUCKDB_PATH: /data/warehouse.duckdb
+      DATA_LOCAL_ROOT: /data-local
+      PORT: "8040"
+      HOST: "0.0.0.0"
+      MCP_HTTP_PATH: /mcp
+    volumes:
+      - duckdb_data:/data
+      - storage:/storage:ro
+      - ../../data-local:/data-local:ro
+    networks:
+      - infra
+
+  # DuckDB Local UI. Profile ``ui``: opt-in so the warehouse file is not locked when only batch/MCP run.
+  # **Do not run with ``duckdb-mcp``** on the same DB file — stop MCP first:
+  # ``docker compose -f infra/duckdb/docker-compose.yaml stop duckdb-mcp``.
   # https://duckdb.org/docs/current/connect/concurrency.html
   # Host URL (default): http://127.0.0.1:4213  →  ``make infra-duckdb-ui-up`` or
   # ``docker compose --profile ui up -d duckdb-ui``

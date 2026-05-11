@@ -7,19 +7,18 @@ project containers.
 ## Layout
 
 ```
-mcp_servers/dagster-mcp/
+infra/dagster/mcp/
 ├── Dockerfile                # Python 3.12 + docker-ce-cli + compose plugin
 ├── requirements.txt          # fastmcp, python-dotenv
 ├── server.py                 # FastMCP HTTP server (tools listed below)
 ├── scaffold.py               # pure-Python project / asset / job / schedule / sensor templating
 ├── docker_ops.py             # subprocess wrapper around the host Docker CLI
-├── templates/                # `.tpl` files filled via `str.format`
-└── projects/                 # host-mounted volume, the place every scaffolded project lives
+└── templates/                # `.tpl` files filled via `str.format`
 ```
 
-The MCP itself **does not import Dagster**. It only writes Python files to
-`projects/<name>/` and shells out to `docker build` / `docker run` against the
-host daemon (mounted via `/var/run/docker.sock`).
+Scaffolded and hand-maintained code locations live under **`../dagster-code/projects/`** (mounted as `/projects` in the `dagster-mcp` service — see **`../docker-compose.yaml`**).
+
+The MCP **does not import Dagster**. It writes Python under `/projects/<name>/` and shells out to `docker` on the host (socket mount).
 
 ## Tools (LangChain prefix `dagster_`)
 
@@ -81,7 +80,7 @@ dagster_deploy           project="indec_pipeline" host_port=3001 container_port=
 
 The Dagster project containers join the `infra-datasynk` Docker network so
 they can reach the rest of the stack by hostname (`duckdb-mcp:8040`,
-`scrapper-mcp:8042`).
+`storage-mcp:8044`).
 
 The Dagster UI ports start at `3001` to avoid colliding with `langfuse` on
 `3000`. Pick a different `host_port=` per project.

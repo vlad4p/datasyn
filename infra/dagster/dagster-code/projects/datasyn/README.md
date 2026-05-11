@@ -37,7 +37,7 @@ when the Dockerfile runs `dagster api grpc` on 4000.
 
 The container exposes the Dagster UI (or gRPC) on the chosen host port; the MCP attaches
 the container to the `datacyber_mcp` Docker network so it can reach the other
-Datacyber services (e.g. `duckdb-mcp:8040`, `scrapper-mcp:8042`).
+Datacyber services (e.g. `duckdb-mcp:8040`, `storage-mcp:8044`).
 
 ## Local (without the MCP)
 

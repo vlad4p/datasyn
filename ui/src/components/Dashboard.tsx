@@ -36,9 +36,11 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   duckdb_get_schema: "List schemas/tables/views available in DuckDB.",
   duckdb_execute_query: "Run one DuckDB SQL statement (SELECT/DDL/DML).",
   duckdb_list_data_mount: "List files and directories under /data-local.",
-  scrapper_list_sources: "List supported public data sources.",
-  scrapper_indec_mercado_laboral_list: "Probe INDEC EPH files by period (no download).",
-  scrapper_indec_mercado_laboral_download: "Download and unzip INDEC EPH data into /data-local.",
+  storage_list_buckets: "List MinIO/S3 buckets on the configured endpoint.",
+  storage_list_objects: "List object keys in a bucket (optional prefix).",
+  storage_get_object_text: "Read a text object from a bucket (size-capped).",
+  storage_put_object_text: "Write text content to an object key.",
+  storage_delete_object: "Delete an object from a bucket.",
   dagster_list_projects: "List scaffolded Dagster projects.",
   dagster_create_project: "Create a Dagster project scaffold.",
   dagster_add_asset: "Add an asset module to a Dagster project.",
@@ -69,8 +71,8 @@ const TOOL_EXAMPLES: Record<string, string> = {
   duckdb_get_schema: "Use when starting a task: inspect available tables before querying.",
   duckdb_execute_query: "Example: run an aggregate query (COUNT/GROUP BY) instead of SELECT *.",
   duckdb_list_data_mount: "Example: list /data-local/indec recursively before ingest.",
-  scrapper_indec_mercado_laboral_list: "Example: check if 2025 Q3 source files exist before download.",
-  scrapper_indec_mercado_laboral_download: "Example: download and unzip EPH files, then ingest into DuckDB.",
+  storage_list_objects: "Example: list keys under indec/mercado_laboral in the data-local bucket.",
+  storage_get_object_text: "Example: read a small metadata or CSV object from MinIO as text.",
   dagster_catalog_execute_query: "Example: upsert dataset_entity metadata with ON CONFLICT.",
   dagster_catalog_get_schema: "Example: inspect public catalog tables before writing SQL.",
   write_todos: "Use for multi-step work tracking during long implementations.",
@@ -203,7 +205,7 @@ export function Dashboard({ className, locale, id }: Props) {
         mcp.add(s);
       }
     }
-    const priority = ["duckdb", "scrapper", "dagster"];
+    const priority = ["duckdb", "storage", "dagster"];
     const ordered = priority.filter((x) => mcp.has(x));
     const rest = [...mcp].filter((x) => !priority.includes(x)).sort((a, b) => a.localeCompare(b));
     const out = [...ordered, ...rest];
@@ -231,7 +233,7 @@ export function Dashboard({ className, locale, id }: Props) {
     (key: string) => {
       if (key === "__helpers__") return d.helpersGroup;
       if (key === "__skills__") return d.skillsGroup;
-      const pretty: Record<string, string> = { duckdb: "DuckDB", scrapper: "Scrapper", dagster: "Dagster" };
+      const pretty: Record<string, string> = { duckdb: "DuckDB", storage: "Storage", dagster: "Dagster" };
       return pretty[key] ?? (key.charAt(0).toUpperCase() + key.slice(1));
     },
     [d.helpersGroup, d.skillsGroup],

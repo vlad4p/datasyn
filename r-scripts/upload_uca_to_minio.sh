@@ -5,8 +5,8 @@
 # is overridden there / here.
 #
 # Usage (from repo root or any cwd):
-#   UCA_LOCAL_DIR=/path/to/uca ./mcp_servers/dagster-mcp/projects/datasyn/scripts/r/upload_uca_to_minio.sh
-#   FORCE=1 ./mcp_servers/dagster-mcp/projects/datasyn/scripts/r/upload_uca_to_minio.sh
+#   UCA_LOCAL_DIR=/path/to/uca ./infra/dagster/dagster-code/projects/datasyn/scripts/r/upload_uca_to_minio.sh
+#   FORCE=1 ./infra/dagster/dagster-code/projects/datasyn/scripts/r/upload_uca_to_minio.sh
 #
 # Requires: Docker, network infra-datasynk, object-storage defaults (see upload_base_vp_to_minio.sh).
 set -euo pipefail

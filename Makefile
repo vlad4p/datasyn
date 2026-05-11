@@ -11,14 +11,13 @@ VITE_PROXY_TARGET ?= http://127.0.0.1:$(API_PORT)
 export VITE_PROXY_TARGET
 
 ROOT_COMPOSE := docker-compose.yaml
-MCP_COMPOSE := mcp_servers/docker-compose.yaml
 INFRA_OBJECT_STORAGE_COMPOSE := infra/object-storage/docker-compose.yaml
 INFRA_DUCKDB_COMPOSE := infra/duckdb/docker-compose.yaml
 INFRA_DAGSTER_COMPOSE := infra/dagster/docker-compose.yaml
 # INFRA_LITELLM_COMPOSE := infra/litellm/docker-compose.yaml
 INFRA_TELEGRAM_COMPOSE := infra/telegram_bot/docker-compose.yaml
 INFRA_LANGFUSE_COMPOSE := infra/langfuse/docker-compose.yml
-DAGSTER_USER_CODE_CONTEXT := mcp_servers/dagster-mcp/projects/datasyn
+DAGSTER_USER_CODE_CONTEXT := infra/dagster/dagster-code/projects/datasyn
 
 SHARED_NETWORK := infra-datasynk
 SHARED_VOLUMES := duckdb_data storage
@@ -47,7 +46,7 @@ help:
 	@echo "  make infra-duckdb-ui-down        # stop DuckDB UI container (releases warehouse lock)"
 	@echo ""
 	@echo "MCP:"
-	@echo "  make mcp-build | mcp-up | mcp-down | mcp-ps | mcp-logs"
+	@echo "  make mcp-build | mcp-up | mcp-down | mcp-ps | mcp-logs   # MCP-only slices (optional; infra-up includes them)"
 	@echo ""
 	@echo "Agent/UI:"
 	@echo "  make agent-build | agent-up | agent-down | agent-ps | agent-logs"
@@ -55,7 +54,7 @@ help:
 	@echo "                                   # API_PORT=$(API_PORT)  MCP→localhost rewrite unless in Docker"
 	@echo ""
 	@echo "All layers:"
-	@echo "  make stack-up                    # infra + mcp + agent"
+	@echo "  make stack-up                    # infra + agent (MCP services start with infra)"
 	@echo "  make stack-down                  # agent + mcp + infra"
 	@echo "  make stack-ps                    # infra + mcp + agent"
 
@@ -108,25 +107,34 @@ infra-duckdb-ui-up: bootstrap-infra-primitives
 
 infra-duckdb-ui-down:
 	-docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui stop duckdb-ui
-	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" logs --tail=100
-	# docker compose -f "$(INFRA_LITELLM_COMPOSE)" logs --tail=100
-	docker compose -f "$(INFRA_LANGFUSE_COMPOSE)" logs --tail=100
-	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" logs --tail=100
 
 mcp-build: bootstrap-infra-primitives
-	docker compose -f "$(MCP_COMPOSE)" build
+	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" build storage-mcp
+	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" build duckdb-mcp
+	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" build dagster-mcp
 
 mcp-up: bootstrap-infra-primitives
-	docker compose -f "$(MCP_COMPOSE)" up -d
+	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" up -d minio storage-mcp
+	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" up -d duckdb duckdb-mcp
+	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" up -d dagster-mcp
 
 mcp-down:
-	docker compose -f "$(MCP_COMPOSE)" down
+	-docker compose -f "$(INFRA_DAGSTER_COMPOSE)" stop dagster-mcp
+	-docker compose -f "$(INFRA_DUCKDB_COMPOSE)" stop duckdb-mcp
+	-docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" stop storage-mcp
 
 mcp-ps:
-	docker compose -f "$(MCP_COMPOSE)" ps
+	@echo "=== object-storage (minio, storage-mcp) ==="
+	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" ps minio storage-mcp
+	@echo "=== duckdb (duckdb, duckdb-mcp) ==="
+	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" ps duckdb duckdb-mcp
+	@echo "=== dagster (dagster-mcp) ==="
+	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" ps dagster-mcp
 
 mcp-logs:
-	docker compose -f "$(MCP_COMPOSE)" logs --tail=100
+	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" logs --tail=100 storage-mcp
+	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" logs --tail=100 duckdb-mcp
+	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" logs --tail=100 dagster-mcp
 
 agent-build: bootstrap-infra-primitives
 	docker compose -f "$(ROOT_COMPOSE)" build
@@ -144,20 +152,20 @@ agent-logs:
 	docker compose -f "$(ROOT_COMPOSE)" logs --tail=100
 
 ## Local development (host): FastAPI brain + Vite UI — start MCP first so tools resolve (``make mcp-up``).
-## Brain maps ``mcp.json`` Docker names → 127.0.0.1:8040 / 8042 / 8043 automatically when not in Docker.
+## Brain maps ``mcp.json`` Docker names → 127.0.0.1:8040 / 8043 / 8044 automatically when not in Docker.
 agent-dev:
 	@$(MAKE) -j2 agent-dev-brain agent-dev-ui
 
 agent-dev-brain:
 	@echo "[brain] uv run uvicorn … --port $(API_PORT) (sync deps once: uv sync)"
-	@echo "       MCP on host: duckdb :8040  scrapper :8042  dagster :8043 (after mcp-up)"
+	@echo "       MCP on host: duckdb :8040  storage :8044  dagster :8043 (after mcp-up or infra-up)"
 	cd "$(MAKEFILE_DIR)" && uv run uvicorn agent.main:app --host 127.0.0.1 --port $(API_PORT) --reload
 
 agent-dev-ui:
 	@echo "[ui] npm run dev → http://127.0.0.1:5173  proxy /api → $(VITE_PROXY_TARGET)"
 	cd "$(MAKEFILE_DIR)/ui" && npm run dev
 
-stack-up: infra-up mcp-up agent-up
+stack-up: infra-up agent-up
 
 stack-down:
 	$(MAKE) agent-down

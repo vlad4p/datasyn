@@ -138,7 +138,7 @@ def supervisor_system_prompt(
             "- **`general-purpose`** — Full MCP tool set (same servers as this agent): scraping, DuckDB, Dagster, "
             "skills, filesystem. Use for complex multi-step work that benefits from isolation, parallel delegations, "
             "or heavy context.\n\n"
-            f"- **`{DATA_ANALYST_SUBAGENT_TYPE}`** — **DuckDB + Dagster MCP tools only** (no scrapper). "
+            f"- **`{DATA_ANALYST_SUBAGENT_TYPE}`** — **DuckDB + Dagster MCP tools only** (no `storage_*`). "
             "Use for deep warehouse analytics, multi-step SQL, catalog/metadata lookups via "
             "`dagster_catalog_*`, and Dagster code-location operations—especially when you want to keep "
             "the main thread small or delegate pipeline/database analysis without scraper noise.\n\n"

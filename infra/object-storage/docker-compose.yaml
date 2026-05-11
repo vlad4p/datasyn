@@ -17,11 +17,40 @@ services:
     # ``minio`` on ``infra-datasynk``, so ``minio:9000`` is ambiguous and can hit
     # Langfuse MinIO (root ``minio``/``miniosecret``) while clients use
     # ``minioadmin``/``minioadmin123`` → ``InvalidAccessKeyId``. Use this host for
-    # application object storage (Dagster, scrapper, etc.).
+    # application object storage (Dagster, storage-mcp, etc.).
     networks:
       infra:
         aliases:
           - datacyber-object-minio
+
+  # MinIO browser/list MCP (``mcp.json`` → ``http://storage-mcp:8044/mcp``).
+  storage-mcp:
+    build:
+      context: ./mcp
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - minio
+    env_file:
+      - path: ./.env
+        required: false
+    ports:
+      - "8044:8044"
+    environment:
+      MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://datacyber-object-minio:9000}"
+      MINIO_ACCESS_KEY: "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_SECRET_KEY: "${MINIO_ROOT_PASSWORD:-minioadmin123}"
+      MINIO_DEFAULT_BUCKET: "${MINIO_BUCKET:-data-local}"
+      MINIO_SECURE: "${MINIO_SECURE:-false}"
+      HOST: "0.0.0.0"
+      PORT: "8044"
+      MCP_HTTP_PATH: /mcp
+      MAX_TEXT_BYTES: "5242880"
+      LIST_PAGE_SIZE: "1000"
+    volumes:
+      - storage:/storage
+    networks:
+      - infra
 
 volumes:
   storage:

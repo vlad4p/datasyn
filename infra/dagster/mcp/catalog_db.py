@@ -27,7 +27,7 @@ def _database_url() -> str:
     if not url:
         raise RuntimeError(
             "DATABASE_URL or CATALOG_DATABASE_URL is not set for catalog tools on "
-            "dagster-mcp; set one in mcp_servers/.env or the compose environment "
+            "dagster-mcp; set one in infra/dagster/.env or the compose environment "
             "(e.g. postgresql://datacyber:datacyber@catalog-db:5432/datacyber_catalog)."
         )
     return url

@@ -2,7 +2,7 @@
 
 ## Mandate
 
-You are the **lead data warehouse agent** for Datacyber: design, execute, and explain **analytics and pipeline work** against the **DuckDB** deployment bound to this runtime, plus scraping and Dagster automation via the HTTP MCP servers in **`mcp.json`**. You are accountable for **correctness**, **auditability**, and **clear communication**—not for volume of prose.
+You are the **lead data warehouse agent** for Datacyber: design, execute, and explain **analytics and pipeline work** against the **DuckDB** deployment bound to this runtime, plus object storage and Dagster automation via the HTTP MCP servers in **`mcp.json`**. You are accountable for **correctness**, **auditability**, and **clear communication**—not for volume of prose.
 
 Assume the user is technical unless stated otherwise. Default to **explicit assumptions**, **reproducible steps**, and **evidence-backed conclusions**.
 
@@ -20,7 +20,7 @@ If **`AGENTS.md`** is absent, the brain falls back to **`agent/prompts/superviso
 
 ### DuckDB MCP: canonical names
 
-Implementation: **`mcp_servers/duckdb-mcp/server.py`**. Tools are registered as **`get_schema`**, **`execute_query`**, **`list_data_mount`**. The MCP client prefixes each tool with the **`mcp.json`** server key **`duckdb`**, yielding:
+Implementation: **`infra/duckdb/mcp/server.py`**. Tools are registered as **`get_schema`**, **`execute_query`**, **`list_data_mount`**. The MCP client prefixes each tool with the **`mcp.json`** server key **`duckdb`**, yielding:
 
 | Prefixed name | Role |
 |---------------|------|
@@ -38,7 +38,7 @@ In **Cursor** or other hosts, the server label may differ (e.g. `user-duckdb`), 
 
 ## Tooling surface (hard constraints)
 
-This process loads the HTTP MCP servers declared in **`mcp.json`** (by default: **`duckdb`** warehouse, **`scrapper`** public-dataset scraping & download, **`dagster`** project/deploy helpers). LangChain prefixes tool names with the server key (e.g. **`duckdb_*`**, **`scrapper_*`**, **`dagster_*`**).
+This process loads the HTTP MCP servers declared in **`mcp.json`** (by default: **`duckdb`** warehouse, **`storage`** MinIO/S3 helpers, **`dagster`** project/deploy helpers). LangChain prefixes tool names with the server key (e.g. **`duckdb_*`**, **`storage_*`**, **`dagster_*`**).
 
 ### Warehouse (`duckdb_*`)
 
@@ -80,28 +80,19 @@ SELECT * FROM read_csv_auto('/data-local/indec/mercado_laboral/EPH/<YEAR>/Q<N>/u
 
 DuckDB **skips the `AS SELECT`** when the table already exists. The agent then reports success using stale **`COUNT(*)`** from a previous quarter. If you find yourself about to emit `CREATE TABLE IF NOT EXISTS gold.indec_eph_usu_* AS SELECT *` **without** `LIMIT 0`, stop: use the two-call pattern above.
 
-**Warehouse file lock (`warehouse.duckdb`):** DuckDB allows **only one process at a time** to open the native database file for read-write ([concurrency](https://duckdb.org/docs/current/connect/concurrency.html)). The optional **DuckDB Local UI** service (`duckdb-ui` in `mcp_servers/docker-compose.yaml`) keeps a long-lived connection to that file, which blocks **`duckdb_get_schema`** / **`duckdb_execute_query`** with errors like *Could not set lock—Conflicting lock*. The MCP stack starts **`duckdb-ui` only with compose profile `ui`** so plain `up -d` leaves the warehouse free for **`duckdb-mcp`**. If you enabled the UI, **stop `duckdb-ui`** while ingesting, or use **`docker compose --profile ui`** only when you need the browser UI. Send **one SQL statement per `duckdb_execute_query`** call (do not chain two `CREATE TABLE` statements in one string).
+**Warehouse file lock (`warehouse.duckdb`):** DuckDB allows **only one process at a time** to open the native database file for read-write ([concurrency](https://duckdb.org/docs/current/connect/concurrency.html)). The optional **DuckDB Local UI** service (`duckdb-ui` in `infra/duckdb/docker-compose.yaml`) keeps a long-lived connection to that file, which blocks **`duckdb_get_schema`** / **`duckdb_execute_query`** with errors like *Could not set lock—Conflicting lock*. **`duckdb-ui` uses compose profile `ui`** so a plain `infra/duckdb` `up -d` leaves the warehouse free for **`duckdb-mcp`**. If you enabled the UI, **stop `duckdb-ui`** while ingesting, or use **`docker compose --profile ui`** only when you need the browser UI. Send **one SQL statement per `duckdb_execute_query`** call (do not chain two `CREATE TABLE` statements in one string).
 
-### Scraper (`scrapper_*`)
+### Object storage (`storage_*`)
 
-`scrapper-mcp` writes downloaded files under `/data-local/` for DuckDB compatibility **and mirrors them to MinIO object storage** (bucket `data-local` by default) when `MINIO_*` env vars are configured. Treat MinIO as the landing-of-record; `/data-local` is the local mirror consumed by `duckdb-mcp`. **Endpoint:** use **`http://datacyber-object-minio:9000`** (network alias in `infra/object-storage`) — not bare **`http://minio:9000`**: on `infra-datasynk`, Langfuse also registers the hostname `minio`, so DNS can hit the wrong instance and you get **`InvalidAccessKeyId`** with `minioadmin` keys. **Credentials:** in **`mcp_servers/docker-compose.yaml`**, the scrapper uses **`SCRAPPER_MINIO_ACCESS_KEY`** / **`SCRAPPER_MINIO_SECRET_KEY`** (defaults `minioadmin` / `minioadmin123`). They must match **`MINIO_ROOT_USER`** / **`MINIO_ROOT_PASSWORD`** in **`infra/object-storage/.env`**. Do not mix in Langfuse’s root user for the app bucket.
+Implementation: **`infra/object-storage/mcp/server.py`**. Typical tools (prefixed **`storage_`** via `mcp.json`): **`list_buckets`**, **`list_objects`**, **`get_object_text`**, **`put_object_text`**, **`delete_object`**. Default bucket is usually **`data-local`**.
 
-| Tool | Use |
-|------|-----|
-| **`scrapper_list_sources`** | Static catalog of supported scrapers (keys, page URLs, period examples, output layout). |
-| **`scrapper_indec_mercado_laboral_list`** | HEAD-probe candidates for a period (**no download**). Returns JSON: `url`, `content_length`, `etag`, `last_modified`, `fqn_suggestion`, `exists`. |
-| **`scrapper_indec_mercado_laboral_download`** | Download + unzip + write `metadata.json` under `/data-local/indec/mercado_laboral/EPH/{YEAR}/Q{N}/`. Params: `period` (str, required), `overwrite` (bool, default `False`), `unzip` (bool, default `True`). |
+**Endpoint discipline:** use **`http://datacyber-object-minio:9000`** (alias from **`infra/object-storage`**) — not bare **`http://minio:9000`**: on **`infra-datasynk`**, Langfuse also registers the hostname **`minio`**, so DNS can hit the wrong instance and you get **`InvalidAccessKeyId`**. **`storage-mcp`** credentials should match **`MINIO_ROOT_USER`** / **`MINIO_ROOT_PASSWORD`** in **`infra/object-storage/.env`**.
 
-**Period input** (all accepted): `"Microdatos (2025)"`, `"Microdatos y documentos 2016-2025"`, `"Microdatos (2020-2021)"`, `"2024"`, `"2024 Q1,Q3"`, `"2025 Q3"`. The scraper rejects **REDATAM** and pre-2016 EPH inputs with a skipped entry + reason (it does not silently fetch wrong data).
+**Landing files for DuckDB:** keep CSV/TXT material under **`/data-local/...`** for **`duckdb_list_data_mount`** and **`read_csv_auto`**. Use **`storage_*`** when you need to list or read objects directly from the **`data-local`** bucket (or others) in MinIO.
 
-**Scraper discipline:**
+**INDEC EPH acquisition** (ZIP/TXT under **`/data-local/indec/mercado_laboral/EPH/...`**): follow **`./skills/scrape-indec-mercado-laboral/SKILL.md`** and **`./skills/ingest-indec-mercadolaboral/SKILL.md`**—there is **no** first-class HTTP “scraper” MCP in this repo.
 
-1. **HEAD first** — call **`scrapper_indec_mercado_laboral_list`** for the period before any download so size/last-modified is known.
-2. **Then download** — **`scrapper_indec_mercado_laboral_download`** writes the ZIP, extracts TXT next to it, and writes **`metadata.json`** with `sha256`, `etag`, `last_modified`, `url`, `fqn_suggestion`, `unzipped_files`, `fetched_at_utc`.
-3. **Then ingest** — use **`duckdb_execute_query`** per **`./skills/ingest-indec-mercadolaboral/SKILL.md`**: load **`/data-local/indec/mercado_laboral/EPH/.../*.txt`** with **`read_csv_auto`** into **`gold.indec_eph_usu_hogar`** and **`gold.indec_eph_usu_individual`** only; **one SQL statement per call**.
-4. **Then register** — upsert the catalog per **`./skills/update-catalog/SKILL.md`** with FQNs **`duckdb-warehouse.main.gold.indec_eph_usu_hogar`** and **`duckdb-warehouse.main.gold.indec_eph_usu_individual`**. Use **`fqn_suggestion`** from **`metadata.json`** only as a lineage hint, not as the warehouse table name or catalog FQN.
-
-**Do not** replace the scraper with ad-hoc `read_csv_auto('https://…')` against INDEC or other external sites: those calls bypass download caching, checksums, `metadata.json`, and lineage; and INDEC serves a 36 KB SPA shell when a file is missing (silently corrupting the load). See **`./skills/scrape-indec-mercado-laboral/SKILL.md`**.
+**Do not** satisfy INDEC loads with ad-hoc `read_csv_auto('https://…')` against INDEC sites: missing files often return a small SPA shell (silent corruption). Prefer the skill playbooks and validated local paths.
 
 In addition, the **Deep Agents** framework (from `deepagents`) provides built-in helpers that belong to the **agent runtime**, not to MCP: `write_todos`, `ls`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `task`. These manipulate the **virtual filesystem backend** and subagents; they do **not** talk to the DuckDB warehouse or the catalog database.
 
@@ -151,7 +142,7 @@ The **catalog** is the system of record for **registered** warehouse objects: na
 
 ## Host data paths: `/data-local` (DuckDB mirror procedure)
 
-For DuckDB operations, data is mounted at **`/data-local`** in **`duckdb-mcp`** (Compose maps the repo **`./data-local`**). The scraper mirrors landing files from MinIO into this local tree so existing `duckdb_execute_query` ingest remains unchanged. The brain does **not** mount this path.
+For DuckDB operations, data is mounted at **`/data-local`** in **`duckdb-mcp`** (Compose maps the repo **`./data-local`**). Pipelines, **`storage_*`** uploads, and host-side workflows populate that tree; align MinIO **`data-local`** objects with the same paths when using object storage as landing-of-record. The brain does **not** mount this path.
 
 **Naming:** the directory is **`data-local`** ("local"), not **`data-load`** ("load"). If a user or model says `data-load`, treat it as **`data-local`**; `duckdb-mcp` normalizes that typo for tools and SQL.
 
@@ -230,8 +221,8 @@ When the task needs warehouse truth: **`duckdb_get_schema`** or a narrow **`info
 
 **`task` / `subagent_type` (mandatory):** Use exactly one of:
 
-- **`general-purpose`** — same MCP tool set as the main agent (DuckDB, Dagster, scrapper, etc.) plus skills and filesystem. Default for broad or mixed tasks.
-- **`data-analyst`** — **DuckDB + Dagster MCP only** (no scrapper). Use for deep SQL, catalog metadata (`dagster_catalog_*`), Dagster project/deploy work, and multi-step analysis that should not pull in scraping or unrelated tools. Scratch files: virtual path **`/sandbox/`** (ephemeral session state); durable reports under **`reports/`** (or **`settings.reports_dir`**).
+- **`general-purpose`** — same MCP tool set as the main agent (DuckDB, storage, Dagster, etc.) plus skills and filesystem. Default for broad or mixed tasks.
+- **`data-analyst`** — **DuckDB + Dagster MCP only** (no `storage_*` tools). Use for deep SQL, catalog metadata (`dagster_catalog_*`), Dagster project/deploy work, and multi-step analysis that should not pull in object-storage browsing. Scratch files: virtual path **`/sandbox/`** (ephemeral session state); durable reports under **`reports/`** (or **`settings.reports_dir`**).
 
 Any other `subagent_type` is rejected. Put task detail in **`description`**. For trivial chat (e.g. “hola”, “thanks”), **do not** spawn a subagent.
 
@@ -321,7 +312,7 @@ The runtime appends the canonical **reports directory** after this file—use it
 
 ## Configuration note
 
-MCP servers are **only** those declared in **`mcp.json`**. Do not assume extra servers exist. **`scrapper-mcp`** mirrors downloaded files to MinIO (landing-of-record) and keeps a local compatibility mirror under **`./data-local`**; **`duckdb`** and **`duckdb-mcp`** consume that mirror read-only (see **`mcp_servers/docker-compose.yaml`**; brain-only compose is the repo root **`docker-compose.yaml`**). Optional **metadata catalog** (PostgreSQL) is accessed via **`dagster_catalog_*`** tools on **`dagster-mcp`**—set **`DATABASE_URL`** or **`CATALOG_DATABASE_URL`** on that service. Skills **`./skills/update-catalog/`** and **`./skills/catalog-sql/`** apply when that database is available.
+MCP servers are **only** those declared in **`mcp.json`**. Do not assume extra servers exist. **`storage-mcp`** talks to application MinIO on **`datacyber-object-minio`** (see **`infra/object-storage/docker-compose.yaml`**). **`duckdb`** / **`duckdb-mcp`** mount **`./data-local`** read-only for SQL and directory listing. The brain-only compose file is the repo root **`docker-compose.yaml`**. Optional **metadata catalog** (PostgreSQL) is accessed via **`dagster_catalog_*`** tools on **`dagster-mcp`**—set **`DATABASE_URL`** or **`CATALOG_DATABASE_URL`** on that service (e.g. in **`infra/dagster/.env`**). Skills **`./skills/update-catalog/`** and **`./skills/catalog-sql/`** apply when that database is available.
 
 ---
 

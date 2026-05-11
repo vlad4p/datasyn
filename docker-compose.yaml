@@ -2,8 +2,9 @@
 #
 # Start order:
 #   1. docker compose -f infra/object-storage/docker-compose.yaml up -d
-#   2. docker compose -f mcp_servers/docker-compose.yaml up -d
-#   3. docker compose up -d
+#   2. docker compose -f infra/duckdb/docker-compose.yaml up -d
+#   3. docker compose -f infra/dagster/docker-compose.yaml up -d
+#   4. docker compose up -d
 #
 # All stacks share external network `infra-datasynk`.
 #

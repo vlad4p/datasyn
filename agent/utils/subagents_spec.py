@@ -55,8 +55,8 @@ def data_analyst_subagent(*, tools: list[BaseTool]) -> dict:
             "Dedicated data-warehouse analyst: runs DuckDB SQL, explores schemas, lists `/data-local` via "
             "duckdb tools, and uses Dagster MCP for code locations, jobs, deploy, and **dagster_catalog_*** "
             "metadata when configured. Use for heavy or isolated analysis, multi-step SQL, or pipeline/catalog "
-            "work so the main thread stays small. **Does not** include scrapper or other MCP servers—delegate "
-            "scraping to the main agent. Write scratch work under `/sandbox/`; put user-facing reports under "
+            "work so the main thread stays small. **Does not** include `storage_*` MinIO tools—delegate "
+            "object listing to the main agent. Write scratch work under `/sandbox/`; put user-facing reports under "
             "`/reports/` (or the configured reports path)."
         ),
         "system_prompt": load_prompt("data_analyst_subagent.txt"),

@@ -1,7 +1,7 @@
 """HTTP control plane for the Datacyber Deep Agent (leader).
 
 The leader loads MCP HTTP tool servers from ``mcp.json`` at the project root
-(warehouse ``duckdb-mcp``, ``scrapper-mcp``, ``dagster-mcp``, etc.).
+(warehouse ``duckdb-mcp``, ``storage-mcp``, ``dagster-mcp``, etc.).
 The warehouse worker remains a separate HTTP service (``WAREHOUSE_API_URL``).
 """
 
@@ -375,7 +375,7 @@ def _pipeline_snapshot() -> dict[str, Any]:
             "compose_service": "duckdb-ui",
             "docs": "https://duckdb.org/docs/current/core_extensions/ui.html",
             "announcement": "https://duckdb.org/2025/03/12/duckdb-ui",
-            "note": "Optional service: `docker compose -f mcp_servers/docker-compose.yaml --profile ui up -d` "
+            "note": "Optional service: `docker compose -f infra/duckdb/docker-compose.yaml --profile ui up -d` "
             "(plain `up` omits `duckdb-ui` so duckdb-mcp can open warehouse.duckdb without lock conflicts). "
             "DuckDB binds the UI on localhost:4213 (often ::1 in-container); socat listens on 0.0.0.0:4214 "
             "(compose maps host 4213→4214).",

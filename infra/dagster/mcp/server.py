@@ -18,7 +18,7 @@ Tools (LangChain prefixes them with the MCP key ``dagster``):
                                  for an external stack (default: ``dagster_user_code``).
 - ``dagster_user_code_refresh`` — ``build_image`` (``datasynk`` → ``dagster_user_code_image``)
                                  then ``compose_force_recreate`` for ``dagster_user_code``
-                                 (requires ``DAGSTER_COMPOSE_FILE`` mount; see ``mcp_servers/docker-compose.yaml``).
+                                 (requires ``DAGSTER_COMPOSE_FILE`` mount; see ``infra/dagster/docker-compose.yaml``).
 - ``dagster_deploy``          — by default ``docker build`` then ``docker rm -f`` +
                                  ``docker run`` (replace container on ``infra-datasynk``).
 - ``dagster_stop`` / ``dagster_remove`` / ``dagster_logs`` / ``dagster_status``
@@ -414,7 +414,7 @@ def deploy(
       container against an image you already built.
     - ``image_name`` — optional fixed image ref; see ``dagster_build_image``.
     - The container is attached to the ``infra-datasynk`` network so it can reach
-      ``duckdb-mcp:8040`` / ``scrapper-mcp:8042`` / etc., and publishes
+      ``duckdb-mcp:8040`` / ``storage-mcp:8044`` / etc., and publishes
       ``host_port:container_port``.
 
     Idempotent: any existing container with the same name is removed before ``run``.
@@ -576,7 +576,7 @@ def user_code_refresh(
        ``DAGSTER_COMPOSE_FILE`` and ``DAGSTER_COMPOSE_PROJECT``.
 
     Requires ``DAGSTER_COMPOSE_FILE`` to exist inside this container (mount host
-    ``infra/dagster`` at ``/dagster-compose`` — see ``mcp_servers/docker-compose.yaml``).
+    ``infra/dagster`` at ``/dagster-compose`` — see ``infra/dagster/docker-compose.yaml``).
     """
     proj = (project or DAGSTER_USER_CODE_BUILD_PROJECT).strip()
     img_arg = (image_name or DAGSTER_USER_CODE_IMAGE_NAME).strip()
@@ -606,7 +606,7 @@ def user_code_refresh(
         if not cf:
             raise ValueError(
                 "DAGSTER_COMPOSE_FILE is not set (mount infra/dagster into dagster-mcp; "
-                "see mcp_servers/docker-compose.yaml)"
+                "see infra/dagster/docker-compose.yaml)"
             )
         p = Path(cf)
         if not p.is_file():
