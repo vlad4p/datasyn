@@ -1,6 +1,9 @@
-"""Bronze: CSV UCA desde MinIO → tablas ``bronze.uca_*`` (DuckDB nativo o Iceberg REST).
+"""Bronze: CSV UCA desde MinIO → DuckDB nativo o Iceberg REST.
 
-Origen: ``landing/indec/censo/uca/<archivo>.csv`` (``scripts/r/upload_uca_to_minio.sh`` en el proyecto datasyn).
+- Tablas ``uca_*`` clásicas: ``landing/indec/censo/uca/<archivo>.csv`` (histórico /
+  ``scripts/r/upload_uca_to_minio.sh``).
+- Indicadores Censo 2022 (hogares por radio): ``landing/censo_2022/uca/<archivo>.csv``
+  → ``bronze.indicadores_censo_2022_argentina`` y ``bronze.indicadores_censo_2022_argentina_geojson``.
 
 ``UCA_FILES_LOCAL_DIR`` + mismo nombre de archivo omite MinIO en desarrollo.
 ``read_csv_auto``: ``sample_size=-1``, ``all_varchar=true`` (igual que otros CSV bronze).
@@ -22,19 +25,30 @@ BRONZE_SCHEMA = "bronze"
 LANDING_PREFIX = (os.environ.get("UCA_LANDING_PREFIX") or "landing/indec/censo/uca").strip().strip(
     "/"
 )
+# Objetos subidos bajo ``landing/censo_2022/uca/`` (MinIO bucket típico ``data-local``).
+UCA_CENSO_2022_LANDING_PREFIX = (
+    os.environ.get("UCA_CENSO_2022_LANDING_PREFIX") or "landing/censo_2022/uca"
+).strip().strip("/")
 _LOCAL_DIR_ENV = "UCA_FILES_LOCAL_DIR"
+# Objeto en MinIO suele ser ``…geojson….csv.csv``; sobreescribir si el bucket usa solo ``.csv``.
+UCA_FILE_INDICADORES_GEOJSON_ARGENTINA = (
+    os.environ.get("UCA_FILE_INDICADORES_GEOJSON_ARGENTINA")
+    or "Indicadores_de_hogares_radios_2022_geojson_argentina.csv.csv"
+).strip()
 
 UCA_SPECS: list[dict[str, str]] = [
-    {"file": "censo.csv", "table": "uca_censo"},
-    {"file": "departamentos.csv", "table": "uca_departamentos"},
-    {"file": "provincias.csv", "table": "uca_provincias"},
+    {"file": "censo.csv", "table": "uca_censo", "landing_prefix": LANDING_PREFIX},
+    {"file": "departamentos.csv", "table": "uca_departamentos", "landing_prefix": LANDING_PREFIX},
+    {"file": "provincias.csv", "table": "uca_provincias", "landing_prefix": LANDING_PREFIX},
     {
-        "file": "Indicadores-hogares-radios-2022-argentina.csv",
-        "table": "uca_indicadores_hogares_radios_2022_argentina",
+        "file": "Indicadores_de_hogares_radios_2022_argentina.csv",
+        "table": "indicadores_censo_2022_argentina",
+        "landing_prefix": UCA_CENSO_2022_LANDING_PREFIX,
     },
     {
-        "file": "Indicadores-hogares-radios-2022-geojson-argentina.csv",
-        "table": "uca_indicadores_hogares_radios_2022_geojson_argentina",
+        "file": UCA_FILE_INDICADORES_GEOJSON_ARGENTINA,
+        "table": "indicadores_censo_2022_argentina_geojson",
+        "landing_prefix": UCA_CENSO_2022_LANDING_PREFIX,
     },
 ]
 
@@ -43,8 +57,14 @@ def _bucket() -> str:
     return (os.environ.get("MINIO_BUCKET") or "data-local").strip()
 
 
-def _object_key(filename: str) -> str:
-    return f"{LANDING_PREFIX}/{filename}".lstrip("/")
+def _quote_ident(ident: str) -> str:
+    """Quote a DuckDB identifier (reserved words / mixed case)."""
+    return '"' + ident.replace('"', '""') + '"'
+
+
+def _object_key(filename: str, *, landing_prefix: str | None = None) -> str:
+    prefix = (landing_prefix if landing_prefix is not None else LANDING_PREFIX).strip().strip("/")
+    return f"{prefix}/{filename}".lstrip("/")
 
 
 def _s3_client():
@@ -92,9 +112,10 @@ def _local_override_path(filename: str) -> str | None:
 
 
 def _table_fqn(catalog_alias: str | None, table_name: str) -> str:
+    qt = _quote_ident(table_name)
     if catalog_alias:
-        return f"{catalog_alias}.{BRONZE_SCHEMA}.{table_name}"
-    return f"{BRONZE_SCHEMA}.{table_name}"
+        return f"{catalog_alias}.{BRONZE_SCHEMA}.{qt}"
+    return f"{BRONZE_SCHEMA}.{qt}"
 
 
 def _ensure_schema(con, catalog_alias: str | None) -> None:
@@ -110,9 +131,10 @@ def _materialize_one(
     *,
     filename: str,
     table_name: str,
+    landing_prefix: str | None = None,
 ) -> MaterializeResult:
     duck_path = os.environ.get("DUCKDB_PATH", "/data/warehouse.duckdb").strip()
-    object_key = _object_key(filename)
+    object_key = _object_key(filename, landing_prefix=landing_prefix)
 
     csv_path: str | None = None
     temp_path: str | None = None
@@ -195,18 +217,31 @@ def _materialize_one(
                 pass
 
 
-def _make_uca_asset(filename: str, table_name: str):
+def _make_uca_asset(
+    filename: str,
+    table_name: str,
+    *,
+    landing_prefix: str | None = None,
+):
+    prefix = landing_prefix
+
     @asset(
         name=table_name,
         group_name="bronze",
         compute_kind="s3",
         description=(
-            f"Lee ``{_object_key(filename)}`` desde MinIO y materializa "
+            f"Lee ``{_object_key(filename, landing_prefix=prefix)}`` desde MinIO y materializa "
             f"``{BRONZE_SCHEMA}.{table_name}``. Override local: {_LOCAL_DIR_ENV}."
         ),
     )
     def _uca_bronze_asset(context, database: DuckDBResource):
-        return _materialize_one(context, database, filename=filename, table_name=table_name)
+        return _materialize_one(
+            context,
+            database,
+            filename=filename,
+            table_name=table_name,
+            landing_prefix=prefix,
+        )
 
     _uca_bronze_asset.__name__ = table_name
     return _uca_bronze_asset
@@ -217,20 +252,24 @@ def _make_uca_asset(filename: str, table_name: str):
 uca_censo = _make_uca_asset("censo.csv", "uca_censo")
 uca_departamentos = _make_uca_asset("departamentos.csv", "uca_departamentos")
 uca_provincias = _make_uca_asset("provincias.csv", "uca_provincias")
-uca_indicadores_hogares_radios_2022_argentina = _make_uca_asset(
-    "Indicadores-hogares-radios-2022-argentina.csv",
-    "uca_indicadores_hogares_radios_2022_argentina",
+indicadores_censo_2022_argentina = _make_uca_asset(
+    "Indicadores_de_hogares_radios_2022_argentina.csv",
+    "indicadores_censo_2022_argentina",
+    landing_prefix=UCA_CENSO_2022_LANDING_PREFIX,
 )
-uca_indicadores_hogares_radios_2022_geojson_argentina = _make_uca_asset(
-    "Indicadores-hogares-radios-2022-geojson-argentina.csv",
-    "uca_indicadores_hogares_radios_2022_geojson_argentina",
+indicadores_censo_2022_argentina_geojson = _make_uca_asset(
+    UCA_FILE_INDICADORES_GEOJSON_ARGENTINA,
+    "indicadores_censo_2022_argentina_geojson",
+    landing_prefix=UCA_CENSO_2022_LANDING_PREFIX,
 )
 
 __all__ = [
+    "UCA_CENSO_2022_LANDING_PREFIX",
+    "UCA_FILE_INDICADORES_GEOJSON_ARGENTINA",
     "UCA_SPECS",
+    "indicadores_censo_2022_argentina",
+    "indicadores_censo_2022_argentina_geojson",
     "uca_censo",
     "uca_departamentos",
     "uca_provincias",
-    "uca_indicadores_hogares_radios_2022_argentina",
-    "uca_indicadores_hogares_radios_2022_geojson_argentina",
 ]

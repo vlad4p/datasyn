@@ -1,8 +1,7 @@
 """Dagster `Definitions` entry point.
 
-Most bronze modules are loaded with ``load_assets_from_modules``. UCA tables
-(``uca_csv``) are appended explicitly so all five ``uca_*`` assets always appear
-in the code location.
+Most bronze modules are loaded with ``load_assets_from_modules``. Los CSV UCA
+(``uca_csv``) se agregan explícitamente (``uca_*`` + indicadores Censo 2022).
 """
 
 from __future__ import annotations
@@ -15,10 +14,10 @@ from dagster_duckdb import DuckDBResource
 from .assets.bronze.indec_censo import indec_censo_2022_redatam as bronze_indec_censo_2022
 from .assets.bronze.indec_censo import radios_censales as bronze_radios
 from .assets.bronze.indec_censo.uca_csv import (
+    indicadores_censo_2022_argentina,
+    indicadores_censo_2022_argentina_geojson,
     uca_censo,
     uca_departamentos,
-    uca_indicadores_hogares_radios_2022_argentina,
-    uca_indicadores_hogares_radios_2022_geojson_argentina,
     uca_provincias,
 )
 from .assets.bronze.indec_eph import indec_eph_trimestral as bronze_eph
@@ -45,8 +44,8 @@ defs = Definitions(
         uca_censo,
         uca_departamentos,
         uca_provincias,
-        uca_indicadores_hogares_radios_2022_argentina,
-        uca_indicadores_hogares_radios_2022_geojson_argentina,
+        indicadores_censo_2022_argentina,
+        indicadores_censo_2022_argentina_geojson,
     ],
     jobs=collect_named(jobs),
     schedules=collect_named(schedules),
