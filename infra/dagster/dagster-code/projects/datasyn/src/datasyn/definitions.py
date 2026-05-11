@@ -12,19 +12,19 @@ import os
 from dagster import Definitions, load_assets_from_modules
 from dagster_duckdb import DuckDBResource
 
-from .assets.bronze import indec_eph_trimestral as bronze_eph
-from .assets.bronze import indec_eph_variables as bronze_eph_variables
-from .assets.bronze import radios_censales as bronze_radios
-from .assets.bronze import indec_censo_2022_redatam as bronze_indec_censo_2022
-from .assets.bronze.uca_csv import (
+from .assets.bronze.indec_censo import indec_censo_2022_redatam as bronze_indec_censo_2022
+from .assets.bronze.indec_censo import radios_censales as bronze_radios
+from .assets.bronze.indec_censo.uca_csv import (
     uca_censo,
     uca_departamentos,
     uca_indicadores_hogares_radios_2022_argentina,
     uca_indicadores_hogares_radios_2022_geojson_argentina,
     uca_provincias,
 )
+from .assets.bronze.indec_eph import indec_eph_trimestral as bronze_eph
+from .assets.bronze.indec_eph import indec_eph_variables as bronze_eph_variables
 from . import jobs, schedules, sensors
-from ._collect import collect_named
+from .utils.collect import collect_named
 
 resources = {
     "database": DuckDBResource(

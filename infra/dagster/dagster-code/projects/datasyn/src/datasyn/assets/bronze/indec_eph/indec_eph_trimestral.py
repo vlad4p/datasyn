@@ -18,14 +18,15 @@ import os
 from dagster import Failure, MaterializeResult, MetadataValue, asset
 from dagster_duckdb import DuckDBResource
 
-from datasyn.iceberg_bronze_lib import materialize_bronze_from_txt
-from datasyn.indec_eph_trimestral_lib import (
+from datasyn.utils.iceberg import materialize_from_paths
+from datasyn.assets.bronze.indec_eph.indec_eph_trimestral_lib import (
     BRONZE_SCHEMA,
     SOURCE_PAGE,
     TABLE_HOGAR,
     TABLE_INDIVIDUAL,
     discover_txt_paths,
     download_year_trimesters,
+    read_csv_auto_sql,
 )
 
 
@@ -37,17 +38,15 @@ def _trim_quarters() -> tuple[int, ...]:
     raw = (os.environ.get("INDEC_EPH_TRIMESTRAL_QUARTERS") or "").strip().lower()
     if not raw or raw == "all":
         return (1, 2, 3, 4)
-    out: list[int] = []
+    quarters: set[int] = set()
     for part in raw.replace(" ", "").split(","):
         if not part:
             continue
         q = int(part)
         if q not in (1, 2, 3, 4):
             raise ValueError(f"invalid quarter {q!r} (expected 1–4)")
-        out.append(q)
-    if not out:
-        return (1, 2, 3, 4)
-    return tuple(sorted(set(out)))
+        quarters.add(q)
+    return tuple(sorted(quarters)) or (1, 2, 3, 4)
 
 
 @asset(
@@ -90,6 +89,42 @@ def indec_eph_trimestral_files(context):
     )
 
 
+def _materialize_txt_table(
+    database: DuckDBResource,
+    *,
+    year: int,
+    table: str,
+    hogar: bool,
+) -> MaterializeResult:
+    paths = discover_txt_paths(year, hogar=hogar)
+    if not paths:
+        pattern = "usu_hogar_*.txt" if hogar else "usu_individual_*.txt"
+        raise Failure(f"No {pattern} under DATA_LOCAL_ROOT for year {year}.")
+
+    duck_path = os.environ.get("DUCKDB_PATH", "/data/warehouse.duckdb").strip()
+    with database.get_connection() as con:
+        out = materialize_from_paths(
+            con,
+            namespace=BRONZE_SCHEMA,
+            table=table,
+            paths=paths,
+            read_relation_sql=read_csv_auto_sql,
+        )
+
+    return MaterializeResult(
+        metadata={
+            "duckdb_path": duck_path,
+            "storage": out.get("storage"),
+            "relation_fqn": out.get("iceberg_fqn") or out.get("duckdb_fqn"),
+            "iceberg_fqn": out.get("iceberg_fqn"),
+            "row_count": out.get("row_count"),
+            "catalog_alias": out.get("catalog_alias"),
+            "source_txt_count": len(paths),
+            "year": year,
+        }
+    )
+
+
 @asset(
     deps=[indec_eph_trimestral_files],
     group_name="bronze",
@@ -100,33 +135,7 @@ def indec_eph_trimestral_files(context):
     ),
 )
 def indec_usu_hogar(database: DuckDBResource):
-    year = _trim_year()
-    paths = discover_txt_paths(year, hogar=True)
-    if not paths:
-        raise Failure(f"No usu_hogar_*.txt under DATA_LOCAL_ROOT for year {year}.")
-
-    duck_path = os.environ.get("DUCKDB_PATH", "/data/warehouse.duckdb").strip()
-    with database.get_connection() as con:
-        out = materialize_bronze_from_txt(
-            con,
-            iceberg_namespace=BRONZE_SCHEMA,
-            iceberg_table=TABLE_HOGAR,
-            paths=paths,
-        )
-
-    rel = out.get("iceberg_fqn") or out.get("duckdb_fqn")
-    return MaterializeResult(
-        metadata={
-            "duckdb_path": duck_path,
-            "storage": out.get("storage"),
-            "relation_fqn": rel,
-            "iceberg_fqn": out.get("iceberg_fqn"),
-            "row_count": out.get("row_count"),
-            "catalog_alias": out.get("catalog_alias"),
-            "source_txt_count": len(paths),
-            "year": year,
-        }
-    )
+    return _materialize_txt_table(database, year=_trim_year(), table=TABLE_HOGAR, hogar=True)
 
 
 @asset(
@@ -139,30 +148,4 @@ def indec_usu_hogar(database: DuckDBResource):
     ),
 )
 def indec_usu_individual(database: DuckDBResource):
-    year = _trim_year()
-    paths = discover_txt_paths(year, hogar=False)
-    if not paths:
-        raise Failure(f"No usu_individual_*.txt under DATA_LOCAL_ROOT for year {year}.")
-
-    duck_path = os.environ.get("DUCKDB_PATH", "/data/warehouse.duckdb").strip()
-    with database.get_connection() as con:
-        out = materialize_bronze_from_txt(
-            con,
-            iceberg_namespace=BRONZE_SCHEMA,
-            iceberg_table=TABLE_INDIVIDUAL,
-            paths=paths,
-        )
-
-    rel = out.get("iceberg_fqn") or out.get("duckdb_fqn")
-    return MaterializeResult(
-        metadata={
-            "duckdb_path": duck_path,
-            "storage": out.get("storage"),
-            "relation_fqn": rel,
-            "iceberg_fqn": out.get("iceberg_fqn"),
-            "row_count": out.get("row_count"),
-            "catalog_alias": out.get("catalog_alias"),
-            "source_txt_count": len(paths),
-            "year": year,
-        }
-    )
+    return _materialize_txt_table(database, year=_trim_year(), table=TABLE_INDIVIDUAL, hogar=False)

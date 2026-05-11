@@ -1,15 +1,9 @@
-"""Bronze: INDEC Censo 2022 Base_VP — CSV en landing → ``bronze.indec_censo_2022_vp``.
+"""Bronze: CSV UCA desde MinIO → tablas ``bronze.uca_*`` (DuckDB nativo o Iceberg REST).
 
-Origen: MinIO ``landing/indec/censo_2022/base_vp.csv`` (generado con
-``scripts/r/export_base_vp_to_csv.R`` + ``redatamx``). Por defecto el CSV es **narrow**:
-``entity``, ``variable``, ``value_code``, ``value_label``, ``count``. Snapshots locales
-bajo ``.../censo_2022/snapshots/``.
+Origen: ``landing/indec/censo/uca/<archivo>.csv`` (``scripts/r/upload_uca_to_minio.sh`` en el proyecto datasyn).
 
-``read_csv_auto`` usa ``sample_size=-1`` y ``all_varchar=true`` para no perder columnas
-ni forzar tipos que recorten códigos.
-
-Si ``ICEBERG_REST_ENDPOINT`` está definido, la tabla se escribe en el catálogo Iceberg;
-si no, DuckDB nativo.
+``UCA_FILES_LOCAL_DIR`` + mismo nombre de archivo omite MinIO en desarrollo.
+``read_csv_auto``: ``sample_size=-1``, ``all_varchar=true`` (igual que otros CSV bronze).
 """
 
 from __future__ import annotations
@@ -22,21 +16,35 @@ from botocore.exceptions import BotoCoreError, ClientError
 from dagster import AssetExecutionContext, Failure, MaterializeResult, MetadataValue, asset
 from dagster_duckdb import DuckDBResource
 
-from datasyn.iceberg_bronze_lib import attach_iceberg_catalog, iceberg_publish_configured
+from datasyn.utils.iceberg import attach_iceberg_catalog, iceberg_publish_configured
 
 BRONZE_SCHEMA = "bronze"
-TABLE_NAME = "indec_censo_2022_vp"
-DEFAULT_OBJECT_KEY = "landing/indec/censo_2022/base_vp.csv"
-_OBJECT_KEY_ENV = "INDEC_CENSO_2022_VP_OBJECT_KEY"
-_LOCAL_PATH_ENV = "INDEC_CENSO_2022_VP_LOCAL_PATH"
+LANDING_PREFIX = (os.environ.get("UCA_LANDING_PREFIX") or "landing/indec/censo/uca").strip().strip(
+    "/"
+)
+_LOCAL_DIR_ENV = "UCA_FILES_LOCAL_DIR"
+
+UCA_SPECS: list[dict[str, str]] = [
+    {"file": "censo.csv", "table": "uca_censo"},
+    {"file": "departamentos.csv", "table": "uca_departamentos"},
+    {"file": "provincias.csv", "table": "uca_provincias"},
+    {
+        "file": "Indicadores-hogares-radios-2022-argentina.csv",
+        "table": "uca_indicadores_hogares_radios_2022_argentina",
+    },
+    {
+        "file": "Indicadores-hogares-radios-2022-geojson-argentina.csv",
+        "table": "uca_indicadores_hogares_radios_2022_geojson_argentina",
+    },
+]
 
 
 def _bucket() -> str:
     return (os.environ.get("MINIO_BUCKET") or "data-local").strip()
 
 
-def _object_key() -> str:
-    return (os.environ.get(_OBJECT_KEY_ENV) or DEFAULT_OBJECT_KEY).strip().lstrip("/")
+def _object_key(filename: str) -> str:
+    return f"{LANDING_PREFIX}/{filename}".lstrip("/")
 
 
 def _s3_client():
@@ -45,8 +53,8 @@ def _s3_client():
     secret_key = (os.environ.get("MINIO_SECRET_KEY") or "").strip()
     if not endpoint or not access_key or not secret_key:
         raise Failure(
-            "MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY must be set for "
-            "indec_censo_2022_vp (unless INDEC_CENSO_2022_VP_LOCAL_PATH points to a file)."
+            "MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY must be set for UCA bronze "
+            f"(unless {_LOCAL_DIR_ENV} provides a local file)."
         )
     return boto3.client(
         "s3",
@@ -59,7 +67,7 @@ def _s3_client():
 
 def _download_csv_bytes(context: AssetExecutionContext, bucket: str, key: str) -> bytes:
     client = _s3_client()
-    context.log.info("indec_censo_2022_vp fetching s3://%s/%s", bucket, key)
+    context.log.info("fetching s3://%s/%s", bucket, key)
     try:
         resp = client.get_object(Bucket=bucket, Key=key)
     except ClientError as exc:
@@ -69,17 +77,24 @@ def _download_csv_bytes(context: AssetExecutionContext, bucket: str, key: str) -
         raise Failure(f"MinIO get_object failed: {exc}") from exc
     except BotoCoreError as exc:
         raise Failure(f"MinIO client error: {exc}") from exc
-
     body = resp["Body"].read()
     if not body:
         raise Failure(f"Empty object: s3://{bucket}/{key}")
     return body
 
 
-def _table_fqn(catalog_alias: str | None) -> str:
+def _local_override_path(filename: str) -> str | None:
+    root = (os.environ.get(_LOCAL_DIR_ENV) or "").strip()
+    if not root:
+        return None
+    p = os.path.join(root, filename)
+    return p if os.path.isfile(p) else None
+
+
+def _table_fqn(catalog_alias: str | None, table_name: str) -> str:
     if catalog_alias:
-        return f"{catalog_alias}.{BRONZE_SCHEMA}.{TABLE_NAME}"
-    return f"{BRONZE_SCHEMA}.{TABLE_NAME}"
+        return f"{catalog_alias}.{BRONZE_SCHEMA}.{table_name}"
+    return f"{BRONZE_SCHEMA}.{table_name}"
 
 
 def _ensure_schema(con, catalog_alias: str | None) -> None:
@@ -89,38 +104,28 @@ def _ensure_schema(con, catalog_alias: str | None) -> None:
         con.execute(f"CREATE SCHEMA IF NOT EXISTS {BRONZE_SCHEMA}")
 
 
-@asset(
-    group_name="bronze",
-    compute_kind="s3",
-    description=(
-        "Lee ``landing/indec/censo_2022/base_vp.csv`` desde MinIO (clave configurable con "
-        f"{_OBJECT_KEY_ENV}) y materializa ``{BRONZE_SCHEMA}.{TABLE_NAME}`` vía "
-        "``read_csv_auto``. Opcional: ``INDEC_CENSO_2022_VP_LOCAL_PATH`` = ruta absoluta al "
-        "CSV para omitir MinIO en desarrollo."
-    ),
-)
-def indec_censo_2022_vp(context, database: DuckDBResource):
+def _materialize_one(
+    context: AssetExecutionContext,
+    database: DuckDBResource,
+    *,
+    filename: str,
+    table_name: str,
+) -> MaterializeResult:
     duck_path = os.environ.get("DUCKDB_PATH", "/data/warehouse.duckdb").strip()
-    local_override = (os.environ.get(_LOCAL_PATH_ENV) or "").strip()
+    object_key = _object_key(filename)
 
     csv_path: str | None = None
     temp_path: str | None = None
     bucket: str | None = None
-    object_key: str | None = None
     source = "minio"
 
-    if local_override:
-        if not os.path.isfile(local_override):
-            raise Failure(
-                f"{_LOCAL_PATH_ENV}={local_override!r} is not a file. "
-                "Unset it to read from MinIO instead."
-            )
-        csv_path = local_override
+    local_p = _local_override_path(filename)
+    if local_p:
+        csv_path = local_p
         source = "local_file"
-        context.log.info("using local CSV %s", csv_path)
+        context.log.info("using %s=%s for %s", _LOCAL_DIR_ENV, local_p, filename)
     else:
         bucket = _bucket()
-        object_key = _object_key()
         body = _download_csv_bytes(context, bucket, object_key)
         with tempfile.NamedTemporaryFile(mode="wb", suffix=".csv", delete=False) as tmp:
             tmp.write(body)
@@ -147,7 +152,7 @@ def indec_censo_2022_vp(context, database: DuckDBResource):
                 )
 
             _ensure_schema(con, catalog_alias)
-            fqn = _table_fqn(catalog_alias)
+            fqn = _table_fqn(catalog_alias, table_name)
 
             con.execute(f"DROP TABLE IF EXISTS {fqn}")
             con.execute(
@@ -167,19 +172,19 @@ def indec_censo_2022_vp(context, database: DuckDBResource):
             row_count = con.execute(f"SELECT COUNT(*) FROM {fqn}").fetchone()[0]
 
         storage = "iceberg_rest" if catalog_alias else "duckdb_native"
-        meta = {
+        meta: dict = {
             "duckdb_path": duck_path,
             "source": source,
-            "table": MetadataValue.text(f"{BRONZE_SCHEMA}.{TABLE_NAME}"),
+            "table": MetadataValue.text(f"{BRONZE_SCHEMA}.{table_name}"),
             "row_count": int(row_count),
             "storage": storage,
             "iceberg_catalog_alias": catalog_alias or "",
+            "object_key": object_key,
         }
-        if bucket and object_key:
+        if bucket:
             meta["minio_bucket"] = bucket
-            meta["object_key"] = object_key
-        if local_override:
-            meta["local_path"] = local_override
+        if local_p:
+            meta["local_path"] = local_p
 
         return MaterializeResult(metadata=meta)
     finally:
@@ -188,3 +193,44 @@ def indec_censo_2022_vp(context, database: DuckDBResource):
                 os.unlink(temp_path)
             except OSError:
                 pass
+
+
+def _make_uca_asset(filename: str, table_name: str):
+    @asset(
+        name=table_name,
+        group_name="bronze",
+        compute_kind="s3",
+        description=(
+            f"Lee ``{_object_key(filename)}`` desde MinIO y materializa "
+            f"``{BRONZE_SCHEMA}.{table_name}``. Override local: {_LOCAL_DIR_ENV}."
+        ),
+    )
+    def _uca_bronze_asset(context, database: DuckDBResource):
+        return _materialize_one(context, database, filename=filename, table_name=table_name)
+
+    _uca_bronze_asset.__name__ = table_name
+    return _uca_bronze_asset
+
+
+# Explicit module-level symbols so ``load_assets_from_modules`` / ``Definitions`` always
+# pick them up (dynamic ``globals()`` assignment is easy to miss in some loaders / tooling).
+uca_censo = _make_uca_asset("censo.csv", "uca_censo")
+uca_departamentos = _make_uca_asset("departamentos.csv", "uca_departamentos")
+uca_provincias = _make_uca_asset("provincias.csv", "uca_provincias")
+uca_indicadores_hogares_radios_2022_argentina = _make_uca_asset(
+    "Indicadores-hogares-radios-2022-argentina.csv",
+    "uca_indicadores_hogares_radios_2022_argentina",
+)
+uca_indicadores_hogares_radios_2022_geojson_argentina = _make_uca_asset(
+    "Indicadores-hogares-radios-2022-geojson-argentina.csv",
+    "uca_indicadores_hogares_radios_2022_geojson_argentina",
+)
+
+__all__ = [
+    "UCA_SPECS",
+    "uca_censo",
+    "uca_departamentos",
+    "uca_provincias",
+    "uca_indicadores_hogares_radios_2022_argentina",
+    "uca_indicadores_hogares_radios_2022_geojson_argentina",
+]

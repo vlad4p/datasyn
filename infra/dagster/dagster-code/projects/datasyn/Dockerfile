@@ -9,7 +9,7 @@ WORKDIR /opt/dagster/app
 
 COPY pyproject.toml ./
 COPY workspace.yaml ./
-COPY datasyn ./datasyn
+COPY src ./src
 
 RUN pip install --no-cache-dir -e .
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Mirror UCA CSVs into MinIO under landing/indec/censo/uca/ (bucket data-local by default).
 #
-# Defaults match the bronze assets in datasyn/assets/bronze/uca_csv.py unless UCA_LANDING_PREFIX
+# Defaults match the bronze assets in src/datasyn/assets/bronze/indec_censo/uca_csv.py unless UCA_LANDING_PREFIX
 # is overridden there / here.
 #
 # Usage (from repo root or any cwd):

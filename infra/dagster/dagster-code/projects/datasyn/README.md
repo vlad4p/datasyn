@@ -13,15 +13,16 @@ datasyn/
     └── datasyn/
         ├── __init__.py
         ├── definitions.py
-        └── defs/
-            ├── assets/
-            │   ├── bronze/
-            │   ├── silver/
-            │   └── gold/
-            ├── jobs/
-            ├── schedules/
-            ├── sensors/
-            └── resources/
+        ├── assets/
+        │   ├── bronze/
+        │   │   ├── indec_censo/
+        │   │   └── indec_eph/
+        │   ├── silver/
+        │   └── gold/
+        ├── jobs/
+        ├── schedules/
+        ├── sensors/
+        └── utils/
 ```
 
 ## Build & run via the MCP

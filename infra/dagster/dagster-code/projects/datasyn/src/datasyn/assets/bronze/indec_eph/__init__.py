@@ -1,0 +1,1 @@
+"""INDEC EPH bronze assets."""

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+    "mcp": {
+    "duckdb":{
+      "type": "remote",
+      "url": "http://10.13.10.119:8040/mcp",
+      "enabled": true
+    },
+    "storage":{
+      "type": "remote",
+      "url": "http://10.13.10.119:8044/mcp",
+      "enabled": true
+    }
+  },
+  "permission": {
+    "bash": "allow"
+  }
+}

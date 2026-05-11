@@ -6,7 +6,7 @@ Landing zone mirrors the public ZIP layout documented by INDEC
 ``EPH_usu_<Q>_Trim_<YEAR>_txt.zip`` (see also the bases-de-datos portal:
 https://www.indec.gob.ar/indec/web/Institucional-Indec-BasesDeDatos).
 
-``read_csv_auto`` helpers (semicolon, European decimals) back Iceberg ingest in ``iceberg_bronze_lib``.
+``read_csv_auto`` helpers (semicolon, European decimals) feed shared materialization in ``utils.iceberg``.
 
 Reading Iceberg with DuckDB: https://duckdb.org/docs/current/core_extensions/iceberg/overview
 """

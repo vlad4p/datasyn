@@ -17,7 +17,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from dagster import AssetExecutionContext, Failure, MaterializeResult, MetadataValue, asset
 from dagster_duckdb import DuckDBResource
 
-from datasyn.iceberg_bronze_lib import attach_iceberg_catalog, iceberg_publish_configured
+from datasyn.utils.iceberg import attach_iceberg_catalog, iceberg_publish_configured
 
 BRONZE_SCHEMA = "bronze"
 TABLE_NAME = "radios_censales"

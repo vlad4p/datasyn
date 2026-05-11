@@ -1,6 +1,6 @@
-"""Build Iceberg tables in namespace ``bronze`` from INDEC TXT files via DuckDB Iceberg writes.
+"""Shared DuckDB/Iceberg materialization helpers.
 
-Uses DuckDB ≥ 1.4 (ATTACH REST catalog, CREATE TABLE … AS SELECT, INSERT FROM ``read_csv_auto``); see:
+Uses DuckDB >= 1.4 for Iceberg REST catalog writes; see:
 https://duckdb.org/2025/11/28/iceberg-writes-in-duckdb
 
 REST catalog attach / secrets:
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -100,28 +101,30 @@ def attach_iceberg_catalog(con: Any) -> str | None:
     return alias
 
 
-def create_iceberg_table_from_txt_paths(
+ReadRelationSql = Callable[[Path], str]
+
+
+def create_iceberg_table_from_paths(
     con: Any,
     *,
     catalog_alias: str,
-    iceberg_namespace: str,
-    iceberg_table: str,
+    namespace: str,
+    table: str,
     paths: list[Path],
+    read_relation_sql: ReadRelationSql,
 ) -> dict[str, Any]:
-    """Create/replace an Iceberg table by ingesting TXT via ``read_csv_auto`` (semicolon INDEC)."""
-
-    from datasyn.indec_eph_trimestral_lib import read_csv_auto_sql
+    """Create/replace an Iceberg table from file paths using a caller-provided read relation."""
 
     if not paths:
-        raise FileNotFoundError(f"no TXT files for {iceberg_namespace}.{iceberg_table}")
+        raise FileNotFoundError(f"no files for {namespace}.{table}")
 
-    ice_fqn = f"{catalog_alias}.{iceberg_namespace}.{iceberg_table}"
-    con.execute(f"CREATE SCHEMA IF NOT EXISTS {catalog_alias}.{iceberg_namespace}")
+    ice_fqn = f"{catalog_alias}.{namespace}.{table}"
+    con.execute(f"CREATE SCHEMA IF NOT EXISTS {catalog_alias}.{namespace}")
     con.execute(f"DROP TABLE IF EXISTS {ice_fqn}")
-    first = read_csv_auto_sql(paths[0])
+    first = read_relation_sql(paths[0])
     con.execute(f"CREATE TABLE {ice_fqn} AS SELECT * FROM {first} LIMIT 0")
     for p in paths:
-        expr = read_csv_auto_sql(p)
+        expr = read_relation_sql(p)
         con.execute(f"INSERT INTO {ice_fqn} SELECT * FROM {expr}")
 
     try:
@@ -145,56 +148,57 @@ def create_iceberg_table_from_txt_paths(
     }
 
 
-def materialize_bronze_iceberg_from_txt(
+def materialize_iceberg_from_paths(
     con: Any,
     *,
-    iceberg_namespace: str,
-    iceberg_table: str,
+    namespace: str,
+    table: str,
     paths: list[Path],
+    read_relation_sql: ReadRelationSql,
 ) -> dict[str, Any]:
-    """Attach REST catalog (if configured) and load TXT paths into ``namespace.table``."""
+    """Attach the REST catalog and load file paths into ``namespace.table``."""
 
     if not iceberg_publish_configured():
         raise ValueError(
-            "ICEBERG_REST_ENDPOINT must be set — pipeline is Iceberg-only (no native bronze tables)."
+            "ICEBERG_REST_ENDPOINT must be set for Iceberg catalog materialization."
         )
 
     alias = attach_iceberg_catalog(con)
     if alias is None:
         raise RuntimeError("attach_iceberg_catalog returned None despite ICEBERG_REST_ENDPOINT")
 
-    out = create_iceberg_table_from_txt_paths(
+    out = create_iceberg_table_from_paths(
         con,
         catalog_alias=alias,
-        iceberg_namespace=iceberg_namespace,
-        iceberg_table=iceberg_table,
+        namespace=namespace,
+        table=table,
         paths=paths,
+        read_relation_sql=read_relation_sql,
     )
     out["storage"] = "iceberg_rest"
     return out
 
 
-def materialize_bronze_native_duckdb_from_txt(
+def materialize_native_duckdb_from_paths(
     con: Any,
     *,
     schema: str,
     table: str,
     paths: list[Path],
+    read_relation_sql: ReadRelationSql,
 ) -> dict[str, Any]:
-    """Load TXT into ``schema.table`` in the open DuckDB file (no Iceberg REST catalog)."""
-
-    from datasyn.indec_eph_trimestral_lib import read_csv_auto_sql
+    """Load file paths into ``schema.table`` in the open DuckDB file."""
 
     if not paths:
-        raise FileNotFoundError(f"no TXT files for {schema}.{table}")
+        raise FileNotFoundError(f"no files for {schema}.{table}")
 
     fqn = f"{schema}.{table}"
     con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
     con.execute(f"DROP TABLE IF EXISTS {fqn}")
-    first = read_csv_auto_sql(paths[0])
+    first = read_relation_sql(paths[0])
     con.execute(f"CREATE TABLE {fqn} AS SELECT * FROM {first} LIMIT 0")
     for p in paths:
-        expr = read_csv_auto_sql(p)
+        expr = read_relation_sql(p)
         con.execute(f"INSERT INTO {fqn} SELECT * FROM {expr}")
 
     row = con.execute(f"SELECT COUNT(*) FROM {fqn}").fetchone()
@@ -207,11 +211,11 @@ def materialize_bronze_native_duckdb_from_txt(
     }
 
 
-def materialize_bronze_rows(
+def materialize_rows(
     con: Any,
     *,
-    iceberg_namespace: str,
-    iceberg_table: str,
+    namespace: str,
+    table: str,
     schema_sql: str,
     rows: list[tuple],
     insert_placeholders: str,
@@ -226,8 +230,8 @@ def materialize_bronze_rows(
         alias = attach_iceberg_catalog(con)
         if alias is None:
             raise RuntimeError("attach_iceberg_catalog returned None despite ICEBERG_REST_ENDPOINT")
-        fqn = f"{alias}.{iceberg_namespace}.{iceberg_table}"
-        con.execute(f"CREATE SCHEMA IF NOT EXISTS {alias}.{iceberg_namespace}")
+        fqn = f"{alias}.{namespace}.{table}"
+        con.execute(f"CREATE SCHEMA IF NOT EXISTS {alias}.{namespace}")
         con.execute(f"DROP TABLE IF EXISTS {fqn}")
         con.execute(f"CREATE TABLE {fqn} ({schema_sql})")
         if rows:
@@ -240,8 +244,8 @@ def materialize_bronze_rows(
             "storage": "iceberg_rest",
         }
 
-    fqn = f"{iceberg_namespace}.{iceberg_table}"
-    con.execute(f"CREATE SCHEMA IF NOT EXISTS {iceberg_namespace}")
+    fqn = f"{namespace}.{table}"
+    con.execute(f"CREATE SCHEMA IF NOT EXISTS {namespace}")
     con.execute(f"DROP TABLE IF EXISTS {fqn}")
     con.execute(f"CREATE TABLE {fqn} ({schema_sql})")
     if rows:
@@ -255,25 +259,28 @@ def materialize_bronze_rows(
     }
 
 
-def materialize_bronze_from_txt(
+def materialize_from_paths(
     con: Any,
     *,
-    iceberg_namespace: str,
-    iceberg_table: str,
+    namespace: str,
+    table: str,
     paths: list[Path],
+    read_relation_sql: ReadRelationSql,
 ) -> dict[str, Any]:
-    """Bronze INDEC TXT ingest: Iceberg REST when ``ICEBERG_REST_ENDPOINT`` is set, else native DuckDB."""
+    """Materialize files to Iceberg REST when configured, otherwise native DuckDB."""
 
     if iceberg_publish_configured():
-        return materialize_bronze_iceberg_from_txt(
+        return materialize_iceberg_from_paths(
             con,
-            iceberg_namespace=iceberg_namespace,
-            iceberg_table=iceberg_table,
+            namespace=namespace,
+            table=table,
             paths=paths,
+            read_relation_sql=read_relation_sql,
         )
-    return materialize_bronze_native_duckdb_from_txt(
+    return materialize_native_duckdb_from_paths(
         con,
-        schema=iceberg_namespace,
-        table=iceberg_table,
+        schema=namespace,
+        table=table,
         paths=paths,
+        read_relation_sql=read_relation_sql,
     )
