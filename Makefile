@@ -50,7 +50,7 @@ help:
 	@echo ""
 	@echo "Agent/UI:"
 	@echo "  make agent-build | agent-up | agent-down | agent-ps | agent-logs"
-	@echo "  make agent-dev                   # local: brain (uv) + UI (npm); run make mcp-up first for tools"
+	@echo "  make agent-dev                   # local: brain (uv) + UI (npm); run make infra-up or make mcp-up for tools"
 	@echo "                                   # API_PORT=$(API_PORT)  MCP→localhost rewrite unless in Docker"
 	@echo ""
 	@echo "All layers:"
@@ -151,7 +151,7 @@ agent-ps:
 agent-logs:
 	docker compose -f "$(ROOT_COMPOSE)" logs --tail=100
 
-## Local development (host): FastAPI brain + Vite UI — start MCP first so tools resolve (``make mcp-up``).
+## Local development (host): FastAPI brain + Vite UI — start ``make infra-up`` or ``make mcp-up`` so MCP tools resolve.
 ## Brain maps ``mcp.json`` Docker names → 127.0.0.1:8040 / 8043 / 8044 automatically when not in Docker.
 agent-dev:
 	@$(MAKE) -j2 agent-dev-brain agent-dev-ui

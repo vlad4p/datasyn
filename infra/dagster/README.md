@@ -1,13 +1,15 @@
 # MVP Dagster (docker compose)
 
-Local Docker Compose deployment of [Dagster](https://dagster.io/), adapted from the upstream [`deploy_docker` example](https://github.com/dagster-io/dagster/tree/master/examples/deploy_docker), with a Python project (`ubika_dagster`) laid out per the official guide on [Projects and workspaces](https://docs.dagster.io/guides/build/projects).
+Part of the Datacyber monorepo. For shared network, volumes, and `make` orchestration across stacks, see the repo root **`README.md`**.
+
+Local Docker Compose deployment of [Dagster](https://dagster.io/), adapted from the upstream [`deploy_docker` example](https://github.com/dagster-io/dagster/tree/master/examples/deploy_docker). Production user code lives in **`dagster-code/projects/datasyn`** (`datasyn` package). The **`ubika_dagster`** tree below is a legacy reference layout.
 
 Four long-running containers plus one container per Dagster run:
 
 | Service                | Role                                                                                         |
 | ---------------------- | -------------------------------------------------------------------------------------------- |
 | `dagster_postgresql`   | Postgres 16 used for run storage, schedule storage and event log storage.                    |
-| `dagster_user_code`    | gRPC server that loads the `ubika_dagster` package. One per code location.                   |
+| `dagster_user_code`    | gRPC server that loads the **`datasyn`** package from image `dagster_user_code_image` (built from `dagster-code/projects/datasyn`). |
 | `dagster_webserver`    | `dagster-webserver` (UI + GraphQL). Submits runs to a queue via `QueuedRunCoordinator`.      |
 | `dagster_daemon`       | `dagster-daemon run`: dequeues runs, evaluates schedules and sensors.                        |
 | _per-run containers_   | Launched by `DockerRunLauncher` using the `dagster_user_code_image` image.                   |

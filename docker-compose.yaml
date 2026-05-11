@@ -13,9 +13,9 @@
 #   # set TELEGRAM_BOT_TOKEN in .env
 #   docker compose --profile telegram up -d telegram-bot
 #
-# MinIO object storage (landing zone):
+# MinIO object storage (landing zone) lives in the object-storage stack, not this file:
 #   cp infra/object-storage/.env.example infra/object-storage/.env
-#   docker compose up -d minio
+#   docker compose -f infra/object-storage/docker-compose.yaml up -d
 #
 # JupyterLab (optional analysis notebooks): publish :8888, work persisted in volume `jupyter_work`.
 # Set `JUPYTER_TOKEN` in `.env` (optional `VITE_JUPYTER_TOKEN` same value so the embedded Lab iframe logs in;

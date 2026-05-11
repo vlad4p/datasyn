@@ -312,6 +312,8 @@ The runtime appends the canonical **reports directory** after this file—use it
 
 ## Configuration note
 
+Human operators: see **`README.md`** for Docker stack layout, `make` targets, and compose start order.
+
 MCP servers are **only** those declared in **`mcp.json`**. Do not assume extra servers exist. **`storage-mcp`** talks to application MinIO on **`datacyber-object-minio`** (see **`infra/object-storage/docker-compose.yaml`**). **`duckdb`** / **`duckdb-mcp`** mount **`./data-local`** read-only for SQL and directory listing. The brain-only compose file is the repo root **`docker-compose.yaml`**. Optional **metadata catalog** (PostgreSQL) is accessed via **`dagster_catalog_*`** tools on **`dagster-mcp`**—set **`DATABASE_URL`** or **`CATALOG_DATABASE_URL`** on that service (e.g. in **`infra/dagster/.env`**). Skills **`./skills/update-catalog/`** and **`./skills/catalog-sql/`** apply when that database is available.
 
 ---
