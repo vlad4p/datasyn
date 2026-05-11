@@ -12,7 +12,10 @@
 services:
   # Postgres DB used by Dagster for run storage, schedule storage, and event log storage.
   dagster_postgresql:
-    image: postgres:16-alpine
+    build:
+      context: ./postgres
+      dockerfile: Dockerfile
+    image: dagster_postgresql:16-alpine
     container_name: dagster_postgresql
     environment:
       POSTGRES_USER: "postgres_user"
@@ -35,11 +38,11 @@ services:
   dagster_user_code:
     # build:
     #   context: .
-    #   dockerfile: ./Dockerfile_user_code
+    #   dockerfile: ./user-code/Dockerfile
     container_name: dagster_user_code
     image: dagster_user_code_image
     restart: always
-    # User-code gRPC loads full defs; align with per-run job limits in ``dagster.yaml``.
+    # User-code gRPC loads full defs; align with per-run job limits in ``runtime/dagster.yaml``.
     deploy:
       resources:
         limits:
@@ -101,15 +104,15 @@ services:
   # are queued and later dequeued by dagster-daemon.
   dagster_webserver:
     build:
-      context: .
-      dockerfile: ./Dockerfile_dagster
+      context: ./runtime
+      dockerfile: Dockerfile
     entrypoint:
       - dagster-webserver
       - -h
       - "0.0.0.0"
       - -p
       - "3000"
-      # Explicit workspace: same file is COPY'd to $DAGSTER_HOME by Dockerfile_dagster;
+      # Explicit workspace: same file is COPY'd to $DAGSTER_HOME by ``runtime/Dockerfile``;
       # default is also ./workspace.yaml when WORKDIR is $DAGSTER_HOME, but -w avoids surprises.
       # - -w
       # - workspace.yaml
@@ -137,11 +140,11 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      # Host ``dagster.yaml`` must be live; ``Dockerfile_dagster`` only COPYs at build
+      # Host ``runtime/dagster.yaml`` must be live; the runtime image only COPYs at build
       # time. Without this mount, ``env_vars`` (e.g. MINIO_*) stays stale and
       # DockerRunLauncher will not forward them to per-run containers.
-      - ./dagster.yaml:/opt/dagster/dagster_home/dagster.yaml:ro
-      - ./workspace.yaml:/opt/dagster/dagster_home/workspace.yaml:ro
+      - ./runtime/dagster.yaml:/opt/dagster/dagster_home/dagster.yaml:ro
+      - ./runtime/workspace.yaml:/opt/dagster/dagster_home/workspace.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/io_manager_storage:/tmp/io_manager_storage
       - /tmp/dagster_data:/opt/dagster/data
@@ -159,8 +162,8 @@ services:
   # dagster-daemon dequeues runs and evaluates schedules/sensors.
   dagster_daemon:
     build:
-      context: .
-      dockerfile: ./Dockerfile_dagster
+      context: ./runtime
+      dockerfile: Dockerfile
     entrypoint:
       - dagster-daemon
       - run
@@ -213,8 +216,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./dagster.yaml:/opt/dagster/dagster_home/dagster.yaml:ro
-      - ./workspace.yaml:/opt/dagster/dagster_home/workspace.yaml:ro
+      - ./runtime/dagster.yaml:/opt/dagster/dagster_home/dagster.yaml:ro
+      - ./runtime/workspace.yaml:/opt/dagster/dagster_home/workspace.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/io_manager_storage:/tmp/io_manager_storage
       - /tmp/dagster_data:/opt/dagster/data

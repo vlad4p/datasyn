@@ -11,9 +11,14 @@ Make it easier to **discover, load, and reason about** public datasets with repr
 | Path | Role |
 |------|------|
 | `agent/` | Brain service (FastAPI), MCP clients, orchestration |
+| `infra/duckdb/warehouse/` | DuckDB warehouse container image (`init_db.py`, `Dockerfile`) |
 | `infra/duckdb/mcp/` | DuckDB warehouse MCP (`duckdb-mcp` in Compose) |
-| `infra/dagster/mcp/` | Dagster scaffold/deploy MCP (`dagster-mcp`) |
+| `infra/duckdb/ui/` | DuckDB Local UI (optional compose profile `ui`) |
+| `infra/object-storage/minio/` | MinIO server image |
 | `infra/object-storage/mcp/` | MinIO/S3 browser MCP (`storage-mcp`) |
+| `infra/dagster/runtime/` | Dagster webserver + daemon image and instance YAML |
+| `infra/dagster/postgres/` | Postgres 16 image for Dagster metadata DB |
+| `infra/dagster/mcp/` | Dagster scaffold/deploy MCP (`dagster-mcp`) |
 | `infra/dagster/dagster-code/projects/datasyn/` | Dagster code location (bronze assets, jobs, schedules) |
 | `infra/` | Docker stacks (object storage, DuckDB, Dagster, Langfuse, etc.) |
 | `skills/` | Deep Agents `SKILL.md` playbooks (ingest, catalog, analysis) |

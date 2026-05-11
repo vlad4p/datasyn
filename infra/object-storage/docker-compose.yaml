@@ -1,7 +1,7 @@
 services:
   minio:
     build:
-      context: .
+      context: ./minio
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file:

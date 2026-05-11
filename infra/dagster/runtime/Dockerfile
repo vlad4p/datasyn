@@ -1,5 +1,5 @@
 # Image for dagster-webserver and dagster-daemon. No pipeline code here;
-# user code is loaded remotely via the gRPC server in Dockerfile_user_code.
+# user code is loaded remotely via the gRPC server (see ``user-code/Dockerfile``).
 
 FROM python:3.11-slim
 
