@@ -1,16 +1,14 @@
 {
   "mcpServers": {
-    "duckdb": {
-      "transport": "http",
-      "url": "http://duckdb-mcp:8040/mcp"
+    "duckdb":{
+      "type": "remote",
+      "url": "http://10.13.10.119:8040/mcp",
+      "enabled": true
     },
-    "dagster": {
-      "transport": "http",
-      "url": "http://dagster-mcp:8043/mcp"
-    },
-    "storage": {
-      "transport": "http",
-      "url": "http://storage-mcp:8044/mcp"
+    "storage":{
+      "type": "remote",
+      "url": "http://10.13.10.119:8044/mcp",
+      "enabled": true
     }
   }
 }
