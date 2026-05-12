@@ -14,12 +14,12 @@ from __future__ import annotations
 import os
 import tempfile
 
-import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from dagster import AssetExecutionContext, Failure, MaterializeResult, MetadataValue, asset
 from dagster_duckdb import DuckDBResource
 
 from datasyn.utils.iceberg import attach_iceberg_catalog, iceberg_publish_configured
+from datasyn.utils.minio_client import boto3_minio_s3_client
 
 BRONZE_SCHEMA = "bronze"
 LANDING_PREFIX = (os.environ.get("UCA_LANDING_PREFIX") or "landing/indec/censo/uca").strip().strip(
@@ -68,21 +68,12 @@ def _object_key(filename: str, *, landing_prefix: str | None = None) -> str:
 
 
 def _s3_client():
-    endpoint = (os.environ.get("MINIO_ENDPOINT") or "").strip()
-    access_key = (os.environ.get("MINIO_ACCESS_KEY") or "").strip()
-    secret_key = (os.environ.get("MINIO_SECRET_KEY") or "").strip()
-    if not endpoint or not access_key or not secret_key:
+    try:
+        return boto3_minio_s3_client()
+    except ValueError as exc:
         raise Failure(
-            "MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY must be set for UCA bronze "
-            f"(unless {_LOCAL_DIR_ENV} provides a local file)."
-        )
-    return boto3.client(
-        "s3",
-        endpoint_url=endpoint,
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-        region_name="us-east-1",
-    )
+            f"{exc} (unless {_LOCAL_DIR_ENV} provides a local file.)"
+        ) from exc
 
 
 def _download_csv_bytes(context: AssetExecutionContext, bucket: str, key: str) -> bytes:

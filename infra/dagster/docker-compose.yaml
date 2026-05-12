@@ -62,11 +62,14 @@ services:
       # LITELLM_KEY / LITELLM_PROXY_BASE come **only** from ``env_file`` (``infra/dagster/.env``).
       # If listed here with ``${VAR:-…}`` the project-root ``.env`` (or host shell exports)
       # silently win and the per-run containers point at the wrong proxy (e.g. 127.0.0.1:4000).
-      # MinIO (``infra/object-storage`` stack, service name ``minio`` on ``infra-datasynk``).
-      # Must match ``MINIO_ROOT_USER`` / ``MINIO_ROOT_PASSWORD`` there when using defaults.
+      # MinIO (``infra/object-storage`` stack, alias ``datacyber-object-minio`` on ``infra-datasynk``).
+      # Client keys default from ``MINIO_ROOT_*`` when ``MINIO_ACCESS_KEY`` / ``MINIO_SECRET_KEY``
+      # are unset so Dagster matches ``MINIO_ROOT_USER`` / ``MINIO_ROOT_PASSWORD`` on the server.
       MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://datacyber-object-minio:9000}"
-      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
-      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin123}"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-}"
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-${MINIO_ROOT_USER:-minioadmin}}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin123}}"
       MINIO_BUCKET: "${MINIO_BUCKET:-data-local}"
       MINIO_SECURE: "${MINIO_SECURE:-false}"
       # INDEC EPH trimestral landing tree (see ``data_local_root()``).
@@ -194,8 +197,10 @@ services:
       # to avoid project-root ``.env`` / host shell shadowing the value (e.g. 127.0.0.1:4000).
       DUCKDB_PATH: "/data/warehouse.duckdb"
       MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://datacyber-object-minio:9000}"
-      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-minioadmin}"
-      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-minioadmin123}"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-}"
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-${MINIO_ROOT_USER:-minioadmin}}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin123}}"
       MINIO_BUCKET: "${MINIO_BUCKET:-data-local}"
       MINIO_SECURE: "${MINIO_SECURE:-false}"
       # INDEC EPH trimestral landing tree root (read by ``data_local_root()``).

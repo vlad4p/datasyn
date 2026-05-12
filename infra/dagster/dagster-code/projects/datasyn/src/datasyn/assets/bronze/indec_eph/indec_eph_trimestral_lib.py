@@ -24,9 +24,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import boto3
 import httpx
 from botocore.exceptions import BotoCoreError, ClientError
+
+from datasyn.utils.minio_client import boto3_minio_s3_client, resolve_minio_s3_credentials
 
 log = logging.getLogger(__name__)
 
@@ -251,10 +252,9 @@ def sync_tree_to_minio(
     root: Path,
     emit: EmitFn | None = None,
 ) -> dict[str, Any]:
-    endpoint = (os.environ.get("MINIO_ENDPOINT") or "").strip().rstrip("/")
+    endpoint_raw, access_key, secret_key = resolve_minio_s3_credentials()
+    endpoint = endpoint_raw.rstrip("/")
     bucket = (os.environ.get("MINIO_BUCKET") or "data-local").strip()
-    access_key = (os.environ.get("MINIO_ACCESS_KEY") or "").strip()
-    secret_key = (os.environ.get("MINIO_SECRET_KEY") or "").strip()
     secure = _as_bool(os.environ.get("MINIO_SECURE"), default=False)
     prefix = (os.environ.get("MINIO_PREFIX") or "").strip().strip("/")
     enabled = _as_bool(os.environ.get("MINIO_SYNC_ENABLED"), default=True)
@@ -290,13 +290,7 @@ def sync_tree_to_minio(
     )
     t_sync = time.perf_counter()
     try:
-        client = boto3.client(
-            "s3",
-            endpoint_url=endpoint,
-            aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key,
-            region_name="us-east-1",
-        )
+        client = boto3_minio_s3_client()
         try:
             client.head_bucket(Bucket=bucket)
         except ClientError as exc:

@@ -12,12 +12,12 @@ from __future__ import annotations
 import os
 import tempfile
 
-import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from dagster import AssetExecutionContext, Failure, MaterializeResult, MetadataValue, asset
 from dagster_duckdb import DuckDBResource
 
 from datasyn.utils.iceberg import attach_iceberg_catalog, iceberg_publish_configured
+from datasyn.utils.minio_client import boto3_minio_s3_client
 
 BRONZE_SCHEMA = "bronze"
 TABLE_NAME = "radios_censales"
@@ -35,21 +35,10 @@ def _object_key() -> str:
 
 
 def _s3_client():
-    endpoint = (os.environ.get("MINIO_ENDPOINT") or "").strip()
-    access_key = (os.environ.get("MINIO_ACCESS_KEY") or "").strip()
-    secret_key = (os.environ.get("MINIO_SECRET_KEY") or "").strip()
-    if not endpoint or not access_key or not secret_key:
-        raise Failure(
-            "MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY must be set for radios_censales "
-            f"(unless {_LOCAL_PATH_ENV} points to a file)."
-        )
-    return boto3.client(
-        "s3",
-        endpoint_url=endpoint,
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-        region_name="us-east-1",
-    )
+    try:
+        return boto3_minio_s3_client()
+    except ValueError as exc:
+        raise Failure(f"{exc} (unless {_LOCAL_PATH_ENV} points to a file.)") from exc
 
 
 def _download_csv_bytes(context: AssetExecutionContext, bucket: str, key: str) -> bytes:
