@@ -21,6 +21,7 @@ from .assets.bronze.indec_censo.uca_csv import (
     uca_provincias,
 )
 from .assets.bronze import elecciones_argentina as bronze_elecciones
+from .assets.bronze import infobae as bronze_infobae
 from .assets.bronze.indec_eph import indec_eph_trimestral as bronze_eph
 from .assets.bronze.indec_eph import indec_eph_variables as bronze_eph_variables
 from . import jobs, schedules, sensors
@@ -41,6 +42,7 @@ defs = Definitions(
                 bronze_eph_variables,
                 bronze_radios,
                 bronze_indec_censo_2022,
+                bronze_infobae,
             ]
         ),
         uca_censo,

@@ -11,6 +11,7 @@ dependencies = [
     "duckdb>=1.4.2",
     "httpx>=0.28.1",
     "boto3>=1.43.5",
+    "beautifulsoup4>=4.12,<5",
 ]
 
 [build-system]
