@@ -16,7 +16,7 @@ Tools (LangChain prefixes them with the MCP key ``dagster``):
                                  (optional *image_name*, e.g. ``dagster_user_code_image``).
 - ``dagster_compose_force_recreate`` — ``docker compose up -d --no-build --force-recreate``
                                  for an external stack (default: ``dagster_user_code``).
-- ``dagster_user_code_refresh`` — ``build_image`` (``datasynk`` → ``dagster_user_code_image``)
+- ``dagster_user_code_refresh`` — ``build_image`` (default project ``datasyn`` → ``dagster_user_code_image``)
                                  then ``compose_force_recreate`` for ``dagster_user_code``
                                  (requires ``DAGSTER_COMPOSE_FILE`` mount; see ``infra/dagster/docker-compose.yaml``).
 - ``dagster_deploy``          — by default ``docker build`` then ``docker rm -f`` +
@@ -130,7 +130,7 @@ DAGSTER_COMPOSE_USER_CODE_SERVICE = os.environ.get(
 DAGSTER_COMPOSE_PROJECT = (os.environ.get("DAGSTER_COMPOSE_PROJECT") or "").strip()
 # Defaults match ``infra/dagster/docker-compose.yaml`` (``dagster_user_code`` image).
 DAGSTER_USER_CODE_BUILD_PROJECT = (
-    os.environ.get("DAGSTER_USER_CODE_BUILD_PROJECT") or "datasynk"
+    os.environ.get("DAGSTER_USER_CODE_BUILD_PROJECT") or "datasyn"
 ).strip()
 DAGSTER_USER_CODE_IMAGE_NAME = (
     os.environ.get("DAGSTER_USER_CODE_IMAGE_NAME") or "dagster_user_code_image"
@@ -152,7 +152,7 @@ mcp = FastMCP(
         "`compose_force_recreate` after "
         "tagging an image (e.g. `dagster_user_code_image`) for an external "
         "compose stack configured via `DAGSTER_COMPOSE_FILE` (mount `infra/dagster` into "
-        "this service). Use `user_code_refresh` to build `datasynk` as "
+        "this service). Use `user_code_refresh` to build the default code-location project as "
         "`dagster_user_code_image` and force-recreate `dagster_user_code` in one step. "
         "The MCP itself never "
         "imports Dagster; it only generates code and shells out to `docker`. "
@@ -569,7 +569,7 @@ def user_code_refresh(
     Runs:
 
     1. ``docker build`` on *project* (default ``DAGSTER_USER_CODE_BUILD_PROJECT``, usually
-       ``datasynk``), tagging as *image_name* (default ``DAGSTER_USER_CODE_IMAGE_NAME``,
+       ``datasyn``), tagging as *image_name* (default ``DAGSTER_USER_CODE_IMAGE_NAME``,
        usually ``dagster_user_code_image``) — same as ``build_image``.
     2. ``docker compose … up -d --no-build --force-recreate`` for
        ``DAGSTER_COMPOSE_USER_CODE_SERVICE`` (default ``dagster_user_code``) using
