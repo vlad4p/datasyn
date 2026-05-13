@@ -115,7 +115,7 @@ def _source_url() -> str:
         "landing/elecciones_argentina/2023_generales_1/ y sincroniza el directorio a MinIO."
     ),
 )
-def elecciones_argentina_2023_generales_landing(context: AssetExecutionContext):
+def elecciones_argentina_2023_generales_landing(context):
     work = _work_dir()
     work.mkdir(parents=True, exist_ok=True)
     zp = _zip_path()
@@ -203,9 +203,7 @@ def _ensure_schema(con, catalog_alias: str | None) -> None:
         f"(o ``ELECCIONES_ARGENTINA_2023_LOCAL_CSV``) y crea ``{BRONZE_SCHEMA}.{TABLE_NAME}``."
     ),
 )
-def resultado_electorales_2023_generales(
-    context: AssetExecutionContext, database: DuckDBResource
-):
+def resultado_electorales_2023_generales(context, database: DuckDBResource):
     duck_path = os.environ.get("DUCKDB_PATH", "/data/warehouse.duckdb").strip()
     local_override = (os.environ.get("ELECCIONES_ARGENTINA_2023_LOCAL_CSV") or "").strip()
 
