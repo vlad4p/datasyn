@@ -31,6 +31,18 @@ Scaffolded and hand-maintained code locations live under **`../dagster-code/proj
 
 The MCP **does not import Dagster**. It writes Python under `/projects/<name>/` and shells out to `docker` on the host (socket mount).
 
+### `datasyn` code location: MinIO → DuckDB bronze component
+
+The **`dagster-code/projects/datasyn`** package declares CSV landing loads from **MinIO**
+into **`bronze`** using `datasyn.components.bronze_object_storage_duckdb`:
+`BronzeMinioDuckdbSpec` + `make_bronze_minio_duckdb_asset`, matching the declarative
+**spec → asset** style described in [Dagster Components](https://docs.dagster.io/guides/build/components).
+
+**MCP:** No extra tools are needed. For new object-storage bronze tables, add a spec (or a
+small module) under `datasyn` and register assets in `definitions.py`. Reserve
+`dagster_add_asset` for bespoke Python assets that do not fit the MinIO → `read_csv_auto`
+pattern.
+
 ## Tools (LangChain prefix `dagster_`)
 
 | Tool                       | Purpose |
