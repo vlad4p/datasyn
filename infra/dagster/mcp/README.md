@@ -2,17 +2,28 @@
 
 FastMCP HTTP server (port `8043`, path `/mcp`) that scaffolds Dagster code-location
 projects and drives the host Docker daemon to build images and run/replace
-project containers.
+project containers. Register it in the repo root **`mcp.json`** under the key
+**`dagster`** (LangChain prefixes tools as `dagster_*`).
+
+This MCP follows the same idea as Dagster’s **AI-driven data engineering** story:
+give agents **deterministic, bounded actions** (scaffold, add asset, compose
+recreate) instead of free-form edits to production code locations, and pair that
+with human verification. See [Announcing AI Driven Data Engineering](https://dagster.io/blog/announcing-ai-driven-data-engineering)
+and [Accelerate Data Pipeline Development with Dagster Components](https://dagster.io/blog/accelerate-data-pipeline-development-with-dagster-components)
+for the product direction (CLI `dg`, components, MCP-friendly structure).
 
 ## Layout
 
 ```
 infra/dagster/mcp/
 ├── Dockerfile                # Python 3.12 + docker-ce-cli + compose plugin
-├── requirements.txt          # fastmcp, python-dotenv
+├── requirements.txt          # fastmcp, python-dotenv, psycopg
 ├── server.py                 # FastMCP HTTP server (tools listed below)
 ├── scaffold.py               # pure-Python project / asset / job / schedule / sensor templating
 ├── docker_ops.py             # subprocess wrapper around the host Docker CLI
+├── catalog_db.py             # optional PostgreSQL catalog connection
+├── catalog_sql_guard.py      # SQL allowlist for catalog_execute_query
+├── catalog_schema_inspect.py # public schema introspection
 └── templates/                # `.tpl` files filled via `str.format`
 ```
 
@@ -36,6 +47,14 @@ The MCP **does not import Dagster**. It writes Python under `/projects/<name>/` 
 | `dagster_logs`             | Tail container logs. |
 | `dagster_status`           | List containers labeled `datacyber.dagster.project`. |
 | `dagster_daemon_info`      | `docker info -f json` — confirms socket access. |
+| `dagster_compose_force_recreate` | `docker compose … up -d --force-recreate` for mounted stack (e.g. refresh `dagster_user_code` after retagging an image). |
+| `dagster_user_code_refresh` | Build default code-location project as `dagster_user_code_image`, then force-recreate `dagster_user_code` (needs `DAGSTER_COMPOSE_FILE` mounted). |
+| `dagster_catalog_get_schema` | `public` tables, columns, FKs in the metadata catalog DB (optional). |
+| `dagster_catalog_execute_query` | One guarded SQL statement per call against that DB (`DATABASE_URL` or `CATALOG_DATABASE_URL`). |
+
+## HTTP health
+
+`GET /health` returns `200` with body `ok` when the projects root exists (used for readiness checks).
 
 ## Generated project shape
 
@@ -99,3 +118,11 @@ The Dagster UI ports start at `3001` to avoid colliding with `langfuse` on
 | `DAGSTER_DEFAULT_HOST_PORT`    | `3001`                | Used when `dagster_deploy host_port=0`. |
 | `DAGSTER_WEBSERVER_PORT`       | `3000`                | Port the Dagster UI binds inside the container. |
 | `DAGSTER_DOCKER_TIMEOUT`       | `900`                 | Per-`docker` subprocess timeout (seconds). |
+| `DAGSTER_COMPOSE_FILE`         | *(see compose)*       | Path to `docker-compose.yaml` inside the MCP container (Compose mounts `infra/dagster` at `/dagster-compose`). |
+| `DAGSTER_COMPOSE_PROJECT`      | `dagster`             | `docker compose -p` project name (match the host). |
+| `DAGSTER_COMPOSE_USER_CODE_SERVICE` | `dagster_user_code` | Default service for `compose_force_recreate` / `user_code_refresh`. |
+| `DAGSTER_USER_CODE_BUILD_PROJECT` | `datasyn`         | Project directory under `DAGSTER_PROJECTS_ROOT` to build as the main code location image. |
+| `DAGSTER_USER_CODE_IMAGE_NAME` | `dagster_user_code_image` | Image tag target for that build. |
+| `DAGSTER_DEPLOY_VOLUMES`       | `duckdb_data:…;storage:…` | Semicolon-separated `src:dst` mounts for `dagster_deploy`. |
+| `DATABASE_URL` / `CATALOG_DATABASE_URL` | *(empty)*   | PostgreSQL catalog for `dagster_catalog_*` tools. |
+| `CATALOG_LIST_CAP`             | `100`                 | Max rows cap for catalog queries (clamped 1–500). |
