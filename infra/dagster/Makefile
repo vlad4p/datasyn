@@ -21,7 +21,7 @@ help:
 	@echo "  restart          Restart all services"
 	@echo "  logs             Tail logs for all services"
 	@echo "  ps               List services"
-	@echo "  build            Build user-code and dagster images"
+	@echo "  build            Build code-location and Dagster runtime images"
 	@echo "  pull             Pull base images"
 	@echo "  clean            Down + remove DB volume (DESTRUCTIVE)"
 	@echo "  psql             Open a psql shell against the Dagster Postgres"

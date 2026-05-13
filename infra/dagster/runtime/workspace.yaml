@@ -1,5 +1,5 @@
 load_from:
-  # Each entry corresponds to a user-code service in docker-compose.yaml.
+  # Each entry corresponds to a gRPC code-location service in docker-compose.yaml.
   # Add more entries (on different ports) to load additional code locations.
   - grpc_server:
       host: dagster_user_code

@@ -73,7 +73,7 @@ dagster_add_schedule     project="indec_pipeline" name="daily_indec" job="indec_
 dagster_build_image      project="indec_pipeline" image_name="dagster_user_code_image"
 dagster_deploy           project="indec_pipeline" host_port=3001 container_port=4000 image_name="dagster_user_code_image"
 # deploy defaults to build-then-replace; omit build_image if you only need one step.
-# → user-code gRPC on host port 3001 (map `container_port` to match your Dockerfile CMD)
+# → code-location gRPC on host port 3001 (map `container_port` to match your Dockerfile CMD)
 ```
 
 ## Deployment expectations

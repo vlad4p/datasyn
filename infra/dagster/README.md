@@ -14,7 +14,7 @@ Four long-running containers plus one container per Dagster run:
 | `dagster_daemon`       | `dagster-daemon run`: dequeues runs, evaluates schedules and sensors.                        |
 | _per-run containers_   | Launched by `DockerRunLauncher` using the `dagster_user_code_image` image.                   |
 
-The webserver and daemon mount `/var/run/docker.sock` so they can launch/stop per-run containers on the host Docker engine. `DAGSTER_CURRENT_IMAGE` (set on `dagster_user_code`) tells the launcher to reuse the same user-code image for runs.
+The webserver and daemon mount `/var/run/docker.sock` so they can launch/stop per-run containers on the host Docker engine. `DAGSTER_CURRENT_IMAGE` (set on `dagster_user_code`) tells the launcher to reuse the same code-location image for runs.
 
 ## Project layout (`ubika_dagster`)
 
@@ -22,22 +22,20 @@ Following [Dagster's recommended project structure](https://docs.dagster.io/guid
 
 ```text
 infra/dagster/
-├── docker-compose.yaml              # all services (postgres, user-code, webserver, daemon, mcp)
+├── docker-compose.yaml              # all services (postgres, gRPC code location, webserver, daemon, mcp)
 ├── runtime/
 │   ├── Dockerfile                   # webserver + daemon image
 │   ├── dagster.yaml                 # instance config (storages, run launcher, scheduler)
 │   └── workspace.yaml               # gRPC code locations
 ├── postgres/
 │   └── Dockerfile                   # FROM postgres:16-alpine (same as prior official image)
-├── user-code/
-│   └── Dockerfile                   # legacy ubika gRPC template (compose uses ``dagster-code/projects/datasyn``)
 ├── mcp/                             # Dagster MCP (scaffold / Docker helpers)
-├── dagster-code/projects/datasyn/   # active ``datasyn`` code location + Dockerfile for user-code image
+├── dagster-code/projects/datasyn/   # active ``datasyn`` code location + Dockerfile for gRPC image
 ├── pyproject.toml                   # optional local dev / legacy ubika package
 └── Makefile
 ```
 
-`pyproject.toml` declares `[tool.dagster] module_name = "ubika_dagster.definitions"` for the optional legacy layout. The deployed gRPC image is built from **`dagster-code/projects/datasyn`** (`datasyn.definitions`). See **`user-code/Dockerfile`** for the older `ubika_dagster` template.
+`pyproject.toml` declares `[tool.dagster] module_name = "ubika_dagster.definitions"` for the optional legacy layout. The deployed gRPC image is built from **`dagster-code/projects/datasyn`** (`datasyn.definitions`).
 
 ## Ports (host)
 
@@ -133,7 +131,7 @@ resources:
 - [`pyproject.toml`](pyproject.toml) — package metadata, runtime + `dev` extras (pytest, ruff), `[tool.dagster] module_name`.
 - [`docker-compose.yaml`](docker-compose.yaml) — services, `dagster_network`, volumes.
 - [`runtime/Dockerfile`](runtime/Dockerfile) — image for webserver + daemon (no user code).
-- [`user-code/Dockerfile`](user-code/Dockerfile) — legacy gRPC user-code server template; production uses [`dagster-code/projects/datasyn/Dockerfile`](dagster-code/projects/datasyn/Dockerfile). Reused for per-run containers via `DAGSTER_CURRENT_IMAGE`.
+- [`dagster-code/projects/datasyn/Dockerfile`](dagster-code/projects/datasyn/Dockerfile) — gRPC code location image (`dagster_user_code_image`); reused for per-run containers via `DAGSTER_CURRENT_IMAGE`.
 - [`dagster.yaml`](dagster.yaml) — `DagsterDaemonScheduler` + `QueuedRunCoordinator` + `DockerRunLauncher`, Postgres storages, shared data bind mount for run containers.
 - [`workspace.yaml`](workspace.yaml) — loads the `ubika_dagster` code location from the `dagster_user_code` gRPC server.
 - [`src/ubika_dagster/`](src/ubika_dagster/) — Dagster project package (`definitions.py` + `defs/<project>/`).
@@ -161,7 +159,7 @@ make lint              # ruff check src tests
 
 ## Adding a new code location
 
-1. Add another user-code service in `docker-compose.yaml` (copy `dagster_user_code`, give it a new container name, image name, and its own Dockerfile under `user-code/` or a project folder).
+1. Add another gRPC code-location service in `docker-compose.yaml` (copy `dagster_user_code`, give it a new container name, image name, and point the build at a project folder under `dagster-code/projects/`).
 2. Append a `grpc_server` entry in [`workspace.yaml`](workspace.yaml) pointing at the new service's hostname/port and a unique `location_name`.
 3. `make up` to rebuild and reload.
 

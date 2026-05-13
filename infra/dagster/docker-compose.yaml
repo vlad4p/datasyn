@@ -1,5 +1,5 @@
 # Aligned with https://github.com/dagster-io/dagster/tree/master/examples/deploy_docker
-# Three long-running services (postgres, user-code gRPC server, webserver, daemon)
+# Three long-running services (postgres, gRPC code location, webserver, daemon)
 # plus per-run containers launched by DockerRunLauncher via /var/run/docker.sock.
 #
 # Co-location with ../langfuse/docker-compose.yml and ../litellm/docker-compose.yaml:
@@ -33,12 +33,9 @@ services:
     restart: unless-stopped
 
   # gRPC server that loads user code. DAGSTER_CURRENT_IMAGE tells the DockerRunLauncher
-  # to reuse this same image for per-run containers. Add more user-code services on
-  # their own ports and entries in workspace.yaml for additional code locations.
+  # to reuse this same image for per-run containers. Add more gRPC services on their own
+  # ports and entries in workspace.yaml for additional code locations.
   dagster_user_code:
-    # build:
-    #   context: .
-    #   dockerfile: ./user-code/Dockerfile
     container_name: dagster_user_code
     image: dagster_user_code_image
     restart: always

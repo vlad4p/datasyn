@@ -407,7 +407,7 @@ def deploy(
     - ``host_port=0`` (default) → use ``DAGSTER_DEFAULT_HOST_PORT``.
     - ``container_port=0`` (default) → use ``DAGSTER_WEBSERVER_PORT`` (e.g. ``3000``
       for ``dagster dev``). Set to ``4000`` when the image runs ``dagster api grpc``
-      on that port (typical user-code image running ``dagster api grpc``).
+      on that port (typical code-location image running ``dagster api grpc``).
     - ``rebuild=True`` (default) runs ``docker build`` on the project context first,
       then ``docker rm -f`` + ``docker run`` for ``<prefix>-<project>`` (same image
       ref as ``dagster_build_image``). Set ``rebuild=False`` to only restart the
@@ -503,7 +503,7 @@ def compose_force_recreate(
     Runs ``docker compose -f <file> up -d [--no-build|--build] --force-recreate <svc…>``
     with *cwd* set to the compose file's directory (host daemon via socket).
 
-    Pass ``services`` (non-empty) to recreate several at once, e.g. user-code plus
+    Pass ``services`` (non-empty) to recreate several at once, e.g. ``dagster_user_code`` plus
     webserver/daemon after a ``workspace.yaml`` bind-mount change. Otherwise pass
     ``service`` or rely on defaults (`DAGSTER_COMPOSE_FILE` +
     `DAGSTER_COMPOSE_USER_CODE_SERVICE`; mount that compose dir into dagster-mcp).
