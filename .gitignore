@@ -66,3 +66,4 @@ Thumbs.db
 # Docker Compose local overrides
 docker-compose.override.yml
 CONCEPTO.md
+reporte/
