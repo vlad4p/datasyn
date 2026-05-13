@@ -25,7 +25,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY server.py scaffold.py docker_ops.py catalog_db.py catalog_sql_guard.py catalog_schema_inspect.py .
+COPY server.py scaffold.py docker_ops.py docker_registry.py catalog_db.py catalog_sql_guard.py catalog_schema_inspect.py .
 COPY templates ./templates
 
 ENV HOST=0.0.0.0 \

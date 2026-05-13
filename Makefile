@@ -17,7 +17,7 @@ INFRA_DAGSTER_COMPOSE := infra/dagster/docker-compose.yaml
 # INFRA_LITELLM_COMPOSE := infra/litellm/docker-compose.yaml
 INFRA_TELEGRAM_COMPOSE := infra/telegram_bot/docker-compose.yaml
 INFRA_LANGFUSE_COMPOSE := infra/langfuse/docker-compose.yml
-DAGSTER_USER_CODE_CONTEXT := infra/dagster/dagster-code/projects/datasyn
+DAGSTER_USER_CODE_CONTEXT := infra/dagster/mcp/dagster-code/projects/datasyn
 
 SHARED_NETWORK := infra-datasynk
 SHARED_VOLUMES := duckdb_data storage

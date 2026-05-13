@@ -27,14 +27,14 @@ Each stack has a **`docker-compose.yaml`** at its root and **subfolders per imag
 |-------|----------------|------------------------------|
 | **DuckDB** | `infra/duckdb/docker-compose.yaml` | `warehouse/` — warehouse container (`Dockerfile`, `init_db.py`); `mcp/` — DuckDB MCP; `ui/` — DuckDB Local UI (profile `ui`) |
 | **Object storage** | `infra/object-storage/docker-compose.yaml` | `minio/` — MinIO server image; `mcp/` — storage MCP (S3-style tools) |
-| **Dagster** | `infra/dagster/docker-compose.yaml` | `runtime/` — webserver + daemon image, `dagster.yaml`, `workspace.yaml`; `postgres/` — metadata Postgres; `mcp/` — Dagster MCP; `dagster-code/projects/datasyn/` — active code location and gRPC image build context |
+| **Dagster** | `infra/dagster/docker-compose.yaml` | `runtime/` — webserver + daemon image, `dagster.yaml`, `workspace.yaml`; `postgres/` — metadata Postgres; `mcp/` — Dagster MCP + **`mcp/dagster-code/projects/`** (code locations); `mcp/dagster-code/projects/datasyn/` — active code location and gRPC image build context |
 
 Other optional stacks under `infra/` (each with its own compose file): **`langfuse/`**, **`litellm/`**, **`telegram_bot/`**.
 
 | Path | Role |
 |------|------|
-| `infra/dagster/dagster-code/projects/datasyn/` | Dagster definitions (bronze assets, jobs, schedules); **`Dockerfile`** builds `dagster_user_code_image` |
-| `infra/dagster/dagster-code/projects/datasyn/scripts/r/` | R/shell helpers (e.g. UCA / MinIO) |
+| `infra/dagster/mcp/dagster-code/projects/datasyn/` | Dagster definitions (bronze assets, jobs, schedules); **`Dockerfile`** builds `dagster_user_code_image` |
+| `infra/dagster/mcp/dagster-code/projects/datasyn/scripts/r/` | R/shell helpers (e.g. UCA / MinIO) |
 
 ## Quick start
 
@@ -113,7 +113,7 @@ Stop the UI before heavy MCP ingest if you see file lock errors: `make infra-duc
 
 - **Per-stack env**: copy `*.env.example` where present, e.g. `infra/object-storage/.env.example` → `infra/object-storage/.env`, and maintain `infra/dagster/.env`, `infra/duckdb/.env` as needed.
 - **DuckDB MCP**: optional `infra/duckdb/mcp/.env` (see `infra/duckdb/mcp/.env.example`); compose treats it as optional.
-- **Dagster code-location image**: `make infra-up` / `make infra-build` run `docker build -t dagster_user_code_image:latest infra/dagster/dagster-code/projects/datasyn`.
+- **Dagster code-location image**: `make infra-up` / `make infra-build` run `docker build -t dagster_user_code_image:latest infra/dagster/mcp/dagster-code/projects/datasyn`.
 - **Brain / root**: `compose.env` is a comment template; for Docker, merge with root `.env` as in `docker-compose.yaml`. **`mcp.json`** at the repo root drives MCP HTTP URLs.
 
 ## Security and `.gitignore`
@@ -124,7 +124,7 @@ Stop the UI before heavy MCP ingest if you see file lock errors: `make infra-duc
 - Private keys: **`*.pem`**, `*.p12`, `*.pfx`, SSH key material
 - Local data and DB files: `data-local/`, `*.duckdb`, etc.
 
-The root **`.gitignore`** applies across the tree; nested stacks add their own rules. Generated or local artifacts under **`infra/dagster/dagster-code/projects/`** follow **`projects/.gitignore`**.
+The root **`.gitignore`** applies across the tree; nested stacks add their own rules. Generated or local artifacts under **`infra/dagster/mcp/dagster-code/projects/`** follow **`projects/.gitignore`**.
 
 If a private key was ever committed, **rotate the key** and remove it from history (e.g. `git filter-repo` or BFG) on any shared remote.
 

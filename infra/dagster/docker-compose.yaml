@@ -231,7 +231,7 @@ services:
       dagster_user_code:
         condition: service_healthy
 
-  # Dagster MCP: scaffolds projects under ``dagster-code/projects/``, drives host Docker (socket).
+  # Dagster MCP: code locations under ``mcp/dagster-code/projects/``, drives host Docker (socket).
   # See ``infra/dagster/mcp/README.md``.
   dagster-mcp:
     build:
@@ -260,8 +260,10 @@ services:
       DAGSTER_USER_CODE_BUILD_PROJECT: "${DAGSTER_USER_CODE_BUILD_PROJECT:-datasyn}"
       DAGSTER_USER_CODE_IMAGE_NAME: "${DAGSTER_USER_CODE_IMAGE_NAME:-dagster_user_code_image}"
       DAGSTER_DEPLOY_VOLUMES: "${DAGSTER_DEPLOY_VOLUMES:-duckdb_data:/data;storage:/storage}"
+      DOCKER_REGISTRY: "${DOCKER_REGISTRY:-}"
+      DOCKER_PUSH_AFTER_BUILD: "${DOCKER_PUSH_AFTER_BUILD:-0}"
     volumes:
-      - ./dagster-code/projects:/projects
+      - ./mcp/dagster-code/projects:/projects
       - .:/dagster-compose:ro
       - ${DATACYBER_DATA_LOCAL_HOST:-/Users/vlad/project/datacyber/data-local}:/data-local:ro
       - /var/run/docker.sock:/var/run/docker.sock

@@ -1,35 +1,33 @@
-"""Dagster MCP (FastMCP HTTP): scaffold Dagster projects, build images, deploy,
-plus **metadata catalog** PostgreSQL access (same stack as the former standalone ``catalog-mcp``).
+"""Dagster MCP (FastMCP HTTP): AI-assisted development for Dagster code locations under
+``dagster-code/projects/`` — scaffold projects, add assets/jobs, build images (optional
+registry mirror + push), drive Compose / host Docker, plus optional metadata catalog SQL.
 
 Tools (LangChain prefixes them with the MCP key ``dagster``):
 
 **Dagster / Docker**
 
-- ``dagster_list_projects``   — list scaffolded projects under ``DAGSTER_PROJECTS_ROOT``.
+- ``dagster_list_projects``   — list projects under ``DAGSTER_PROJECTS_ROOT``.
 - ``dagster_create_project``  — generate a new Dagster project (pyproject, Dockerfile,
                                  workspace, package layout, an example asset + job).
 - ``dagster_add_asset``       — add a file-per-asset (auto-discovered).
 - ``dagster_add_job``         — add a file-per-job using ``define_asset_job``.
 - ``dagster_add_schedule``    — add a ``ScheduleDefinition`` linked to a job.
 - ``dagster_add_sensor``      — add a ``@sensor`` linked to a job.
-- ``dagster_build_image``     — ``docker build`` the project image on the host daemon
-                                 (optional *image_name*, e.g. ``dagster_user_code_image``).
+- ``dagster_build_image``     — ``docker build`` the project image (primary tag + optional
+                                 ``DOCKER_REGISTRY`` mirror tags; optional push if
+                                 ``DOCKER_PUSH_AFTER_BUILD``).
+- ``dagster_push_image``      — ``docker push`` a fully qualified image ref.
 - ``dagster_compose_force_recreate`` — ``docker compose up -d --no-build --force-recreate``
                                  for an external stack (default: ``dagster_user_code``).
-- ``dagster_user_code_refresh`` — ``build_image`` (default project ``datasyn`` → ``dagster_user_code_image``)
-                                 then ``compose_force_recreate`` for ``dagster_user_code``
-                                 (requires ``DAGSTER_COMPOSE_FILE`` mount; see ``infra/dagster/docker-compose.yaml``).
-- ``dagster_deploy``          — by default ``docker build`` then ``docker rm -f`` +
-                                 ``docker run`` (replace container on ``infra-datasynk``).
+- ``dagster_user_code_refresh`` — build default project → ``dagster_user_code_image`` then
+                                 force-recreate ``dagster_user_code``.
+- ``dagster_deploy``          — ``docker build`` then ``docker rm -f`` + ``docker run``.
 - ``dagster_stop`` / ``dagster_remove`` / ``dagster_logs`` / ``dagster_status``
-                                — container lifecycle helpers.
 - ``dagster_daemon_info`` — confirm host Docker daemon socket.
 
 **Metadata catalog (PostgreSQL)**
 
-- ``dagster_catalog_get_schema`` — ``public`` tables, columns, foreign keys.
-- ``dagster_catalog_execute_query`` — one guarded SQL statement per call (see ``./skills/catalog-sql``).
-  Requires ``DATABASE_URL`` or ``CATALOG_DATABASE_URL``.
+- ``dagster_catalog_get_schema`` / ``dagster_catalog_execute_query`` — see ``./skills/catalog-sql``.
 
 The MCP **does not** embed the Dagster runtime: it generates code and shells
 out to the host Docker daemon (via mounted ``/var/run/docker.sock``).
@@ -52,6 +50,7 @@ from starlette.responses import PlainTextResponse
 
 import scaffold
 import docker_ops
+import docker_registry
 from catalog_db import catalog_connect
 from catalog_schema_inspect import fetch_public_schema
 from catalog_sql_guard import validate_catalog_sql
@@ -68,7 +67,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("dagster-mcp")
 
-_DEFAULT_PROJECTS_ROOT = Path(__file__).resolve().parent / "projects"
+_DEFAULT_PROJECTS_ROOT = Path(__file__).resolve().parent / "dagster-code" / "projects"
 
 
 def _resolved_projects_root() -> Path:
@@ -76,7 +75,7 @@ def _resolved_projects_root() -> Path:
 
     Dev ``.env`` files often mirror Compose (``DAGSTER_PROJECTS_ROOT=/projects``). Inside
     the MCP container that path is bind-mounted; on the host it is missing or raises
-    ``PermissionError`` on macOS. Fall back to ``…/dagster-mcp/projects`` when ``/projects``
+    ``PermissionError`` on macOS. Fall back to ``…/mcp/dagster-code/projects`` when ``/projects``
     is not a readable directory.
     """
     default = _DEFAULT_PROJECTS_ROOT.resolve()
@@ -141,23 +140,15 @@ LIST_CAP_CATALOG = max(1, min(int(os.environ.get("CATALOG_LIST_CAP", "100")), 50
 mcp = FastMCP(
     name="dagster-mcp",
     instructions=(
-        "Datacyber Dagster MCP. Generates Dagster code-location projects under "
-        "/projects/<name>/ (host-mounted) and drives the host Docker daemon "
-        "through a mounted socket to build images and run/replace project "
-        "containers attached to the `infra-datasynk` network. "
-        "Workflow: `create_project` → `add_asset` / `add_job` / `add_schedule` / "
-        "`add_sensor` → `deploy` (default: rebuild image from project context, then "
-        "replace any existing container with the same name). Use `build_image` alone "
-        "when you only need an image without restarting the container. Use "
-        "`compose_force_recreate` after "
-        "tagging an image (e.g. `dagster_user_code_image`) for an external "
-        "compose stack configured via `DAGSTER_COMPOSE_FILE` (mount `infra/dagster` into "
-        "this service). Use `user_code_refresh` to build the default code-location project as "
-        "`dagster_user_code_image` and force-recreate `dagster_user_code` in one step. "
-        "The MCP itself never "
-        "imports Dagster; it only generates code and shells out to `docker`. "
-        "Optional PostgreSQL catalog: tools `catalog_get_schema` and `catalog_execute_query` "
-        "(prefixed `dagster_` by LangChain) — set DATABASE_URL or CATALOG_DATABASE_URL."
+        "Datacyber Dagster MCP — AI-assisted development for code locations under "
+        "`/projects/<name>/` (repo: `infra/dagster/mcp/dagster-code/projects/`, bind-mounted). "
+        "Use bounded tools: `create_project`, `add_asset`, `add_job`, `add_schedule`, `add_sensor`, "
+        "`build_image` (optional `DOCKER_REGISTRY` mirror tags + `DOCKER_PUSH_AFTER_BUILD`), "
+        "`push_image`, `user_code_refresh` (rebuild `datasyn` → `dagster_user_code_image` + compose recreate), "
+        "`compose_force_recreate`, `deploy`, catalog SQL. "
+        "Never invent paths: list projects first. The MCP does not import Dagster; it writes files "
+        "and shells out to `docker` on the host socket. Set `DATABASE_URL` / `CATALOG_DATABASE_URL` "
+        "for catalog tools."
     ),
 )
 
@@ -198,6 +189,45 @@ def _full_image_ref(
 
 def _container_for(project: str) -> str:
     return f"{CONTAINER_PREFIX}-{project}"
+
+
+def _push_after_build_enabled() -> bool:
+    return os.environ.get("DOCKER_PUSH_AFTER_BUILD", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def _build_project_image(
+    *,
+    context_dir: Path,
+    primary_tag: str,
+    no_cache: bool = False,
+    pull: bool = False,
+) -> dict[str, Any]:
+    """``docker build`` with optional ``DOCKER_REGISTRY`` extra tags and push."""
+    mirrors = docker_registry.registry_mirror_tags(primary_tag)
+    build_result = docker_ops.build_image(
+        context_dir=context_dir,
+        tag=primary_tag,
+        no_cache=no_cache,
+        pull=pull,
+        extra_tags=mirrors,
+    )
+    out: dict[str, Any] = {
+        "build": build_result,
+        "primary_tag": primary_tag,
+        "registry_mirror_tags": mirrors,
+        "docker_registry": os.environ.get("DOCKER_REGISTRY") or "",
+    }
+    pushes: list[dict[str, Any]] = []
+    if _push_after_build_enabled() and mirrors:
+        for m in mirrors:
+            pushes.append(docker_ops.push_image(m))
+    if pushes:
+        out["push"] = pushes
+    return out
 
 
 @mcp.tool()
@@ -365,6 +395,10 @@ def build_image(
     Set *image_name* to a fixed repository name (Dagster “user code image”
     convention), e.g. ``dagster_user_code_image`` → ``dagster_user_code_image:latest``,
     or pass ``dagster_user_code_image:1.0`` to include the tag in *image_name*.
+
+    If ``DOCKER_REGISTRY`` is set, also tags ``<registry>/<same-image>`` (Compose still
+    uses the primary local name). When ``DOCKER_PUSH_AFTER_BUILD`` is truthy, pushes
+    those mirror tags after a successful build.
     """
     log.info(
         "tool build_image project=%r tag=%r image_name=%r no_cache=%s pull=%s",
@@ -379,9 +413,9 @@ def build_image(
         scaffold._ensure_project(PROJECTS_ROOT, project)  # noqa: SLF001
         image = _full_image_ref(project, tag=tag, image_name=image_name)
         ctx = PROJECTS_ROOT / project
-        result = docker_ops.build_image(
+        result = _build_project_image(
             context_dir=ctx,
-            tag=image,
+            primary_tag=image,
             no_cache=no_cache,
             pull=pull,
         )
@@ -390,6 +424,18 @@ def build_image(
     except Exception as exc:
         log.exception("build_image failed")
         return _err(exc, project=project)
+
+
+@mcp.tool()
+def push_image(image: str) -> str:
+    """``docker push`` a fully qualified image reference (e.g. registry mirror from ``build_image``)."""
+    log.info("tool push_image image=%r", image)
+    try:
+        out = docker_ops.push_image(image.strip())
+        return _json({"ok": True, "image": image.strip(), **out})
+    except Exception as exc:
+        log.exception("push_image failed")
+        return _err(exc, image=image)
 
 
 @mcp.tool()
@@ -439,9 +485,9 @@ def deploy(
             steps.append(
                 {
                     "step": "build_image",
-                    "result": docker_ops.build_image(
+                    "result": _build_project_image(
                         context_dir=PROJECTS_ROOT / project,
-                        tag=image,
+                        primary_tag=image,
                         no_cache=no_cache,
                     ),
                 }
@@ -595,9 +641,9 @@ def user_code_refresh(
         steps: list[dict[str, Any]] = [
             {
                 "step": "build_image",
-                "result": docker_ops.build_image(
+                "result": _build_project_image(
                     context_dir=PROJECTS_ROOT / proj,
-                    tag=image,
+                    primary_tag=image,
                     no_cache=no_cache,
                     pull=False,
                 ),

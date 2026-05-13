@@ -73,14 +73,27 @@ def build_image(
     tag: str,
     no_cache: bool = False,
     pull: bool = False,
+    extra_tags: list[str] | None = None,
 ) -> dict[str, Any]:
     args = ["build", "-t", tag]
+    for et in extra_tags or []:
+        et = (et or "").strip()
+        if et and et != tag:
+            args.extend(["-t", et])
     if no_cache:
         args.append("--no-cache")
     if pull:
         args.append("--pull")
     args.append(str(context_dir))
     return _run(args)
+
+
+def push_image(image: str) -> dict[str, Any]:
+    """``docker push <image>`` (registry-authenticated host daemon)."""
+    img = (image or "").strip()
+    if not img:
+        raise ValueError("image is required")
+    return _run(["push", img])
 
 
 def remove_container(name: str, *, force: bool = True) -> dict[str, Any]:

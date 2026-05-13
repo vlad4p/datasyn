@@ -19,15 +19,17 @@ infra/dagster/mcp/
 ├── Dockerfile                # Python 3.12 + docker-ce-cli + compose plugin
 ├── requirements.txt          # fastmcp, python-dotenv, psycopg
 ├── server.py                 # FastMCP HTTP server (tools listed below)
-├── scaffold.py               # pure-Python project / asset / job / schedule / sensor templating
 ├── docker_ops.py             # subprocess wrapper around the host Docker CLI
+├── docker_registry.py        # optional DOCKER_REGISTRY mirror tags for build/push
+├── scaffold.py               # pure-Python project / asset / job / schedule / sensor templating
 ├── catalog_db.py             # optional PostgreSQL catalog connection
 ├── catalog_sql_guard.py      # SQL allowlist for catalog_execute_query
 ├── catalog_schema_inspect.py # public schema introspection
+├── dagster-code/projects/    # canonical code locations (``datasyn``, scaffolded projects)
 └── templates/                # `.tpl` files filled via `str.format`
 ```
 
-Scaffolded and hand-maintained code locations live under **`../dagster-code/projects/`** (mounted as `/projects` in the `dagster-mcp` service — see **`../docker-compose.yaml`**).
+Production code lives in **`dagster-code/projects/`** (same tree in git; mounted as `/projects` in the `dagster-mcp` service — see **`../docker-compose.yaml`**).
 
 The MCP **does not import Dagster**. It writes Python under `/projects/<name>/` and shells out to `docker` on the host (socket mount).
 
@@ -53,7 +55,8 @@ pattern.
 | `dagster_add_job`          | File-per-job using `define_asset_job`; `selection="*"` or comma-separated keys. |
 | `dagster_add_schedule`     | `ScheduleDefinition` linked to an existing job (`cron` defaults to `0 9 * * *`). |
 | `dagster_add_sensor`       | `@sensor` linked to an existing job (default body emits `SkipReason`). |
-| `dagster_build_image`      | `docker build`; default tag `<prefix>/<project>:latest`, optional `image_name` (e.g. `dagster_user_code_image`). |
+| `dagster_build_image`      | `docker build`; optional ``DOCKER_REGISTRY`` extra ``-t``; optional push when ``DOCKER_PUSH_AFTER_BUILD``. |
+| `dagster_push_image`       | `docker push <ref>` for publishing a built tag. |
 | `dagster_deploy`           | Default: `docker build` from the project dir, then replace `<prefix>-<project>` on `infra-datasynk`. Optional `image_name`; set `rebuild=false` to skip build and only recreate the container. |
 | `dagster_stop` / `dagster_remove` | Lifecycle (`docker stop`, `docker rm -f`, optional image cleanup). |
 | `dagster_logs`             | Tail container logs. |
@@ -137,4 +140,6 @@ The Dagster UI ports start at `3001` to avoid colliding with `langfuse` on
 | `DAGSTER_USER_CODE_IMAGE_NAME` | `dagster_user_code_image` | Image tag target for that build. |
 | `DAGSTER_DEPLOY_VOLUMES`       | `duckdb_data:…;storage:…` | Semicolon-separated `src:dst` mounts for `dagster_deploy`. |
 | `DATABASE_URL` / `CATALOG_DATABASE_URL` | *(empty)*   | PostgreSQL catalog for `dagster_catalog_*` tools. |
+| `DOCKER_REGISTRY`            | *(empty)*             | If set, ``build_image`` / ``user_code_refresh`` also tag ``<registry>/<primary>``. |
+| `DOCKER_PUSH_AFTER_BUILD`    | `0`                   | If `1`/`true`, push registry mirror tags after each build (host daemon must be logged in). |
 | `CATALOG_LIST_CAP`             | `100`                 | Max rows cap for catalog queries (clamped 1–500). |
