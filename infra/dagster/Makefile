@@ -1,4 +1,4 @@
-# Dagster docker-compose deploy. Run from: live/mvp/dagster
+# Dagster docker-compose deploy. Run from: infra/dagster (this directory).
 #
 # Requires: docker + docker compose plugin on the host.
 
@@ -10,7 +10,7 @@ PIP      ?= $(VENV)/bin/pip
 PYTEST   ?= $(VENV)/bin/pytest
 RUFF     ?= $(VENV)/bin/ruff
 
-.PHONY: help up down restart logs ps build pull clean psql shell-webserver \
+.PHONY: help up down restart logs logs-mcp ps build pull clean psql shell-webserver \
         seed-data view-output clean-data \
         venv install test lint
 
@@ -20,6 +20,7 @@ help:
 	@echo "  down             Stop and remove containers and network (keeps DB volume)"
 	@echo "  restart          Restart all services"
 	@echo "  logs             Tail logs for all services"
+	@echo "  logs-mcp         Tail logs for dagster-mcp only (HTTP MCP on 8043)"
 	@echo "  ps               List services"
 	@echo "  build            Build code-location and Dagster runtime images"
 	@echo "  pull             Pull base images"
@@ -49,6 +50,9 @@ restart:
 
 logs:
 	$(COMPOSE) logs -f --tail=200
+
+logs-mcp:
+	$(COMPOSE) logs -f --tail=200 dagster-mcp
 
 ps:
 	$(COMPOSE) ps
