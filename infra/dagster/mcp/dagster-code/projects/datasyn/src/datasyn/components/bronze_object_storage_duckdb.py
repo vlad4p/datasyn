@@ -9,8 +9,6 @@ Default target schema is ``bronze``. Optional Iceberg REST publishing uses the
 same attach path as legacy bronze assets (``datasyn.utils.iceberg``).
 """
 
-from __future__ import annotations
-
 import os
 import tempfile
 from dataclasses import dataclass
