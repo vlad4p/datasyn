@@ -38,7 +38,7 @@ SHARED_VOLUMES := duckdb_data storage
 	images-prepare images-build images-push images-pull publish \
 	infra-build infra-up infra-down infra-ps infra-logs \
 	infra-duckdb-ui-up infra-duckdb-ui-down \
-	dagster-user-code-image \
+	dagster-user-code-image dagster-user-code-build-push-remote \
 	mcp-build mcp-up mcp-down mcp-ps mcp-logs \
 	storage-mcp-buildx-ensure storage-mcp-build-push-remote \
 	agent-build agent-up agent-down agent-ps agent-logs \
@@ -51,7 +51,7 @@ help:
 	@echo "  make bootstrap              # network infra-datasynk + volumes duckdb_data, storage"
 	@echo "  make registry-up            # OCI Distribution registry (infra/distribution)"
 	@echo "  make images-prepare         # registry-up + build all stack images"
-	@echo "  make images-build           # build only (tags use Makefile DATASYN_* + DOCKER_REGISTRY)"
+	@echo "  make images-build           # build only (includes root ``telegram-bot`` so ``images-push`` can publish it)"
 	@echo "  make images-push            # push built images to the local registry (needs registry-up)"
 	@echo "  make images-pull            # pull stack images from the registry"
 	@echo "  make publish                # images-prepare + images-push (CI / golden images)"
@@ -62,6 +62,7 @@ help:
 	@echo "  make mcp-up                 # minio + MCPs + duckdb + dagster-mcp (uses same image env vars)"
 	@echo "  make registry-api-v2        # GET /v2/ on REGISTRY_HTTP_URL (Distribution spec)"
 	@echo "  make storage-mcp-build-push-remote  # buildx linux/amd64 + push storage-mcp (set DATASYN_IMAGE_REGISTRY)"
+	@echo "  make dagster-user-code-build-push-remote  # buildx linux/amd64 + push dagster_user_code_image (set DATASYN_IMAGE_REGISTRY)"
 	@echo "  make agent-dev              # brain + Vite on host (see compose.env)"
 	@echo ""
 	@echo "Legacy alias: bootstrap-infra-primitives → bootstrap ; infra-build → images-build"
@@ -102,7 +103,7 @@ images-build: bootstrap
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui build
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" build
 	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" build
-	docker compose -f "$(ROOT_COMPOSE)" build
+	docker compose -f "$(ROOT_COMPOSE)" --profile telegram build
 
 images-prepare: registry-up images-build
 
@@ -211,8 +212,19 @@ storage-mcp-build-push-remote: storage-mcp-buildx-ensure
 	  -t "$(DATASYN_IMAGE_REGISTRY)/$(DATASYN_IMAGE_NAMESPACE)/storage-mcp:$(DATASYN_IMAGE_TAG)" \
 	  "$(MAKEFILE_DIR)/infra/object-storage/mcp" --push
 
+# Same buildx builder/config as ``storage-mcp-build-push-remote`` (HTTP registry without Engine insecure-registries).
+# Example: make dagster-user-code-build-push-remote DATASYN_IMAGE_REGISTRY=10.13.10.119:5000
+dagster-user-code-build-push-remote: storage-mcp-buildx-ensure
+	@if echo "$(DATASYN_IMAGE_REGISTRY)" | grep -Eq '^(localhost|127\.0\.0\.1)(:|$$)'; then \
+	  echo "Refusing: set DATASYN_IMAGE_REGISTRY to the remote registry host:port (e.g. 10.13.10.119:5000)"; exit 1; \
+	fi
+	docker buildx build --builder "$(STORAGE_MCP_BUILDX_BUILDER)" --platform "$(DOCKER_PLATFORM_REMOTE)" --provenance=false \
+	  -f "$(MAKEFILE_DIR)/infra/dagster/mcp/dagster-code/projects/datasyn/Dockerfile" \
+	  -t "$(DATASYN_IMAGE_REGISTRY)/$(DATASYN_IMAGE_NAMESPACE)/dagster_user_code_image:$(DATASYN_IMAGE_TAG)" \
+	  "$(MAKEFILE_DIR)/infra/dagster/mcp/dagster-code/projects/datasyn" --push
+
 agent-build: bootstrap
-	docker compose -f "$(ROOT_COMPOSE)" build
+	docker compose -f "$(ROOT_COMPOSE)" --profile telegram build
 
 agent-up: bootstrap registry-up
 	docker compose -f "$(ROOT_COMPOSE)" up -d
