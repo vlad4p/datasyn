@@ -97,6 +97,7 @@ Each stack has its own **`docker-compose.yaml`** and service-specific subfolders
 | Stack | Compose file | Notes |
 |-------|----------------|--------|
 | **Object storage** | `infra/object-storage/docker-compose.yaml` | MinIO + **storage-mcp** |
+| **Distribution (registry)** | `infra/distribution/docker-compose.yaml` | [OCI Distribution](https://hub.docker.com/_/registry) image registry (**`registry:3`**), service **`distribution`** on port **5000** (override with **`REGISTRY_PUBLISH_PORT`**) |
 | **DuckDB** | `infra/duckdb/docker-compose.yaml` | Warehouse + **duckdb-mcp**; **profile `ui`** = DuckDB Local UI (holds DB lock while running) |
 | **Dagster** | `infra/dagster/docker-compose.yaml` | Webserver, daemon, Postgres, **dagster-mcp**, bind-mounted **`mcp/dagster-code/projects/`** |
 | **Telegram** | `infra/telegram_bot/docker-compose.yaml` | Optional bot integration |
@@ -158,6 +159,7 @@ docker volume create duckdb_data 2>/dev/null || true
 docker volume create storage 2>/dev/null || true
 
 docker compose -f infra/object-storage/docker-compose.yaml up -d
+docker compose -f infra/distribution/docker-compose.yaml up -d
 docker compose -f infra/duckdb/docker-compose.yaml up -d
 docker compose -f infra/dagster/docker-compose.yaml up -d
 docker compose up -d

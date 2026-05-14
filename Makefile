@@ -12,6 +12,7 @@ export VITE_PROXY_TARGET
 
 ROOT_COMPOSE := docker-compose.yaml
 INFRA_OBJECT_STORAGE_COMPOSE := infra/object-storage/docker-compose.yaml
+INFRA_DISTRIBUTION_COMPOSE := infra/distribution/docker-compose.yaml
 INFRA_DUCKDB_COMPOSE := infra/duckdb/docker-compose.yaml
 INFRA_DAGSTER_COMPOSE := infra/dagster/docker-compose.yaml
 # INFRA_LITELLM_COMPOSE := infra/litellm/docker-compose.yaml
@@ -74,6 +75,7 @@ dagster-user-code-image:
 
 infra-build: bootstrap-infra-primitives dagster-user-code-image
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" build
+	docker compose -f "$(INFRA_DISTRIBUTION_COMPOSE)" build
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui build
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" build
 	# docker compose -f "$(INFRA_LITELLM_COMPOSE)" build
@@ -82,6 +84,7 @@ infra-build: bootstrap-infra-primitives dagster-user-code-image
 
 infra-up: bootstrap-infra-primitives dagster-user-code-image
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" up -d
+	docker compose -f "$(INFRA_DISTRIBUTION_COMPOSE)" up -d
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" up -d
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" up -d
 	# docker compose -f "$(INFRA_LITELLM_COMPOSE)" up -d
@@ -94,10 +97,12 @@ infra-down:
 	# -docker compose -f "$(INFRA_LITELLM_COMPOSE)" down
 	-docker compose -f "$(INFRA_DAGSTER_COMPOSE)" down
 	-docker compose -f "$(INFRA_DUCKDB_COMPOSE)" down
+	-docker compose -f "$(INFRA_DISTRIBUTION_COMPOSE)" down
 	-docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" down
 
 infra-ps:
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" ps
+	docker compose -f "$(INFRA_DISTRIBUTION_COMPOSE)" ps
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" ps
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" ps
 	# docker compose -f "$(INFRA_LITELLM_COMPOSE)" ps
@@ -106,7 +111,12 @@ infra-ps:
 
 infra-logs:
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" logs --tail=100
+	docker compose -f "$(INFRA_DISTRIBUTION_COMPOSE)" logs --tail=100
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" logs --tail=100
+	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" logs --tail=100
+	# docker compose -f "$(INFRA_LITELLM_COMPOSE)" logs --tail=100
+	# docker compose -f "$(INFRA_LANGFUSE_COMPOSE)" logs --tail=100
+	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" logs --tail=100
 
 infra-duckdb-ui-up: bootstrap-infra-primitives
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui up -d --build duckdb-ui
