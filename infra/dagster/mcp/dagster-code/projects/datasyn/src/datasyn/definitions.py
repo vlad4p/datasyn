@@ -20,6 +20,7 @@ from .assets.bronze.indec_censo.uca_csv import (
     uca_departamentos,
     uca_provincias,
 )
+from .assets.bronze import boletin_oficial as bronze_boletin_oficial
 from .assets.bronze import elecciones_argentina as bronze_elecciones
 from .assets.bronze import infobae as bronze_infobae
 from .assets.bronze import clarin as bronze_clarin
@@ -42,6 +43,7 @@ defs = Definitions(
                 bronze_infobae,
                 bronze_lanacion,
                 bronze_clarin,
+                bronze_boletin_oficial,
             ]
         ),
         uca_censo,
