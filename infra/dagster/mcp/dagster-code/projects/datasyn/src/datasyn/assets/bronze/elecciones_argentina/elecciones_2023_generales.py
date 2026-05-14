@@ -24,7 +24,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from dagster import AssetExecutionContext, Failure, MaterializeResult, MetadataValue, asset
 from dagster_duckdb import DuckDBResource
 
-from datasyn.assets.bronze.indec_eph.indec_eph_trimestral_lib import (
+from datasyn.utils.landing_io import (
     data_local_root,
     download_zip,
     safe_unzip,

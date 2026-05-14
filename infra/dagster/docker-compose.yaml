@@ -69,12 +69,11 @@ services:
       MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin123}}"
       MINIO_BUCKET: "${MINIO_BUCKET:-data-local}"
       MINIO_SECURE: "${MINIO_SECURE:-false}"
-      # INDEC EPH trimestral landing tree (see ``data_local_root()``).
+      # Host ``/data-local`` mount root (see ``datasyn.utils.landing_io.data_local_root()``).
       DATA_LOCAL_ROOT: "${DATA_LOCAL_ROOT:-/data-local}"
-      # OpenRouter / INDEC EPH variables: **only** from ``env_file`` (``.env`` next to
-      # this compose file). Do not list them under ``environment`` with ``${VAR:-…}`` —
-      # host-shell ``export OPENROUTER_MODEL=…`` overrides ``env_file`` and caused stale
-      # models (e.g. removed ``gemini-2.0-flash-exp:free``) to win over ``infra/dagster/.env``.
+      # LiteLLM / proxy keys: **only** from ``env_file`` (``.env`` next to this compose file).
+      # Do not list them under ``environment`` with ``${VAR:-…}`` — host-shell exports can
+      # override ``env_file`` and point user code at the wrong proxy (e.g. 127.0.0.1:4000).
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -83,7 +82,7 @@ services:
       # Shared object storage volume (MinIO data) for landing access if needed.
       - storage:/storage
       # Absolute host path — set ``DATACYBER_DATA_LOCAL_HOST`` in ``.env`` if your tree differs.
-      # RW: ``indec_eph_trimestral_files`` writes ZIPs/TXTs under ``landing/indec/eph/<year>/Q<n>/``.
+      # RW under ``/data-local`` (e.g. ``landing/...``) for assets that mirror to MinIO.
       - ${DATACYBER_DATA_LOCAL_HOST:-/Users/vlad/project/datacyber/data-local}:/data-local
     healthcheck:
       # Avoid daemon/webserver gRPC race: they must not connect before ``dagster api grpc``
@@ -188,8 +187,7 @@ services:
       DAGSTER_POSTGRES_PASSWORD: "postgres_password"
       DAGSTER_POSTGRES_DB: "postgres_db"
       # ``DockerRunLauncher.env_vars`` forwards these from the daemon's own
-      # environment into per-run containers spawned for assets like
-      # ``indec_eph_variables``. Keep in sync with ``dagster.yaml``.
+      # environment into per-run job containers. Keep in sync with ``dagster.yaml``.
       # LITELLM_KEY / LITELLM_PROXY_BASE come **only** from ``env_file`` (``infra/dagster/.env``)
       # to avoid project-root ``.env`` / host shell shadowing the value (e.g. 127.0.0.1:4000).
       DUCKDB_PATH: "/data/warehouse.duckdb"
@@ -200,12 +198,9 @@ services:
       MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin123}}"
       MINIO_BUCKET: "${MINIO_BUCKET:-data-local}"
       MINIO_SECURE: "${MINIO_SECURE:-false}"
-      # INDEC EPH trimestral landing tree root (read by ``data_local_root()``).
+      # Landing tree root (read by ``data_local_root()`` in user code).
       DATA_LOCAL_ROOT: "${DATA_LOCAL_ROOT:-/data-local}"
-      # ``indec_eph_variables`` (single LiteLLM call, whole PDF inline).
-      INDEC_EPH_VARIABLES_QUARTER: "${INDEC_EPH_VARIABLES_QUARTER:-3}"
-      INDEC_EPH_VARIABLES_URL: "${INDEC_EPH_VARIABLES_URL:-}"
-      # Iceberg REST (optional; bronze TXT assets use native DuckDB if unset).
+      # Iceberg REST (optional; native DuckDB when unset).
       ICEBERG_REST_ENDPOINT: "${ICEBERG_REST_ENDPOINT:-}"
       ICEBERG_REST_TOKEN: "${ICEBERG_REST_TOKEN:-}"
       ICEBERG_REST_WAREHOUSE: "${ICEBERG_REST_WAREHOUSE:-}"
@@ -214,7 +209,7 @@ services:
       ICEBERG_REST_CLIENT_ID: "${ICEBERG_REST_CLIENT_ID:-}"
       ICEBERG_REST_CLIENT_SECRET: "${ICEBERG_REST_CLIENT_SECRET:-}"
       ICEBERG_REST_OAUTH_URI: "${ICEBERG_REST_OAUTH_URI:-}"
-      # OpenRouter / INDEC EPH: from ``env_file`` only — see comment on ``dagster_user_code``.
+      # OpenRouter / LiteLLM: from ``env_file`` only — see comment on ``dagster_user_code``.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

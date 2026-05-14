@@ -16,7 +16,9 @@ datasyn/
         ├── assets/
         │   ├── bronze/
         │   │   ├── indec_censo/
-        │   │   └── indec_eph/
+        │   │   ├── elecciones_argentina/
+        │   │   ├── infobae/
+        │   │   └── lanacion/
         │   ├── silver/
         │   └── gold/
         ├── jobs/
