@@ -1,12 +1,11 @@
 # OCI Distribution Registry — local Docker image registry.
 # Image: https://hub.docker.com/_/registry  (``registry:3``)
 #
-# From the host: ``docker tag myimage:latest localhost:${REGISTRY_PUBLISH_PORT:-5000}/myimage:latest``
-# then ``docker push localhost:${REGISTRY_PUBLISH_PORT:-5000}/myimage:latest``.
-# Other containers on ``infra-datasynk`` use ``distribution:5000`` as the registry host.
+# Built application images use ``${DATASYN_IMAGE_REGISTRY}/${DATASYN_IMAGE_NAMESPACE}/…`` (see
+# ``registry.env.example``). Defaults target ``localhost:${REGISTRY_PUBLISH_PORT:-5000}`` so the
+# host Docker daemon can push/pull; match ``REGISTRY_PUBLISH_PORT`` to this compose publish port.
 #
-# For HTTP (no TLS), the Docker daemon must list this registry as insecure
-# (``insecure-registries``) when pushing from the host.
+# For HTTP (no TLS), configure the Docker daemon ``insecure-registries`` for that host:port.
 
 services:
   distribution:

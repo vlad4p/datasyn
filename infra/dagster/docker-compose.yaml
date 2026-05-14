@@ -15,7 +15,7 @@ services:
     build:
       context: ./postgres
       dockerfile: Dockerfile
-    image: dagster_postgresql:16-alpine
+    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/dagster-postgresql:${DATASYN_IMAGE_TAG:-latest}
     container_name: dagster_postgresql
     environment:
       POSTGRES_USER: "postgres_user"
@@ -36,8 +36,11 @@ services:
   # to reuse this same image for per-run containers. Add more gRPC services on their own
   # ports and entries in workspace.yaml for additional code locations.
   dagster_user_code:
+    build:
+      context: ./mcp/dagster-code/projects/datasyn
+      dockerfile: Dockerfile
     container_name: dagster_user_code
-    image: dagster_user_code_image
+    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/dagster_user_code_image:${DATASYN_IMAGE_TAG:-latest}
     restart: always
     # User-code gRPC loads full defs; align with per-run job limits in ``runtime/dagster.yaml``.
     deploy:
@@ -54,7 +57,7 @@ services:
       DAGSTER_POSTGRES_USER: "postgres_user"
       DAGSTER_POSTGRES_PASSWORD: "postgres_password"
       DAGSTER_POSTGRES_DB: "postgres_db"
-      DAGSTER_CURRENT_IMAGE: "dagster_user_code_image"
+      DAGSTER_CURRENT_IMAGE: "${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/dagster_user_code_image:${DATASYN_IMAGE_TAG:-latest}"
       DUCKDB_PATH: "/data/warehouse.duckdb"
       # LITELLM_KEY / LITELLM_PROXY_BASE come **only** from ``env_file`` (``infra/dagster/.env``).
       # If listed here with ``${VAR:-…}`` the project-root ``.env`` (or host shell exports)
@@ -105,6 +108,7 @@ services:
     build:
       context: ./runtime
       dockerfile: Dockerfile
+    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/dagster-runtime:${DATASYN_IMAGE_TAG:-latest}
     entrypoint:
       - dagster-webserver
       - -h
@@ -163,6 +167,7 @@ services:
     build:
       context: ./runtime
       dockerfile: Dockerfile
+    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/dagster-runtime:${DATASYN_IMAGE_TAG:-latest}
     entrypoint:
       - dagster-daemon
       - run
@@ -232,6 +237,7 @@ services:
     build:
       context: ./mcp
       dockerfile: Dockerfile
+    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/dagster-mcp:${DATASYN_IMAGE_TAG:-latest}
     restart: unless-stopped
     ports:
       - "8043:8043"
@@ -255,7 +261,7 @@ services:
       DAGSTER_USER_CODE_BUILD_PROJECT: "${DAGSTER_USER_CODE_BUILD_PROJECT:-datasyn}"
       DAGSTER_USER_CODE_IMAGE_NAME: "${DAGSTER_USER_CODE_IMAGE_NAME:-dagster_user_code_image}"
       DAGSTER_DEPLOY_VOLUMES: "${DAGSTER_DEPLOY_VOLUMES:-duckdb_data:/data;storage:/storage}"
-      DOCKER_REGISTRY: "${DOCKER_REGISTRY:-}"
+      DOCKER_REGISTRY: "${DOCKER_REGISTRY:-${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}}"
       DOCKER_PUSH_AFTER_BUILD: "${DOCKER_PUSH_AFTER_BUILD:-0}"
     volumes:
       - ./mcp/dagster-code/projects:/projects

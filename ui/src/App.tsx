@@ -5,16 +5,14 @@ import type { ChatHistoryTurn, ChatStreamEvent } from "./api";
 import { AppHeader } from "./components/AppHeader";
 import { ChatPanel, type ChatMsg } from "./components/ChatPanel";
 import { Dashboard } from "./components/Dashboard";
-import { NotebookPanel } from "./components/NotebookPanel";
 import { loadChatSession, saveChatSession } from "./chatSessionStorage";
 import { readStoredLocale, persistLocale, uiStrings, type UiLocale } from "./locale";
 import { formatStreamStep, formatStreamToolDelta } from "./streamActivityFormat";
 
 const CHAT_PANEL_ID = "chat-workspace";
 const DASH_PANEL_ID = "dashboard-panel";
-const NOTEBOOK_PANEL_ID = "notebook-panel";
 
-type WorkspaceTab = "chat" | "dashboard" | "notebook";
+type WorkspaceTab = "chat" | "dashboard";
 
 function useNarrowLayout(): boolean {
   return useSyncExternalStore(
@@ -62,11 +60,6 @@ export default function App() {
   const onSelectDashboardTab = useCallback(() => {
     setWorkspaceTab("dashboard");
     if (!narrow) focusPanel(DASH_PANEL_ID);
-  }, [narrow, focusPanel]);
-
-  const onSelectNotebookTab = useCallback(() => {
-    setWorkspaceTab("notebook");
-    if (!narrow) focusPanel(NOTEBOOK_PANEL_ID);
   }, [narrow, focusPanel]);
 
   const handleNewChat = useCallback(() => {
@@ -218,7 +211,6 @@ export default function App() {
 
   const panelsClass =
     "layout-panels" +
-    (workspaceTab === "notebook" ? " layout-panels--notebook-full" : "") +
     (narrow && workspaceTab === "chat" ? " layout-panels--mobile-chat" : "") +
     (narrow && workspaceTab === "dashboard" ? " layout-panels--mobile-dash" : "");
 
@@ -251,17 +243,6 @@ export default function App() {
             >
               {d.title}
             </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={workspaceTab === "notebook"}
-              id="workspace-tab-notebook"
-              aria-controls={NOTEBOOK_PANEL_ID}
-              className={`workspace-nav__tab${workspaceTab === "notebook" ? " is-active" : ""}`}
-              onClick={onSelectNotebookTab}
-            >
-              {s.navNotebook}
-            </button>
           </div>
           <button
             type="button"
@@ -275,25 +256,19 @@ export default function App() {
         </nav>
 
         <div className={panelsClass}>
-          {workspaceTab === "notebook" ? (
-            <NotebookPanel id={NOTEBOOK_PANEL_ID} className="panel-notebook" locale={locale} />
-          ) : (
-            <>
-              <ChatPanel
-                id={CHAT_PANEL_ID}
-                className="panel-chat"
-                locale={locale}
-                messages={messages}
-                input={input}
-                setInput={setInput}
-                busy={busy}
-                error={error}
-                onSend={send}
-              />
+          <ChatPanel
+            id={CHAT_PANEL_ID}
+            className="panel-chat"
+            locale={locale}
+            messages={messages}
+            input={input}
+            setInput={setInput}
+            busy={busy}
+            error={error}
+            onSend={send}
+          />
 
-              <Dashboard id={DASH_PANEL_ID} className="panel-dash" locale={locale} />
-            </>
-          )}
+          <Dashboard id={DASH_PANEL_ID} className="panel-dash" locale={locale} />
         </div>
       </div>
     </div>

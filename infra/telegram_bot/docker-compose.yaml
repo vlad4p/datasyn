@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/telegram-bot-infra:${DATASYN_IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:
       - path: ./.env

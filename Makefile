@@ -4,97 +4,118 @@ SHELL := /bin/bash
 MAKEFILE_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 # Local dev: brain listens here; Vite proxies `/api` → this URL (see ui/vite.config.ts).
-# Default 8002 matches docker-compose host mapping (brain 8002→8000) and avoids clashes on 8000.
 API_PORT ?= 8002
 export API_PORT
 VITE_PROXY_TARGET ?= http://127.0.0.1:$(API_PORT)
 export VITE_PROXY_TARGET
+
+# OCI Distribution (``infra/distribution``): host:port for ``docker push`` / ``docker pull`` from this machine.
+# Must match ``REGISTRY_PUBLISH_PORT`` on the distribution compose file. Add to Docker ``insecure-registries`` for HTTP.
+REGISTRY_PUBLISH_PORT ?= 5000
+export REGISTRY_PUBLISH_PORT
+DATASYN_IMAGE_REGISTRY ?= localhost:$(REGISTRY_PUBLISH_PORT)
+export DATASYN_IMAGE_REGISTRY
+DATASYN_IMAGE_NAMESPACE ?= datasyn
+export DATASYN_IMAGE_NAMESPACE
+DATASYN_IMAGE_TAG ?= latest
+export DATASYN_IMAGE_TAG
+# Dagster MCP ``build_image`` mirror prefix (same as ``<registry>/<namespace>`` in image refs).
+DOCKER_REGISTRY ?= $(DATASYN_IMAGE_REGISTRY)/$(DATASYN_IMAGE_NAMESPACE)
+export DOCKER_REGISTRY
 
 ROOT_COMPOSE := docker-compose.yaml
 INFRA_OBJECT_STORAGE_COMPOSE := infra/object-storage/docker-compose.yaml
 INFRA_DISTRIBUTION_COMPOSE := infra/distribution/docker-compose.yaml
 INFRA_DUCKDB_COMPOSE := infra/duckdb/docker-compose.yaml
 INFRA_DAGSTER_COMPOSE := infra/dagster/docker-compose.yaml
-# INFRA_LITELLM_COMPOSE := infra/litellm/docker-compose.yaml
 INFRA_TELEGRAM_COMPOSE := infra/telegram_bot/docker-compose.yaml
-# INFRA_LANGFUSE_COMPOSE := infra/langfuse/docker-compose.yml
-DAGSTER_USER_CODE_CONTEXT := infra/dagster/mcp/dagster-code/projects/datasyn
-DAGSTER_USER_CODE_DOCKERFILE := $(DAGSTER_USER_CODE_CONTEXT)/Dockerfile
 
 SHARED_NETWORK := infra-datasynk
 SHARED_VOLUMES := duckdb_data storage
 
-.PHONY: help bootstrap-infra-primitives \
-	dagster-user-code-image \
+.PHONY: help bootstrap bootstrap-infra-primitives registry-up registry-down \
+	images-prepare images-build images-push images-pull publish \
 	infra-build infra-up infra-down infra-ps infra-logs \
 	infra-duckdb-ui-up infra-duckdb-ui-down \
+	dagster-user-code-image \
 	mcp-build mcp-up mcp-down mcp-ps mcp-logs \
 	agent-build agent-up agent-down agent-ps agent-logs \
 	agent-dev agent-dev-brain agent-dev-ui \
 	stack-up stack-down stack-ps
 
 help:
-	@echo "Datacyber orchestration targets"
+	@echo "Datacyber — common targets"
 	@echo ""
-	@echo "Bootstrap:"
-	@echo "  make bootstrap-infra-primitives  # create shared network + volumes"
+	@echo "  make bootstrap              # network infra-datasynk + volumes duckdb_data, storage"
+	@echo "  make registry-up            # OCI Distribution registry (infra/distribution)"
+	@echo "  make images-prepare         # registry-up + build all stack images"
+	@echo "  make images-build           # build only (tags use Makefile DATASYN_* + DOCKER_REGISTRY)"
+	@echo "  make images-push            # push built images to the local registry (needs registry-up)"
+	@echo "  make images-pull            # pull stack images from the registry"
+	@echo "  make publish                # images-prepare + images-push (CI / golden images)"
+	@echo "  make infra-up               # bootstrap + registry + object-storage, duckdb, dagster, telegram infra"
+	@echo "  make infra-down | infra-ps | infra-logs"
+	@echo "  make agent-up               # root compose (brain, ui)"
+	@echo "  make stack-up               # infra-up then agent-up"
+	@echo "  make mcp-up                 # minio + MCPs + duckdb + dagster-mcp (uses same image env vars)"
+	@echo "  make agent-dev              # brain + Vite on host (see compose.env)"
 	@echo ""
-	@echo "Infra:"
-	@echo "  make dagster-user-code-image     # docker build dagster_user_code_image (datasyn code location)"
-	@echo "  make infra-build                 # build infra compose stacks"
-	@echo "  make infra-up                    # up infra compose stacks"
-	@echo "  make infra-down                  # down infra compose stacks"
-	@echo "  make infra-ps                    # ps infra compose stacks"
-	@echo "  make infra-logs                  # logs infra compose stacks (tail 100)"
-	@echo "  make infra-duckdb-ui-up          # DuckDB Local UI (profile ui; http://127.0.0.1:4213)"
-	@echo "  make infra-duckdb-ui-down        # stop DuckDB UI container (releases warehouse lock)"
-	@echo ""
-	@echo "MCP:"
-	@echo "  make mcp-build | mcp-up | mcp-down | mcp-ps | mcp-logs   # MCP-only slices (optional; infra-up includes them)"
-	@echo ""
-	@echo "Agent/UI:"
-	@echo "  make agent-build | agent-up | agent-down | agent-ps | agent-logs"
-	@echo "  make agent-dev                   # local: brain (uv) + UI (npm); run make infra-up or make mcp-up for tools"
-	@echo "                                   # API_PORT=$(API_PORT)  MCP→localhost rewrite unless in Docker"
-	@echo ""
-	@echo "All layers:"
-	@echo "  make stack-up                    # infra + agent (MCP services start with infra)"
-	@echo "  make stack-down                  # agent + mcp + infra"
-	@echo "  make stack-ps                    # infra + mcp + agent"
+	@echo "Legacy alias: bootstrap-infra-primitives → bootstrap ; infra-build → images-build"
 
-bootstrap-infra-primitives:
+bootstrap:
 	@docker network inspect "$(SHARED_NETWORK)" >/dev/null 2>&1 || docker network create "$(SHARED_NETWORK)"
 	@for v in $(SHARED_VOLUMES); do \
 		docker volume inspect "$$v" >/dev/null 2>&1 || docker volume create "$$v"; \
 	done
 
-dagster-user-code-image:
-	docker build -t dagster_user_code_image:latest \
-		-f "$(DAGSTER_USER_CODE_DOCKERFILE)" \
-		"$(DAGSTER_USER_CODE_CONTEXT)/"
+bootstrap-infra-primitives: bootstrap
 
-infra-build: bootstrap-infra-primitives dagster-user-code-image
+registry-up: bootstrap
+	docker compose -f "$(INFRA_DISTRIBUTION_COMPOSE)" up -d
+
+registry-down:
+	-docker compose -f "$(INFRA_DISTRIBUTION_COMPOSE)" down
+
+images-build: bootstrap
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" build
-	docker compose -f "$(INFRA_DISTRIBUTION_COMPOSE)" build
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui build
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" build
-	# docker compose -f "$(INFRA_LITELLM_COMPOSE)" build
-	# docker compose -f "$(INFRA_LANGFUSE_COMPOSE)" build
 	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" build
+	docker compose -f "$(ROOT_COMPOSE)" build
 
-infra-up: bootstrap-infra-primitives dagster-user-code-image
+images-prepare: registry-up images-build
+
+images-push: registry-up
+	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" push
+	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui push
+	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" push
+	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" push
+	docker compose -f "$(ROOT_COMPOSE)" push brain ui
+	docker compose -f "$(ROOT_COMPOSE)" --profile telegram push telegram-bot
+
+images-pull: registry-up
+	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" pull
+	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui pull
+	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" pull
+	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" pull
+	docker compose -f "$(ROOT_COMPOSE)" pull
+	docker compose -f "$(ROOT_COMPOSE)" --profile telegram pull telegram-bot
+
+publish: images-prepare images-push
+
+dagster-user-code-image:
+	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" build dagster_user_code
+
+infra-build: images-build
+
+infra-up: bootstrap registry-up
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" up -d
-	docker compose -f "$(INFRA_DISTRIBUTION_COMPOSE)" up -d
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" up -d
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" up -d
-	# docker compose -f "$(INFRA_LITELLM_COMPOSE)" up -d
-	# docker compose -f "$(INFRA_LANGFUSE_COMPOSE)" up -d
 	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" up -d
 
 infra-down:
 	-docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" down
-	# -docker compose -f "$(INFRA_LANGFUSE_COMPOSE)" down
-	# -docker compose -f "$(INFRA_LITELLM_COMPOSE)" down
 	-docker compose -f "$(INFRA_DAGSTER_COMPOSE)" down
 	-docker compose -f "$(INFRA_DUCKDB_COMPOSE)" down
 	-docker compose -f "$(INFRA_DISTRIBUTION_COMPOSE)" down
@@ -105,8 +126,6 @@ infra-ps:
 	docker compose -f "$(INFRA_DISTRIBUTION_COMPOSE)" ps
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" ps
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" ps
-	# docker compose -f "$(INFRA_LITELLM_COMPOSE)" ps
-	# docker compose -f "$(INFRA_LANGFUSE_COMPOSE)" ps
 	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" ps
 
 infra-logs:
@@ -114,22 +133,20 @@ infra-logs:
 	docker compose -f "$(INFRA_DISTRIBUTION_COMPOSE)" logs --tail=100
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" logs --tail=100
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" logs --tail=100
-	# docker compose -f "$(INFRA_LITELLM_COMPOSE)" logs --tail=100
-	# docker compose -f "$(INFRA_LANGFUSE_COMPOSE)" logs --tail=100
 	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" logs --tail=100
 
-infra-duckdb-ui-up: bootstrap-infra-primitives
+infra-duckdb-ui-up: bootstrap
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui up -d --build duckdb-ui
 
 infra-duckdb-ui-down:
 	-docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui stop duckdb-ui
 
-mcp-build: bootstrap-infra-primitives
+mcp-build: bootstrap
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" build storage-mcp
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" build duckdb-mcp
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" build dagster-mcp
 
-mcp-up: bootstrap-infra-primitives
+mcp-up: bootstrap registry-up
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" up -d minio storage-mcp
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" up -d duckdb duckdb-mcp
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" up -d dagster-mcp
@@ -152,10 +169,10 @@ mcp-logs:
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" logs --tail=100 duckdb-mcp
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" logs --tail=100 dagster-mcp
 
-agent-build: bootstrap-infra-primitives
+agent-build: bootstrap
 	docker compose -f "$(ROOT_COMPOSE)" build
 
-agent-up: bootstrap-infra-primitives
+agent-up: bootstrap registry-up
 	docker compose -f "$(ROOT_COMPOSE)" up -d
 
 agent-down:
@@ -167,8 +184,6 @@ agent-ps:
 agent-logs:
 	docker compose -f "$(ROOT_COMPOSE)" logs --tail=100
 
-## Local development (host): FastAPI brain + Vite UI — start ``make infra-up`` or ``make mcp-up`` so MCP tools resolve.
-## Brain maps ``mcp.json`` Docker names → 127.0.0.1:8040 / 8043 / 8044 automatically when not in Docker.
 agent-dev:
 	@$(MAKE) -j2 agent-dev-brain agent-dev-ui
 

@@ -9,10 +9,10 @@ Four long-running containers plus one container per Dagster run:
 | Service                | Role                                                                                         |
 | ---------------------- | -------------------------------------------------------------------------------------------- |
 | `dagster_postgresql`   | Postgres 16 used for run storage, schedule storage and event log storage.                    |
-| `dagster_user_code`    | gRPC server that loads the **`datasyn`** package from image `dagster_user_code_image` (built from `mcp/dagster-code/projects/datasyn`). |
+| `dagster_user_code`    | gRPC server that loads the **`datasyn`** package; image ref is `${DATASYN_IMAGE_REGISTRY}/${DATASYN_IMAGE_NAMESPACE}/dagster_user_code_image` (see root **`Makefile`**), built from `mcp/dagster-code/projects/datasyn`. |
 | `dagster_webserver`    | `dagster-webserver` (UI + GraphQL). Submits runs to a queue via `QueuedRunCoordinator`.      |
 | `dagster_daemon`       | `dagster-daemon run`: dequeues runs, evaluates schedules and sensors.                        |
-| _per-run containers_   | Launched by `DockerRunLauncher` using the `dagster_user_code_image` image.                   |
+| _per-run containers_   | Launched by `DockerRunLauncher` using the same ref as **`DAGSTER_CURRENT_IMAGE`** on `dagster_user_code`.                   |
 
 The webserver and daemon mount `/var/run/docker.sock` so they can launch/stop per-run containers on the host Docker engine. `DAGSTER_CURRENT_IMAGE` (set on `dagster_user_code`) tells the launcher to reuse the same code-location image for runs.
 
@@ -131,7 +131,7 @@ resources:
 - [`pyproject.toml`](pyproject.toml) — package metadata, runtime + `dev` extras (pytest, ruff), `[tool.dagster] module_name`.
 - [`docker-compose.yaml`](docker-compose.yaml) — services, `dagster_network`, volumes.
 - [`runtime/Dockerfile`](runtime/Dockerfile) — image for webserver + daemon (no user code).
-- [`mcp/dagster-code/projects/datasyn/Dockerfile`](mcp/dagster-code/projects/datasyn/Dockerfile) — gRPC code location image (`dagster_user_code_image`); reused for per-run containers via `DAGSTER_CURRENT_IMAGE`.
+- [`mcp/dagster-code/projects/datasyn/Dockerfile`](mcp/dagster-code/projects/datasyn/Dockerfile) — gRPC code location image (`dagster_user_code_image` repository segment); reused for per-run containers via `DAGSTER_CURRENT_IMAGE` (full registry ref in compose).
 - [`dagster.yaml`](dagster.yaml) — `DagsterDaemonScheduler` + `QueuedRunCoordinator` + `DockerRunLauncher`, Postgres storages, shared data bind mount for run containers.
 - [`workspace.yaml`](workspace.yaml) — loads the `ubika_dagster` code location from the `dagster_user_code` gRPC server.
 - [`src/ubika_dagster/`](src/ubika_dagster/) — Dagster project package (`definitions.py` + `defs/<project>/`).

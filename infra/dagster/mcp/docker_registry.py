@@ -1,8 +1,9 @@
 """Optional Docker registry prefix for code-location image builds.
 
-When ``DOCKER_REGISTRY`` is set (e.g. ``registry.example.com/myorg`` or ``localhost:5000``),
-``build_image`` also tags ``<registry>/<local-image-ref>`` so ``docker push`` can publish
-without changing the local Compose image name (``dagster_user_code_image:latest``).
+When ``DOCKER_REGISTRY`` is set (e.g. ``localhost:5000/datasyn``), ``build_image`` also tags
+``<registry>/<local-image-ref>`` so ``docker push`` can publish without changing the short local name
+(``dagster_user_code_image:latest``). The root ``Makefile`` exports ``DOCKER_REGISTRY`` from
+``DATASYN_IMAGE_REGISTRY`` / ``DATASYN_IMAGE_NAMESPACE`` so compose and MCP stay aligned.
 """
 
 from __future__ import annotations

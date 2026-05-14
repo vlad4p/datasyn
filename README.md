@@ -1,6 +1,6 @@
 # Datacyber (DataSyn)
 
-Monorepo for an **AI-assisted data processing and analytics stack**: natural-language agents operate over a **DuckDB** warehouse, **Dagster** orchestration and metadata catalog, and **MinIO** object storage, exposed to the agent through **HTTP MCP** tool servers. A **FastAPI “brain”** plus **Vite UI** (and optional **JupyterLab**, **Telegram**) complete the loop for human-in-the-loop analysis on open and public data.
+Monorepo for an **AI-assisted data processing and analytics stack**: natural-language agents operate over a **DuckDB** warehouse, **Dagster** orchestration and metadata catalog, and **MinIO** object storage, exposed to the agent through **HTTP MCP** tool servers. A **FastAPI “brain”** plus **Vite UI** (and optional **Telegram**) complete the loop for human-in-the-loop analysis on open and public data.
 
 For a product-oriented vision in Spanish, see [`CONCEPTO.md`](CONCEPTO.md).
 
@@ -10,7 +10,7 @@ For a product-oriented vision in Spanish, see [`CONCEPTO.md`](CONCEPTO.md).
 
 - **Discover, load, and reason about** public datasets with reproducible pipelines and inspectable steps—not black-box automation.
 - **Separate concerns**: durable data and jobs live in infra (warehouse, orchestrator, object store); the AI layer issues **bounded, auditable** tool calls (SQL, listings, catalog queries, storage ops).
-- **Same stack for humans and agents**: operators use Dagster and notebooks; agents use MCP tools aligned with those systems.
+- **Same stack for humans and agents**: operators use Dagster; agents use MCP tools aligned with those systems.
 
 ---
 
@@ -86,7 +86,7 @@ Optional **`infra/litellm/`** and **`infra/langfuse/`** stacks (see `Makefile` c
 | `data-local/` | Local data mirror for DuckDB paths (**gitignored**; bind-mounted into DuckDB MCP) |
 | `mcp.json` | HTTP MCP server URLs for the brain |
 | `compose.env` | Comment template for Docker/brain env (merge with root `.env`) |
-| `docker-compose.yaml` | Root stack: brain, UI, Jupyter; optional Telegram profile |
+| `docker-compose.yaml` | Root stack: brain, UI; optional Telegram profile |
 | `AGENTS.md` | **Authoritative** agent + warehouse + MCP constraints (also mounted into the brain container) |
 | `Makefile` | Bootstrap, infra, MCP slice, agent, full stack targets (`make help`) |
 
@@ -97,12 +97,12 @@ Each stack has its own **`docker-compose.yaml`** and service-specific subfolders
 | Stack | Compose file | Notes |
 |-------|----------------|--------|
 | **Object storage** | `infra/object-storage/docker-compose.yaml` | MinIO + **storage-mcp** |
-| **Distribution (registry)** | `infra/distribution/docker-compose.yaml` | [OCI Distribution](https://hub.docker.com/_/registry) image registry (**`registry:3`**), service **`distribution`** on port **5000** (override with **`REGISTRY_PUBLISH_PORT`**) |
+| **Distribution (registry)** | `infra/distribution/docker-compose.yaml` | [OCI Distribution](https://hub.docker.com/_/registry) (**`registry:3`**). Stack images are tagged **`${DATASYN_IMAGE_REGISTRY}/${DATASYN_IMAGE_NAMESPACE}/…`** (defaults in root **`Makefile`**; see **`infra/distribution/registry.env.example`**). |
 | **DuckDB** | `infra/duckdb/docker-compose.yaml` | Warehouse + **duckdb-mcp**; **profile `ui`** = DuckDB Local UI (holds DB lock while running) |
 | **Dagster** | `infra/dagster/docker-compose.yaml` | Webserver, daemon, Postgres, **dagster-mcp**, bind-mounted **`mcp/dagster-code/projects/`** |
 | **Telegram** | `infra/telegram_bot/docker-compose.yaml` | Optional bot integration |
 
-Active code location: **`infra/dagster/mcp/dagster-code/projects/datasyn/`** (includes **`Dockerfile`** → `dagster_user_code_image`).
+Active code location: **`infra/dagster/mcp/dagster-code/projects/datasyn/`** (built as service **`dagster_user_code`** in **`infra/dagster/docker-compose.yaml`**; image ref follows **`DATASYN_*`** like other stacks).
 
 Other optional folders: **`infra/langfuse/`**, **`infra/litellm/`**, **`bot_integrations/telegram/`**.
 
@@ -121,28 +121,38 @@ Other optional folders: **`infra/langfuse/`**, **`infra/litellm/`**, **`bot_inte
 1. **Shared Docker network and volumes** (once per machine):
 
    ```bash
-   make bootstrap-infra-primitives
+   make bootstrap
    ```
 
-   Creates network **`infra-datasynk`** and volumes **`duckdb_data`**, **`storage`**.
+   Creates network **`infra-datasynk`** and volumes **`duckdb_data`**, **`storage`**. Legacy alias: **`make bootstrap-infra-primitives`**.
 
-2. **Infra** — object storage, DuckDB + MCP, Dagster (+ MCP), optional Telegram per `Makefile`:
+2. **Registry-backed images** (recommended once per machine before **`make agent-up`**):
+
+   ```bash
+   make images-prepare
+   ```
+
+   Starts the local registry (**`make registry-up`** is included) and builds all application images with tags under **`localhost:5000/datasyn/…`** (override host/port/namespace/tag via **`REGISTRY_PUBLISH_PORT`**, **`DATASYN_IMAGE_REGISTRY`**, **`DATASYN_IMAGE_NAMESPACE`**, **`DATASYN_IMAGE_TAG`** in the environment). For HTTP registries, add that host:port to Docker **`insecure-registries`**.
+
+   Publish to the registry only (CI / shared cache): **`make publish`** (**`images-prepare`** + **`images-push`**). On a host that should only consume images: **`make images-pull`** then **`make infra-up`** / **`make agent-up`**.
+
+3. **Infra** — registry, object storage, DuckDB + MCP, Dagster (+ MCP), optional Telegram:
 
    ```bash
    make infra-up
    ```
 
-   Build images first: `make infra-build`.
+   Equivalent legacy build target: **`make infra-build`** → **`make images-build`**.
 
-3. **Agent + UI** (after infra is healthy):
+4. **Agent + UI** (after infra is healthy):
 
    ```bash
    make agent-up
    ```
 
-   Full stack: `make stack-up` (infra then agent).
+   Full stack: **`make stack-up`** (infra then agent).
 
-4. **Local development** (brain on host with hot reload, UI on Vite):
+5. **Local development** (brain on host with hot reload, UI on Vite):
 
    ```bash
    make mcp-up    # if infra is not already up
@@ -158,8 +168,13 @@ docker network create infra-datasynk 2>/dev/null || true
 docker volume create duckdb_data 2>/dev/null || true
 docker volume create storage 2>/dev/null || true
 
-docker compose -f infra/object-storage/docker-compose.yaml up -d
+export REGISTRY_PUBLISH_PORT=5000
+export DATASYN_IMAGE_REGISTRY=localhost:${REGISTRY_PUBLISH_PORT}
+export DATASYN_IMAGE_NAMESPACE=datasyn
+export DATASYN_IMAGE_TAG=latest
+
 docker compose -f infra/distribution/docker-compose.yaml up -d
+docker compose -f infra/object-storage/docker-compose.yaml up -d
 docker compose -f infra/duckdb/docker-compose.yaml up -d
 docker compose -f infra/dagster/docker-compose.yaml up -d
 docker compose up -d
@@ -193,7 +208,7 @@ Stop it before heavy MCP ingest if you see lock errors: `make infra-duckdb-ui-do
 |------|---------------------|
 | **Per-stack env** | Copy `*.env.example` → `.env` under `infra/object-storage/`, `infra/dagster/`, `infra/duckdb/`, etc. |
 | **DuckDB MCP** | Optional `infra/duckdb/mcp/.env` (see `infra/duckdb/mcp/.env.example`) |
-| **Dagster user code** | `make infra-up` builds `dagster_user_code_image:latest` from `infra/dagster/mcp/dagster-code/projects/datasyn` |
+| **Dagster user code** | Built as compose service **`dagster_user_code`** (`make images-build` / `make dagster-user-code-image`); image ref **`$DATASYN_IMAGE_REGISTRY/$DATASYN_IMAGE_NAMESPACE/dagster_user_code_image:$DATASYN_IMAGE_TAG`** (defaults in root **`Makefile`**) |
 | **Brain** | Root `.env` + `compose.env`; **`mcp.json`** at repo root sets MCP base URLs |
 | **Catalog** | Set `DATABASE_URL` or `CATALOG_DATABASE_URL` on **dagster-mcp** for `dagster_catalog_*` tools; see `skills/catalog-sql/` |
 
@@ -220,7 +235,7 @@ If a private key was ever committed, **rotate** it and scrub history (`git filte
 | DuckDB **lock** / IO errors from MCP | Another process has the DB file open (often **DuckDB UI** profile) | `make infra-duckdb-ui-down` or avoid `--profile ui` during ingest |
 | **InvalidAccessKeyId** from storage MCP | Wrong MinIO host or credentials | Use the application MinIO endpoint from **`infra/object-storage`** docs; match **`MINIO_ROOT_*`** in `.env` |
 | Agent cannot reach MCP | `mcp.json` URLs / firewall | On host dev, use `make mcp-up` and ports 8040/8043/8044; in Docker, use service names on **`infra-datasynk`** |
-| Dagster code not updating | Stale user-code image | Rebuild per `Makefile` / `dagster_user_code_image` and recreate containers |
+| Dagster code not updating | Stale user-code image | `make dagster-user-code-image` or `docker compose -f infra/dagster/docker-compose.yaml build dagster_user_code` then recreate **`dagster_user_code`** |
 
 Use **`make help`** for all targets; warehouse and tool naming details live in **`AGENTS.md`**.
 

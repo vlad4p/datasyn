@@ -1,8 +1,8 @@
 # Datacyber aggregator compose (agent + ui + optional integrations).
 #
 # Start order:
-#   1. docker compose -f infra/object-storage/docker-compose.yaml up -d
-#   2. docker compose -f infra/distribution/docker-compose.yaml up -d   # optional OCI registry
+#   1. docker compose -f infra/distribution/docker-compose.yaml up -d   # local OCI registry
+#   2. docker compose -f infra/object-storage/docker-compose.yaml up -d
 #   3. docker compose -f infra/duckdb/docker-compose.yaml up -d
 #   4. docker compose -f infra/dagster/docker-compose.yaml up -d
 #   5. docker compose up -d
@@ -17,10 +17,6 @@
 # MinIO object storage (landing zone) lives in the object-storage stack, not this file:
 #   cp infra/object-storage/.env.example infra/object-storage/.env
 #   docker compose -f infra/object-storage/docker-compose.yaml up -d
-#
-# JupyterLab (optional analysis notebooks): publish :8888, work persisted in volume `jupyter_work`.
-# Set `JUPYTER_TOKEN` in `.env` (optional `VITE_JUPYTER_TOKEN` same value so the embedded Lab iframe logs in;
-# token is embedded in the UI bundle — use only on trusted networks).
 
 name: datacyber
 
@@ -33,7 +29,6 @@ volumes:
   storage:
     external: true
     name: storage
-  jupyter_work:
 
 services:
   telegram-bot:
@@ -42,6 +37,7 @@ services:
     build:
       context: ./bot_integrations/telegram
       dockerfile: Dockerfile
+    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/telegram-bot:${DATASYN_IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:
       - path: ./bot_integrations/telegram/.env
@@ -57,6 +53,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/brain:${DATASYN_IMAGE_TAG:-latest}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     env_file:
@@ -89,32 +86,12 @@ services:
     build:
       context: ./ui
       dockerfile: Dockerfile
-      args:
-        VITE_JUPYTER_URL: ${VITE_JUPYTER_URL:-http://localhost:8888}
-        VITE_JUPYTER_TOKEN: ${VITE_JUPYTER_TOKEN:-}
+    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/ui:${DATASYN_IMAGE_TAG:-latest}
     environment:
       VITE_PROXY_TARGET: http://brain:8000
     depends_on:
       - brain
-      - jupyter
     networks:
       - infra
     ports:
       - "8003:8003"
-
-  jupyter:
-    image: quay.io/jupyter/scipy-notebook:latest
-    restart: unless-stopped
-    env_file:
-      - compose.env
-      - path: .env
-        required: false
-    environment:
-      JUPYTER_TOKEN: ${JUPYTER_TOKEN:-}
-    volumes:
-      - jupyter_work:/home/jovyan/work
-      - ./jupyter/jupyter_server_config.py:/home/jovyan/.jupyter/jupyter_server_config.py:ro
-    networks:
-      - infra
-    ports:
-      - "8888:8888"
