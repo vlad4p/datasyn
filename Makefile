@@ -58,7 +58,7 @@ help:
 	@echo "  make publish-remote         # build + push to external DATASYN_IMAGE_REGISTRY (no local registry-up)"
 	@echo "      # Example: make publish-remote DATASYN_IMAGE_REGISTRY=10.13.10.119:5000"
 	@echo "  make images-build-remote    # same as images-build + DOCKER_DEFAULT_PLATFORM (external registry only)"
-	@echo "  make images-push-remote     # push only (after build); no registry-up"
+	@echo "  make images-push-remote     # push only (Skopeo; HTTP registries without Engine insecure-registries)"
 	@echo "  make infra-up               # bootstrap + registry + object-storage, duckdb, dagster infra"
 	@echo "  make infra-down | infra-ps | infra-logs"
 	@echo "  make agent-up               # root compose (brain, ui)"
@@ -89,6 +89,12 @@ registry-down:
 # Default targets a remote registry; override if yours is local (e.g. http://127.0.0.1:5000).
 REGISTRY_HTTP_URL ?= http://10.13.10.119:5000
 DOCKER_PLATFORM_REMOTE ?= linux/amd64
+
+# ``docker compose push`` uses the Engine registry client, which tries HTTPS for non-localhost hosts
+# and fails on plain-HTTP registries (``http: server gave HTTP response to HTTPS client``).
+# ``images-push-remote`` uses Skopeo in a container (Docker socket + ``--dest-tls-verify=false``)
+# so pushes work without editing Docker ``insecure-registries``.
+SKOPEO_IMAGE ?= quay.io/skopeo/stable:latest
 
 registry-api-v2:
 	@echo "GET $(REGISTRY_HTTP_URL)/v2/"
@@ -129,16 +135,29 @@ images-push: registry-up
 	docker compose -f "$(ROOT_COMPOSE)" push brain ui
 
 # Push without ``registry-up`` (for external registries only).
-# HTTP registry: add ``<host>:<port>`` to Docker ``insecure-registries`` or push may fail.
+# Uses Skopeo (see ``SKOPEO_IMAGE``) so plain-HTTP registries work without Docker ``insecure-registries``.
 images-push-remote:
 	@if echo "$(DATASYN_IMAGE_REGISTRY)" | grep -Eq '^(localhost|127\.0\.0\.1)(:|$$)'; then \
 	  echo "Refusing: set DATASYN_IMAGE_REGISTRY to your external registry host:port (e.g. 10.13.10.119:5000)"; \
 	  exit 1; \
 	fi
-	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" push
-	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui push
-	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" push
-	docker compose -f "$(ROOT_COMPOSE)" push brain ui
+	@cd "$(MAKEFILE_DIR)" && set -euo pipefail; \
+	push_img() { \
+	  img="$$1"; \
+	  echo "Pushing $$img (skopeo, dest TLS verify off)..."; \
+	  dockermount=(); \
+	  if [ -d "$${HOME}/.docker" ]; then dockermount=(-v "$${HOME}/.docker:/root/.docker:ro"); fi; \
+	  docker run --rm \
+	    -v /var/run/docker.sock:/var/run/docker.sock \
+	    "$${dockermount[@]}" \
+	    "$(SKOPEO_IMAGE)" \
+	    copy --dest-tls-verify=false \
+	    "docker-daemon:$$img" "docker://$$img"; \
+	}; \
+	for img in $$(docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" config --images | sort -u); do push_img "$$img"; done; \
+	for img in $$(docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui config --images | sort -u); do push_img "$$img"; done; \
+	for img in $$(docker compose -f "$(INFRA_DAGSTER_COMPOSE)" config --images | sort -u); do push_img "$$img"; done; \
+	for img in $$(docker compose -f "$(ROOT_COMPOSE)" config --images | sort -u); do push_img "$$img"; done
 
 images-pull: registry-up
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" pull
