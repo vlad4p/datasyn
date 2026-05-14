@@ -8,8 +8,6 @@ en el Launchpad (selección de particiones).
 Fuentes: https://www.infobae.com/politica/ , /judiciales/ , /economia/
 """
 
-from __future__ import annotations
-
 import os
 from datetime import date, datetime, timezone
 
