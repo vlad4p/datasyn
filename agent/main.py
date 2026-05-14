@@ -363,10 +363,11 @@ def _pipeline_snapshot() -> dict[str, Any]:
                 "file_existed_when_process_started": ENV_DOTENV_LOADED_AT_IMPORT,
                 "load_dotenv_override_prior_env": True,
                 "expected_location": "Repository root: same directory that contains the `agent/` folder "
-                "(e.g. `datacyber/.env`). In Docker with this compose file, mount host `./.env` → `/project/.env` "
-                "and keep `PROJECT_ROOT=/project` so this path matches.",
-                "compose_also_injects": "docker-compose `brain.env_file`: compose.env then .env (values frozen until "
-                "container recreate; bind-mounted `.env` is re-read on every Python import via load_dotenv).",
+                "(e.g. `datacyber/.env`). In Docker, `brain` uses `env_file`: `compose.env` plus optional `.env` "
+                "(``path: .env`` with ``required: false``); variables are injected into the process environment.",
+                "compose_also_injects": "docker-compose `brain.env_file`: compose.env then optional .env (omit .env on "
+                "servers that only use compose.env / orchestrator secrets). If `/project/.env` exists in the "
+                "image or a bind mount, `load_dotenv` still applies at import with override=True.",
             },
         },
         "mcp_servers": _mcp_urls_public(),

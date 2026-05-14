@@ -58,14 +58,15 @@ services:
       - "host.docker.internal:host-gateway"
     env_file:
       - compose.env
-      - .env
+      # Optional: create a repo-root ``.env`` for secrets (gitignored). Omit on CI/servers that inject env elsewhere.
+      - path: .env
+        required: false
     environment:
       LITELLM_PROXY_BASE: ${LITELLM_PROXY_BASE:-http://litellm:4000}
       LITELLM_API_BASE: ${LITELLM_API_BASE:-http://litellm:4000}
     networks:
       - infra
     volumes:
-      - ./.env:/project/.env:ro
       - ./skills:/project/skills:ro
       - ./AGENTS.md:/project/AGENTS.md:ro
     command:
