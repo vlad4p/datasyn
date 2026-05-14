@@ -28,7 +28,6 @@ INFRA_OBJECT_STORAGE_COMPOSE := infra/object-storage/docker-compose.yaml
 INFRA_DISTRIBUTION_COMPOSE := infra/distribution/docker-compose.yaml
 INFRA_DUCKDB_COMPOSE := infra/duckdb/docker-compose.yaml
 INFRA_DAGSTER_COMPOSE := infra/dagster/docker-compose.yaml
-INFRA_TELEGRAM_COMPOSE := infra/telegram_bot/docker-compose.yaml
 
 SHARED_NETWORK := infra-datasynk
 SHARED_VOLUMES := duckdb_data storage
@@ -52,15 +51,15 @@ help:
 	@echo "  make bootstrap              # network infra-datasynk + volumes duckdb_data, storage"
 	@echo "  make registry-up            # OCI Distribution registry (infra/distribution)"
 	@echo "  make images-prepare         # registry-up + build all stack images"
-	@echo "  make images-build           # build only (includes root ``telegram-bot`` so ``images-push`` can publish it)"
+	@echo "  make images-build           # build only (tags use Makefile DATASYN_* + DOCKER_REGISTRY)"
 	@echo "  make images-push            # push built images to the local registry (needs registry-up)"
 	@echo "  make images-pull            # pull stack images from the registry"
 	@echo "  make publish                # images-prepare + images-push (CI / golden images)"
 	@echo "  make publish-remote         # build + push to external DATASYN_IMAGE_REGISTRY (no local registry-up)"
 	@echo "      # Example: make publish-remote DATASYN_IMAGE_REGISTRY=10.13.10.119:5000"
 	@echo "  make images-build-remote    # same as images-build + DOCKER_DEFAULT_PLATFORM (external registry only)"
-	@echo "  make images-push-remote   # push only (after build); no registry-up"
-	@echo "  make infra-up               # bootstrap + registry + object-storage, duckdb, dagster, telegram infra"
+	@echo "  make images-push-remote     # push only (after build); no registry-up"
+	@echo "  make infra-up               # bootstrap + registry + object-storage, duckdb, dagster infra"
 	@echo "  make infra-down | infra-ps | infra-logs"
 	@echo "  make agent-up               # root compose (brain, ui)"
 	@echo "  make stack-up               # infra-up then agent-up"
@@ -107,8 +106,7 @@ images-build: bootstrap
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" build
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui build
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" build
-	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" build
-	docker compose -f "$(ROOT_COMPOSE)" --profile telegram build
+	docker compose -f "$(ROOT_COMPOSE)" build
 
 # Build all stack images tagged for an **external** registry (set ``DATASYN_IMAGE_REGISTRY``).
 # Sets ``DOCKER_DEFAULT_PLATFORM`` so Apple Silicon (arm64) emits ``linux/amd64`` images servers can pull.
@@ -128,9 +126,7 @@ images-push: registry-up
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" push
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui push
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" push
-	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" push
 	docker compose -f "$(ROOT_COMPOSE)" push brain ui
-	docker compose -f "$(ROOT_COMPOSE)" --profile telegram push telegram-bot
 
 # Push without ``registry-up`` (for external registries only).
 # HTTP registry: add ``<host>:<port>`` to Docker ``insecure-registries`` or push may fail.
@@ -142,17 +138,13 @@ images-push-remote:
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" push
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui push
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" push
-	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" push
 	docker compose -f "$(ROOT_COMPOSE)" push brain ui
-	docker compose -f "$(ROOT_COMPOSE)" --profile telegram push telegram-bot
 
 images-pull: registry-up
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" pull
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui pull
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" pull
-	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" pull
 	docker compose -f "$(ROOT_COMPOSE)" pull
-	docker compose -f "$(ROOT_COMPOSE)" --profile telegram pull telegram-bot
 
 publish: images-prepare images-push
 
@@ -168,10 +160,8 @@ infra-up: bootstrap registry-up
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" up -d
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" up -d
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" up -d
-	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" up -d
 
 infra-down:
-	-docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" down
 	-docker compose -f "$(INFRA_DAGSTER_COMPOSE)" down
 	-docker compose -f "$(INFRA_DUCKDB_COMPOSE)" down
 	-docker compose -f "$(INFRA_DISTRIBUTION_COMPOSE)" down
@@ -182,14 +172,12 @@ infra-ps:
 	docker compose -f "$(INFRA_DISTRIBUTION_COMPOSE)" ps
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" ps
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" ps
-	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" ps
 
 infra-logs:
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" logs --tail=100
 	docker compose -f "$(INFRA_DISTRIBUTION_COMPOSE)" logs --tail=100
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" logs --tail=100
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" logs --tail=100
-	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" logs --tail=100
 
 infra-duckdb-ui-up: bootstrap
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui up -d --build duckdb-ui
@@ -258,7 +246,7 @@ dagster-user-code-build-push-remote: storage-mcp-buildx-ensure
 	  "$(MAKEFILE_DIR)/infra/dagster/mcp/dagster-code/projects/datasyn" --push
 
 agent-build: bootstrap
-	docker compose -f "$(ROOT_COMPOSE)" --profile telegram build
+	docker compose -f "$(ROOT_COMPOSE)" build
 
 agent-up: bootstrap registry-up
 	docker compose -f "$(ROOT_COMPOSE)" up -d

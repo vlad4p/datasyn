@@ -1,4 +1,4 @@
-# Datacyber aggregator compose (agent + ui + optional integrations).
+# Datacyber aggregator compose (agent + ui).
 #
 # Start order:
 #   1. docker compose -f infra/distribution/docker-compose.yaml up -d   # local OCI registry
@@ -8,11 +8,6 @@
 #   5. docker compose up -d
 #
 # All stacks share external network `infra-datasynk`.
-#
-# Optional Telegram bot (warehouse Q&A via brain):
-#   cp bot_integrations/telegram/.env.example bot_integrations/telegram/.env
-#   # set TELEGRAM_BOT_TOKEN in .env
-#   docker compose --profile telegram up -d telegram-bot
 #
 # MinIO object storage (landing zone) lives in the object-storage stack, not this file:
 #   cp infra/object-storage/.env.example infra/object-storage/.env
@@ -31,24 +26,6 @@ volumes:
     name: storage
 
 services:
-  telegram-bot:
-    profiles:
-      - telegram
-    build:
-      context: ./bot_integrations/telegram
-      dockerfile: Dockerfile
-    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/telegram-bot:${DATASYN_IMAGE_TAG:-latest}
-    restart: unless-stopped
-    env_file:
-      - path: ./bot_integrations/telegram/.env
-        required: false
-    environment:
-      BRAIN_BASE_URL: http://brain:8000
-    depends_on:
-      - brain
-    networks:
-      - infra
-
   brain:
     build:
       context: .

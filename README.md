@@ -1,6 +1,6 @@
 # Datacyber (DataSyn)
 
-Monorepo for an **AI-assisted data processing and analytics stack**: natural-language agents operate over a **DuckDB** warehouse, **Dagster** orchestration and metadata catalog, and **MinIO** object storage, exposed to the agent through **HTTP MCP** tool servers. A **FastAPI “brain”** plus **Vite UI** (and optional **Telegram**) complete the loop for human-in-the-loop analysis on open and public data.
+Monorepo for an **AI-assisted data processing and analytics stack**: natural-language agents operate over a **DuckDB** warehouse, **Dagster** orchestration and metadata catalog, and **MinIO** object storage, exposed to the agent through **HTTP MCP** tool servers. A **FastAPI “brain”** plus **Vite UI** complete the loop for human-in-the-loop analysis on open and public data.
 
 For a product-oriented vision in Spanish, see [`CONCEPTO.md`](CONCEPTO.md).
 
@@ -70,7 +70,7 @@ flowchart LR
 | **Brain** (`agent/`) | LLM-driven orchestration: plans tool use, streams responses, enforces constraints from **`AGENTS.md`** (warehouse rules, MCP names, ingest patterns). |
 | **MCP servers** | Thin HTTP bridges: **`duckdb`** (schema, SQL, directory listing under `/data-local`), **`storage`** (list/get/put objects on MinIO), **`dagster`** (projects, deploy helpers, catalog SQL). URLs are defined in root **`mcp.json`** (Docker DNS names on the shared network, or host ports for local dev). |
 | **Skills** (`skills/`) | Versioned **`SKILL.md`** playbooks (e.g. INDEC EPH ingest, catalog SQL, analysis templates). The agent loads these for repeatable procedures instead of ad-hoc guesses. |
-| **Human in the loop** | Users steer via the **UI**, optional **Telegram** bot, or API; the stack favors explicit SQL and logged tool calls for review. |
+| **Human in the loop** | Users steer via the **UI** or API; the stack favors explicit SQL and logged tool calls for review. |
 
 Optional **`infra/litellm/`** and **`infra/langfuse/`** stacks (see `Makefile` comments) can sit in front of model providers for routing and observability; wire them via root **`docker-compose.yaml`** / `.env` as needed.
 
@@ -86,7 +86,7 @@ Optional **`infra/litellm/`** and **`infra/langfuse/`** stacks (see `Makefile` c
 | `data-local/` | Local data mirror for DuckDB paths (**gitignored**; bind-mounted into DuckDB MCP) |
 | `mcp.json` | HTTP MCP server URLs for the brain |
 | `compose.env` | Comment template for Docker/brain env (merge with root `.env`) |
-| `docker-compose.yaml` | Root stack: brain, UI; optional Telegram profile |
+| `docker-compose.yaml` | Root stack: brain, UI |
 | `AGENTS.md` | **Authoritative** agent + warehouse + MCP constraints (also mounted into the brain container) |
 | `Makefile` | Bootstrap, infra, MCP slice, agent, full stack targets (`make help`) |
 
@@ -100,11 +100,10 @@ Each stack has its own **`docker-compose.yaml`** and service-specific subfolders
 | **Distribution (registry)** | `infra/distribution/docker-compose.yaml` | [OCI Distribution](https://hub.docker.com/_/registry) (**`registry:3`**). Stack images use **`${DATASYN_IMAGE_REGISTRY}/${DATASYN_IMAGE_NAMESPACE}/…`**. HTTP API v2 probes: **`make registry-api-v2`**. Apple Silicon → server **linux/amd64** push: **`make storage-mcp-build-push-remote`** / **`make dagster-user-code-build-push-remote`** (set **`DATASYN_IMAGE_REGISTRY`**) + **`infra/distribution/buildkit-registry-insecure.toml`**. |
 | **DuckDB** | `infra/duckdb/docker-compose.yaml` | Warehouse + **duckdb-mcp**; **profile `ui`** = DuckDB Local UI (holds DB lock while running) |
 | **Dagster** | `infra/dagster/docker-compose.yaml` | Webserver, daemon, Postgres, **dagster-mcp**, bind-mounted **`mcp/dagster-code/projects/`** |
-| **Telegram** | `infra/telegram_bot/docker-compose.yaml` | Optional bot integration |
 
 Active code location: **`infra/dagster/mcp/dagster-code/projects/datasyn/`** (built as service **`dagster_user_code`** in **`infra/dagster/docker-compose.yaml`**; image ref follows **`DATASYN_*`** like other stacks).
 
-Other optional folders: **`infra/langfuse/`**, **`infra/litellm/`**, **`bot_integrations/telegram/`**.
+Other optional folders: **`infra/langfuse/`**, **`infra/litellm/`**.
 
 ---
 
@@ -136,7 +135,7 @@ Other optional folders: **`infra/langfuse/`**, **`infra/litellm/`**, **`bot_inte
 
    Publish to the registry only (CI / shared cache): **`make publish`** (**`images-prepare`** + **`images-push`**). On a host that should only consume images: **`make images-pull`** then **`make infra-up`** / **`make agent-up`**.
 
-3. **Infra** — registry, object storage, DuckDB + MCP, Dagster (+ MCP), optional Telegram:
+3. **Infra** — registry, object storage, DuckDB + MCP, Dagster (+ MCP):
 
    ```bash
    make infra-up
