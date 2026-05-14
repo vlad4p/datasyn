@@ -22,6 +22,7 @@ from .assets.bronze.indec_censo.uca_csv import (
 )
 from .assets.bronze import elecciones_argentina as bronze_elecciones
 from .assets.bronze import infobae as bronze_infobae
+from .assets.bronze import clarin as bronze_clarin
 from .assets.bronze import lanacion as bronze_lanacion
 from . import jobs, schedules, sensors
 from .utils.collect import collect_named
@@ -41,6 +42,7 @@ defs = Definitions(
                 bronze_indec_censo_2022,
                 bronze_infobae,
                 bronze_lanacion,
+                bronze_clarin,
             ]
         ),
         uca_censo,
