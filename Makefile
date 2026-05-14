@@ -18,11 +18,13 @@ INFRA_DAGSTER_COMPOSE := infra/dagster/docker-compose.yaml
 INFRA_TELEGRAM_COMPOSE := infra/telegram_bot/docker-compose.yaml
 # INFRA_LANGFUSE_COMPOSE := infra/langfuse/docker-compose.yml
 DAGSTER_USER_CODE_CONTEXT := infra/dagster/mcp/dagster-code/projects/datasyn
+DAGSTER_USER_CODE_DOCKERFILE := $(DAGSTER_USER_CODE_CONTEXT)/Dockerfile
 
 SHARED_NETWORK := infra-datasynk
 SHARED_VOLUMES := duckdb_data storage
 
 .PHONY: help bootstrap-infra-primitives \
+	dagster-user-code-image \
 	infra-build infra-up infra-down infra-ps infra-logs \
 	infra-duckdb-ui-up infra-duckdb-ui-down \
 	mcp-build mcp-up mcp-down mcp-ps mcp-logs \
@@ -37,6 +39,7 @@ help:
 	@echo "  make bootstrap-infra-primitives  # create shared network + volumes"
 	@echo ""
 	@echo "Infra:"
+	@echo "  make dagster-user-code-image     # docker build dagster_user_code_image (datasyn code location)"
 	@echo "  make infra-build                 # build infra compose stacks"
 	@echo "  make infra-up                    # up infra compose stacks"
 	@echo "  make infra-down                  # down infra compose stacks"
@@ -64,8 +67,12 @@ bootstrap-infra-primitives:
 		docker volume inspect "$$v" >/dev/null 2>&1 || docker volume create "$$v"; \
 	done
 
-infra-build: bootstrap-infra-primitives
-	docker build -t dagster_user_code_image:latest "$(DAGSTER_USER_CODE_CONTEXT)"
+dagster-user-code-image:
+	docker build -t dagster_user_code_image:latest \
+		-f "$(DAGSTER_USER_CODE_DOCKERFILE)" \
+		"$(DAGSTER_USER_CODE_CONTEXT)/"
+
+infra-build: bootstrap-infra-primitives dagster-user-code-image
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" build
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui build
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" build
@@ -73,8 +80,7 @@ infra-build: bootstrap-infra-primitives
 	# docker compose -f "$(INFRA_LANGFUSE_COMPOSE)" build
 	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" build
 
-infra-up: bootstrap-infra-primitives
-	docker build -t dagster_user_code_image:latest "$(DAGSTER_USER_CODE_CONTEXT)"
+infra-up: bootstrap-infra-primitives dagster-user-code-image
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" up -d
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" up -d
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" up -d

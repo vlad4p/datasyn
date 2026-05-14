@@ -1,8 +1,7 @@
 """Bronze: radios censales CSV desde MinIO → ``bronze.radios_censales`` en DuckDB o Iceberg REST.
 
-Misma ruta de ingest que ``indec_censo_2022_redatam``: ``read_csv_auto`` con
-``sample_size=-1`` y ``all_varchar=true``; si ``ICEBERG_REST_ENDPOINT`` está definido,
-se adjunta el catálogo y la tabla vive bajo el alias Iceberg.
+Ingesta vía ``read_csv_auto`` con ``sample_size=-1`` y ``all_varchar=true``; si
+``ICEBERG_REST_ENDPOINT`` está definido, se adjunta el catálogo y la tabla vive bajo el alias Iceberg.
 
 Override local: ``RADIOS_CENSALES_LOCAL_PATH`` (archivo absoluto) omite MinIO.
 """

@@ -11,7 +11,6 @@ import os
 from dagster import Definitions, load_assets_from_modules
 from dagster_duckdb import DuckDBResource
 
-from .assets.bronze.indec_censo import indec_censo_2022_redatam as bronze_indec_censo_2022
 from .assets.bronze.indec_censo import radios_censales as bronze_radios
 from .assets.bronze.indec_censo.uca_csv import (
     indicadores_censo_2022_argentina,
@@ -39,7 +38,6 @@ defs = Definitions(
             [
                 bronze_elecciones,
                 bronze_radios,
-                bronze_indec_censo_2022,
                 bronze_infobae,
                 bronze_lanacion,
                 bronze_clarin,
