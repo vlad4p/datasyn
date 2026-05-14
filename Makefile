@@ -34,11 +34,13 @@ SHARED_NETWORK := infra-datasynk
 SHARED_VOLUMES := duckdb_data storage
 
 .PHONY: help bootstrap bootstrap-infra-primitives registry-up registry-down \
+	registry-api-v2 registry-catalog-v2 storage-mcp-manifest-v2 \
 	images-prepare images-build images-push images-pull publish \
 	infra-build infra-up infra-down infra-ps infra-logs \
 	infra-duckdb-ui-up infra-duckdb-ui-down \
 	dagster-user-code-image \
 	mcp-build mcp-up mcp-down mcp-ps mcp-logs \
+	storage-mcp-buildx-ensure storage-mcp-build-push-remote \
 	agent-build agent-up agent-down agent-ps agent-logs \
 	agent-dev agent-dev-brain agent-dev-ui \
 	stack-up stack-down stack-ps
@@ -58,6 +60,8 @@ help:
 	@echo "  make agent-up               # root compose (brain, ui)"
 	@echo "  make stack-up               # infra-up then agent-up"
 	@echo "  make mcp-up                 # minio + MCPs + duckdb + dagster-mcp (uses same image env vars)"
+	@echo "  make registry-api-v2        # GET /v2/ on REGISTRY_HTTP_URL (Distribution spec)"
+	@echo "  make storage-mcp-build-push-remote  # buildx linux/amd64 + push storage-mcp (set DATASYN_IMAGE_REGISTRY)"
 	@echo "  make agent-dev              # brain + Vite on host (see compose.env)"
 	@echo ""
 	@echo "Legacy alias: bootstrap-infra-primitives → bootstrap ; infra-build → images-build"
@@ -75,6 +79,23 @@ registry-up: bootstrap
 
 registry-down:
 	-docker compose -f "$(INFRA_DISTRIBUTION_COMPOSE)" down
+
+# OCI Distribution HTTP API v2 (https://distribution.github.io/distribution/spec/api/).
+# Default targets a remote registry; override if yours is local (e.g. http://127.0.0.1:5000).
+REGISTRY_HTTP_URL ?= http://10.13.10.119:5000
+DOCKER_PLATFORM_REMOTE ?= linux/amd64
+
+registry-api-v2:
+	@echo "GET $(REGISTRY_HTTP_URL)/v2/"
+	@curl -fsS -D- -o /dev/null "$(REGISTRY_HTTP_URL)/v2/" | sed -n '1,20p'
+
+registry-catalog-v2:
+	@echo "GET $(REGISTRY_HTTP_URL)/v2/_catalog"
+	@curl -fsS "$(REGISTRY_HTTP_URL)/v2/_catalog?n=50"
+
+storage-mcp-manifest-v2:
+	@echo "HEAD manifest $(DATASYN_IMAGE_NAMESPACE)/storage-mcp:$(DATASYN_IMAGE_TAG)"
+	@curl -fsS -I "$(REGISTRY_HTTP_URL)/v2/$(DATASYN_IMAGE_NAMESPACE)/storage-mcp/manifests/$(DATASYN_IMAGE_TAG)" | sed -n '1,25p'
 
 images-build: bootstrap
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" build
@@ -168,6 +189,27 @@ mcp-logs:
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" logs --tail=100 storage-mcp
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" logs --tail=100 duckdb-mcp
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" logs --tail=100 dagster-mcp
+
+# Apple Silicon (and other hosts): build ``storage-mcp`` for linux/amd64 and push to REGISTRY.
+# Pushes use BuildKit registry config (``infra/distribution/buildkit-registry-insecure.toml``)
+# so HTTP registries work without Docker Engine ``insecure-registries`` for buildx.
+# First run creates builder ``datasyn-registry-push`` (docker-container driver).
+# Example: make storage-mcp-build-push-remote DATASYN_IMAGE_REGISTRY=10.13.10.119:5000
+STORAGE_MCP_BUILDX_BUILDER ?= datasyn-registry-push
+
+storage-mcp-buildx-ensure:
+	@docker buildx inspect "$(STORAGE_MCP_BUILDX_BUILDER)" >/dev/null 2>&1 || \
+	  docker buildx create --name "$(STORAGE_MCP_BUILDX_BUILDER)" --driver docker-container \
+	    --config "$(MAKEFILE_DIR)/infra/distribution/buildkit-registry-insecure.toml" --bootstrap
+
+storage-mcp-build-push-remote: storage-mcp-buildx-ensure
+	@if echo "$(DATASYN_IMAGE_REGISTRY)" | grep -Eq '^(localhost|127\.0\.0\.1)(:|$$)'; then \
+	  echo "Refusing: set DATASYN_IMAGE_REGISTRY to the remote registry host:port (e.g. 10.13.10.119:5000)"; exit 1; \
+	fi
+	docker buildx build --builder "$(STORAGE_MCP_BUILDX_BUILDER)" --platform "$(DOCKER_PLATFORM_REMOTE)" --provenance=false \
+	  -f "$(MAKEFILE_DIR)/infra/object-storage/mcp/Dockerfile" \
+	  -t "$(DATASYN_IMAGE_REGISTRY)/$(DATASYN_IMAGE_NAMESPACE)/storage-mcp:$(DATASYN_IMAGE_TAG)" \
+	  "$(MAKEFILE_DIR)/infra/object-storage/mcp" --push
 
 agent-build: bootstrap
 	docker compose -f "$(ROOT_COMPOSE)" build

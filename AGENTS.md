@@ -84,7 +84,7 @@ DuckDB **skips the `AS SELECT`** when the table already exists. The agent then r
 
 ### Object storage (`storage_*`)
 
-Implementation: **`infra/object-storage/mcp/server.py`**. Typical tools (prefixed **`storage_`** via `mcp.json`): **`list_buckets`**, **`list_objects`**, **`get_object_text`**, **`put_object_text`**, **`delete_object`**. Default bucket is usually **`data-local`**.
+Implementation: **`infra/object-storage/mcp/server.py`**. Typical tools (prefixed **`storage_`** via `mcp.json`): **`list_buckets`**, **`list_objects`**, **`get_object_text`**, **`put_object_text`**, **`put_object_base64`** (binary: PDF, images), **`put_object_from_path`** (large/server-side file under the MCP host mount), **`delete_object`**. Default bucket is usually **`data-local`**.
 
 **Endpoint discipline:** use **`http://datacyber-object-minio:9000`** (alias from **`infra/object-storage`**) — not bare **`http://minio:9000`**: on **`infra-datasynk`**, Langfuse also registers the hostname **`minio`**, so DNS can hit the wrong instance and you get **`InvalidAccessKeyId`**. **`storage-mcp`** credentials should match **`MINIO_ROOT_USER`** / **`MINIO_ROOT_PASSWORD`** in **`infra/object-storage/.env`**.
 

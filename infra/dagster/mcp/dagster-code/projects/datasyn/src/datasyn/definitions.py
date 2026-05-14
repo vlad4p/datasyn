@@ -1,7 +1,8 @@
 """Dagster `Definitions` entry point.
 
 Most bronze modules are loaded with ``load_assets_from_modules``. Los CSV UCA
-(``uca_csv``) se agregan explícitamente (``uca_*`` + indicadores Censo 2022).
+(``uca_csv``) se agregan explícitamente (``uca_*`` + indicadores Censo 2022). El job
+``uca_censo_2022_job`` materializa ese grupo desde MinIO.
 """
 
 from __future__ import annotations

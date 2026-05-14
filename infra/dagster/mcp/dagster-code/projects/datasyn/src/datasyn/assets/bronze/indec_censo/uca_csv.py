@@ -1,9 +1,9 @@
 """Bronze: CSV UCA desde MinIO → DuckDB nativo o Iceberg REST.
 
-- Tablas ``uca_*`` clásicas: ``landing/indec/censo/uca/<archivo>.csv`` (histórico /
-  ``scripts/r/upload_uca_to_minio.sh``).
-- Indicadores Censo 2022 (hogares por radio): ``landing/censo_2022/uca/<archivo>.csv``
-  → ``bronze.indicadores_censo_2022_argentina`` y ``bronze.indicadores_censo_2022_argentina_geojson``.
+- Todos los CSV UCA (tablas ``uca_*`` e indicadores Censo 2022): prefijo por defecto
+  ``landing/censo_2022/uca/<archivo>.csv`` (bucket típico ``data-local``).
+- Override: ``UCA_LANDING_PREFIX`` o ``UCA_CENSO_2022_LANDING_PREFIX`` (mismo valor si solo
+  se define uno). Histórico ``landing/indec/censo/uca`` vía variable de entorno.
 
 Las cargas siguen el patrón **component** declarativo
 (:class:`~datasyn.components.bronze_object_storage_duckdb.BronzeMinioDuckdbSpec`);
@@ -22,13 +22,20 @@ from datasyn.components.bronze_object_storage_duckdb import (
     make_bronze_minio_duckdb_asset,
 )
 
-LANDING_PREFIX = (os.environ.get("UCA_LANDING_PREFIX") or "landing/indec/censo/uca").strip().strip(
-    "/"
-)
-# Objetos subidos bajo ``landing/censo_2022/uca/`` (MinIO bucket típico ``data-local``).
-UCA_CENSO_2022_LANDING_PREFIX = (
-    os.environ.get("UCA_CENSO_2022_LANDING_PREFIX") or "landing/censo_2022/uca"
-).strip().strip("/")
+
+def _uca_landing_prefix() -> str:
+    for env_name in ("UCA_LANDING_PREFIX", "UCA_CENSO_2022_LANDING_PREFIX"):
+        raw = os.environ.get(env_name)
+        if raw and raw.strip():
+            return raw.strip().strip("/")
+    return "landing/censo_2022/uca"
+
+
+# Un solo prefijo MinIO para ``censo.csv`` / ``departamentos.csv`` / ``provincias.csv`` e indicadores.
+UCA_LANDING_PREFIX = _uca_landing_prefix()
+# Alias retrocompatible con código que importaba ``UCA_CENSO_2022_LANDING_PREFIX``.
+UCA_CENSO_2022_LANDING_PREFIX = UCA_LANDING_PREFIX
+LANDING_PREFIX = UCA_LANDING_PREFIX
 _LOCAL_ENV = "UCA_FILES_LOCAL_DIR"
 # Objeto en MinIO suele ser ``…geojson….csv.csv``; sobreescribir si el bucket usa solo ``.csv``.
 UCA_FILE_INDICADORES_GEOJSON_ARGENTINA = (
@@ -63,7 +70,7 @@ UCA_BRONZE_SPECS: tuple[BronzeMinioDuckdbSpec, ...] = (
     BronzeMinioDuckdbSpec(
         asset_name="indicadores_censo_2022_argentina",
         object_key=_key(
-            UCA_CENSO_2022_LANDING_PREFIX,
+            UCA_LANDING_PREFIX,
             "Indicadores_de_hogares_radios_2022_argentina.csv",
         ),
         local_override_env=_LOCAL_ENV,
@@ -71,7 +78,7 @@ UCA_BRONZE_SPECS: tuple[BronzeMinioDuckdbSpec, ...] = (
     ),
     BronzeMinioDuckdbSpec(
         asset_name="indicadores_censo_2022_argentina_geojson",
-        object_key=_key(UCA_CENSO_2022_LANDING_PREFIX, UCA_FILE_INDICADORES_GEOJSON_ARGENTINA),
+        object_key=_key(UCA_LANDING_PREFIX, UCA_FILE_INDICADORES_GEOJSON_ARGENTINA),
         local_override_env=_LOCAL_ENV,
         local_filename=UCA_FILE_INDICADORES_GEOJSON_ARGENTINA,
     ),
@@ -86,6 +93,8 @@ indicadores_censo_2022_argentina_geojson = make_bronze_minio_duckdb_asset(UCA_BR
 __all__ = [
     "UCA_BRONZE_SPECS",
     "UCA_CENSO_2022_LANDING_PREFIX",
+    "UCA_LANDING_PREFIX",
+    "LANDING_PREFIX",
     "UCA_FILE_INDICADORES_GEOJSON_ARGENTINA",
     "indicadores_censo_2022_argentina",
     "indicadores_censo_2022_argentina_geojson",

@@ -97,7 +97,7 @@ Each stack has its own **`docker-compose.yaml`** and service-specific subfolders
 | Stack | Compose file | Notes |
 |-------|----------------|--------|
 | **Object storage** | `infra/object-storage/docker-compose.yaml` | MinIO + **storage-mcp** |
-| **Distribution (registry)** | `infra/distribution/docker-compose.yaml` | [OCI Distribution](https://hub.docker.com/_/registry) (**`registry:3`**). Stack images are tagged **`${DATASYN_IMAGE_REGISTRY}/${DATASYN_IMAGE_NAMESPACE}/…`** (defaults in root **`Makefile`**; see **`infra/distribution/registry.env.example`**). |
+| **Distribution (registry)** | `infra/distribution/docker-compose.yaml` | [OCI Distribution](https://hub.docker.com/_/registry) (**`registry:3`**). Stack images use **`${DATASYN_IMAGE_REGISTRY}/${DATASYN_IMAGE_NAMESPACE}/…`**. HTTP API v2 probes: **`make registry-api-v2`**. Apple Silicon → server **linux/amd64** push: **`make storage-mcp-build-push-remote`** + **`infra/distribution/buildkit-registry-insecure.toml`**. |
 | **DuckDB** | `infra/duckdb/docker-compose.yaml` | Warehouse + **duckdb-mcp**; **profile `ui`** = DuckDB Local UI (holds DB lock while running) |
 | **Dagster** | `infra/dagster/docker-compose.yaml` | Webserver, daemon, Postgres, **dagster-mcp**, bind-mounted **`mcp/dagster-code/projects/`** |
 | **Telegram** | `infra/telegram_bot/docker-compose.yaml` | Optional bot integration |
