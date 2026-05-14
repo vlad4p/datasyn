@@ -35,7 +35,8 @@ SHARED_VOLUMES := duckdb_data storage
 
 .PHONY: help bootstrap bootstrap-infra-primitives registry-up registry-down \
 	registry-api-v2 registry-catalog-v2 storage-mcp-manifest-v2 \
-	images-prepare images-build images-push images-pull publish \
+	images-prepare images-build images-build-remote images-push images-push-remote images-pull \
+	publish publish-remote \
 	infra-build infra-up infra-down infra-ps infra-logs \
 	infra-duckdb-ui-up infra-duckdb-ui-down \
 	dagster-user-code-image dagster-user-code-build-push-remote \
@@ -55,6 +56,10 @@ help:
 	@echo "  make images-push            # push built images to the local registry (needs registry-up)"
 	@echo "  make images-pull            # pull stack images from the registry"
 	@echo "  make publish                # images-prepare + images-push (CI / golden images)"
+	@echo "  make publish-remote         # build + push to external DATASYN_IMAGE_REGISTRY (no local registry-up)"
+	@echo "      # Example: make publish-remote DATASYN_IMAGE_REGISTRY=10.13.10.119:5000"
+	@echo "  make images-build-remote    # same as images-build + DOCKER_DEFAULT_PLATFORM (external registry only)"
+	@echo "  make images-push-remote   # push only (after build); no registry-up"
 	@echo "  make infra-up               # bootstrap + registry + object-storage, duckdb, dagster, telegram infra"
 	@echo "  make infra-down | infra-ps | infra-logs"
 	@echo "  make agent-up               # root compose (brain, ui)"
@@ -105,9 +110,35 @@ images-build: bootstrap
 	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" build
 	docker compose -f "$(ROOT_COMPOSE)" --profile telegram build
 
+# Build all stack images tagged for an **external** registry (set ``DATASYN_IMAGE_REGISTRY``).
+# Sets ``DOCKER_DEFAULT_PLATFORM`` so Apple Silicon (arm64) emits ``linux/amd64`` images servers can pull.
+# Example: ``make images-build-remote DATASYN_IMAGE_REGISTRY=10.13.10.119:5000``
+images-build-remote: bootstrap
+	@if echo "$(DATASYN_IMAGE_REGISTRY)" | grep -Eq '^(localhost|127\.0\.0\.1)(:|$$)'; then \
+	  echo "Refusing: set DATASYN_IMAGE_REGISTRY to your external registry host:port (e.g. 10.13.10.119:5000)"; \
+	  exit 1; \
+	fi
+	@cd "$(MAKEFILE_DIR)" && \
+	  export DOCKER_DEFAULT_PLATFORM="$(DOCKER_PLATFORM_REMOTE)" && \
+	  $(MAKE) images-build
+
 images-prepare: registry-up images-build
 
 images-push: registry-up
+	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" push
+	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui push
+	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" push
+	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" push
+	docker compose -f "$(ROOT_COMPOSE)" push brain ui
+	docker compose -f "$(ROOT_COMPOSE)" --profile telegram push telegram-bot
+
+# Push without ``registry-up`` (for external registries only).
+# HTTP registry: add ``<host>:<port>`` to Docker ``insecure-registries`` or push may fail.
+images-push-remote:
+	@if echo "$(DATASYN_IMAGE_REGISTRY)" | grep -Eq '^(localhost|127\.0\.0\.1)(:|$$)'; then \
+	  echo "Refusing: set DATASYN_IMAGE_REGISTRY to your external registry host:port (e.g. 10.13.10.119:5000)"; \
+	  exit 1; \
+	fi
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" push
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui push
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" push
@@ -124,6 +155,9 @@ images-pull: registry-up
 	docker compose -f "$(ROOT_COMPOSE)" --profile telegram pull telegram-bot
 
 publish: images-prepare images-push
+
+# One-shot: cross-build (default linux/amd64) + push to an external registry.
+publish-remote: images-build-remote images-push-remote
 
 dagster-user-code-image:
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" build dagster_user_code
