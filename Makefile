@@ -16,7 +16,7 @@ INFRA_DUCKDB_COMPOSE := infra/duckdb/docker-compose.yaml
 INFRA_DAGSTER_COMPOSE := infra/dagster/docker-compose.yaml
 # INFRA_LITELLM_COMPOSE := infra/litellm/docker-compose.yaml
 INFRA_TELEGRAM_COMPOSE := infra/telegram_bot/docker-compose.yaml
-INFRA_LANGFUSE_COMPOSE := infra/langfuse/docker-compose.yml
+# INFRA_LANGFUSE_COMPOSE := infra/langfuse/docker-compose.yml
 DAGSTER_USER_CODE_CONTEXT := infra/dagster/mcp/dagster-code/projects/datasyn
 
 SHARED_NETWORK := infra-datasynk
@@ -70,7 +70,7 @@ infra-build: bootstrap-infra-primitives
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" --profile ui build
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" build
 	# docker compose -f "$(INFRA_LITELLM_COMPOSE)" build
-	docker compose -f "$(INFRA_LANGFUSE_COMPOSE)" build
+	# docker compose -f "$(INFRA_LANGFUSE_COMPOSE)" build
 	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" build
 
 infra-up: bootstrap-infra-primitives
@@ -79,12 +79,12 @@ infra-up: bootstrap-infra-primitives
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" up -d
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" up -d
 	# docker compose -f "$(INFRA_LITELLM_COMPOSE)" up -d
-	docker compose -f "$(INFRA_LANGFUSE_COMPOSE)" up -d
+	# docker compose -f "$(INFRA_LANGFUSE_COMPOSE)" up -d
 	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" up -d
 
 infra-down:
 	-docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" down
-	-docker compose -f "$(INFRA_LANGFUSE_COMPOSE)" down
+	# -docker compose -f "$(INFRA_LANGFUSE_COMPOSE)" down
 	# -docker compose -f "$(INFRA_LITELLM_COMPOSE)" down
 	-docker compose -f "$(INFRA_DAGSTER_COMPOSE)" down
 	-docker compose -f "$(INFRA_DUCKDB_COMPOSE)" down
@@ -95,7 +95,7 @@ infra-ps:
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" ps
 	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" ps
 	# docker compose -f "$(INFRA_LITELLM_COMPOSE)" ps
-	docker compose -f "$(INFRA_LANGFUSE_COMPOSE)" ps
+	# docker compose -f "$(INFRA_LANGFUSE_COMPOSE)" ps
 	docker compose -f "$(INFRA_TELEGRAM_COMPOSE)" ps
 
 infra-logs:
