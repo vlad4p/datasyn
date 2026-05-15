@@ -1,247 +1,227 @@
-# Datacyber (DataSyn)
+# DataSyn
 
-Monorepo for an **AI-assisted data processing and analytics stack**: natural-language agents operate over a **DuckDB** warehouse, **Dagster** orchestration and metadata catalog, and **MinIO** object storage, exposed to the agent through **HTTP MCP** tool servers. A **FastAPI “brain”** plus **Vite UI** complete the loop for human-in-the-loop analysis on open and public data.
+![status](https://img.shields.io/badge/status-active%20development-orange) ![license](https://img.shields.io/badge/license-TBD-lightgrey) ![approach](https://img.shields.io/badge/approach-AI--driven-success) ![focus](https://img.shields.io/badge/focus-public%20data-blue) ![locale](https://img.shields.io/badge/docs-es-informational) [![en](https://img.shields.io/badge/README-EN-lightgrey)](README.en.md)
 
-For a product-oriented vision in Spanish, see [`CONCEPTO.md`](CONCEPTO.md).
+**Análisis de datos asistido por IA.**
 
----
+DataSyn es una sistema para **ingestar, descubrir, estructurar y analizar información** mediante agentes que operan sobre el warehouse, asegurando el correcto Gobierno de cada Agente y cada fuente de datos, disminuyendo el gap tecnico que representa mantener y procesar diversas fuentes de infomacion, tales como datos estrucutrados como no estructurados.
 
-## Goals
-
-- **Discover, load, and reason about** public datasets with reproducible pipelines and inspectable steps—not black-box automation.
-- **Separate concerns**: durable data and jobs live in infra (warehouse, orchestrator, object store); the AI layer issues **bounded, auditable** tool calls (SQL, listings, catalog queries, storage ops).
-- **Same stack for humans and agents**: operators use Dagster; agents use MCP tools aligned with those systems.
+[Cómo correrlo →](INSTALL.md) · [Reglas del agente →](AGENTS.md) · [Skills →](skills/) · [Pipelines incluidos →](infra/dagster/mcp/dagster-code/projects/datasyn/src/datasyn/assets/) · [Diagramas →](docs/diagrams/)
 
 ---
 
-## Architecture
+## Por qué existe
 
-The system splits into a **data platform layer** (what you store and how you run pipelines) and an **AI layer** (how questions become operations). Both share Docker network **`infra-datasynk`** and named volumes (e.g. **`duckdb_data`**, **`storage`**).
+> Un sistema que entregue **insight de la sociedad en tiempo real** para informar mejor decisiones, y que **no necesita ser privado**: las políticas públicas no necesitan información desagrupada — necesitan información comprensible y revisable.
 
-### Data platform layer
+Hoy, el analisis de datos, al igual que muchas otras areas, se ha visto atravesado y potenciado por la IA, permitiendo a cientificos, analistas politicos, economistas, entre otros;  trabajar mediante *lenguajenatural* sobre la informacion, manteniendo las buenas practicas de un sistema de alto nivel.
+A diferencia de otras soluciones, donde la informacion es **subida a un tercero**: tu archivo viaja a un proveedor, la respuesta vuelve sin trazabilidad, y el conocimiento operativo queda dentro del producto.
 
-| Component | Role |
-|-----------|------|
-| **Object storage (MinIO)** | S3-compatible **landing zone** and lake-style storage: CSV/TXT/ZIP, derived artifacts, and optional **Apache Iceberg** table files when publishing is configured in Dagster/DuckDB. |
-| **DuckDB** | **Analytical engine** and default warehouse file (`warehouse.duckdb`): SQL, `read_csv_auto` ingest from the **`data-local`** bind mount, medallion-style schemas (**`bronze`**, **`silver`**, **`gold`**). MCP exposes schema listing and **one statement per call** execution. |
-| **Dagster** | **Orchestration**: assets, jobs, schedules; Postgres for run storage; **code locations** under `infra/dagster/mcp/dagster-code/projects/`. MCP can scaffold projects and run **catalog SQL** when `DATABASE_URL` / `CATALOG_DATABASE_URL` is set. |
-| **Iceberg (optional)** | Some Dagster assets can materialize to **Iceberg** on object storage when REST catalog / env is configured (`datasyn.utils.iceberg`); otherwise tables stay **DuckDB-native**. |
+DataSyn toma una posición distinta:
 
-**Typical data flow**
+- **Datos públicos como bien común.** El código que los procesa también es público. Si un análisis aparece en una nota o un informe, el lector puede reproducirlo.
+- **IA como amplificador del análisis ciudadano**, no como caja negra que centraliza el control. Tu eliges el modelo (incluso uno local) y el sistema corre en tu infraestructura.
+- **El conocimiento de dominio se versiona.** Lo que un analista sabe hacer "a mano" se escribe una vez como **skill** y queda disponible para todos los demás. Ejemplo: El analisis de un dataset, o como realizar una ingesta especifica.
 
-1. Raw files land in **MinIO** and/or the repo’s **`data-local/`** tree (mounted read-only into DuckDB MCP for SQL paths under `/data-local/...`).
-2. **Dagster** runs ingestion and transformation assets; results are tables in DuckDB and/or Iceberg-backed relations.
-3. **Catalog** (Postgres, optional) registers datasets for discovery; agents query it before blind file globbing when metadata is enough.
-4. **Agents** read schema, run aggregates, or trigger documented ingest patterns—always with traceable SQL and paths.
+---
 
-```mermaid
-flowchart LR
-  subgraph sources [Sources]
-    Files[Files / scrape / APIs]
-  end
-  subgraph platform [Data platform]
-    MinIO[(MinIO)]
-    DD[(DuckDB warehouse)]
-    DG[Dagster]
-    Cat[(Catalog PG optional)]
-  end
-  subgraph ai [AI layer]
-    UI[Web UI]
-    Brain[Brain FastAPI]
-    MCP[MCP servers]
-  end
-  Files --> MinIO
-  Files --> data_local[data-local mount]
-  data_local --> DD
-  DG --> DD
-  DG --> MinIO
-  DG --> Cat
-  Brain --> MCP
-  MCP --> DD
-  MCP --> MinIO
-  MCP --> DG
-  UI --> Brain
+## El planteo: AI-driven, no AI-assisted
+
+En este ultimo tiempo los agentes ya no "ayudan" puntualmente — **operan** el stack, mientras la persona aporta dirección, contexto y juicio. DataSyn aplica esa idea al **análisis** de datos.
+
+El agente hace el trabajo rutinario:
+
+| Vos hacés | El agente hace |
+|---|---|
+| Formulás la pregunta en lenguaje natural | Resuelve a qué tabla y columnas corresponde |
+| Aportás conocimiento de dominio una sola vez (en una skill) | Ejecuta los pasos del playbook cada vez que matchea |
+| Decidís qué interpretar y qué reportar | Lista esquemas, valida tipos, normaliza decimales, aplica `TRY_CAST`, elige la ponderación correcta |
+| Revisás el SQL devuelto | Escribe **un** `SELECT` por llamada, lo corre, devuelve filas + supuestos |
+| Pedís otro corte | Reutiliza contexto, no vuelve a empezar |
+
+Lo que se evita: scripts ad-hoc por archivo, notebooks que sólo entiende quien los escribió, y promptear *"escribime una SQL para…"* sin saber si la columna existe o si el tipo es correcto.
+
+---
+
+## Cómo se ve usarlo
+
+![Ciclo de una pregunta](docs/diagrams/question-lifecycle.svg)
+
+> Editable: [`docs/diagrams/question-lifecycle.drawio`](docs/diagrams/question-lifecycle.drawio) · [PNG](docs/diagrams/question-lifecycle.png).
+
+```text
+Vos:     ¿Qué porcentaje de hogares en NOA tuvo IPCF bajo la línea
+         de pobreza en T3-2025? Mostrame la SQL.
+
+Agente:  · Lee el catálogo (descripciones de IPCF, REGION, PONDIH).
+         · Confirma tipos (IPCF llega como VARCHAR → TRY_CAST).
+         · Ejecuta UN SELECT con la ponderación correcta.
+         · Devuelve tabla + bloque SQL + supuestos + cobertura.
+
+UI:      Markdown renderizado, gráfico opcional, SQL copiable.
+Trazas:  request_id cruza brain ↔ MCP ↔ Langfuse.
 ```
 
-### AI layer
-
-| Piece | Role |
-|-------|------|
-| **Brain** (`agent/`) | LLM-driven orchestration: plans tool use, streams responses, enforces constraints from **`AGENTS.md`** (warehouse rules, MCP names, ingest patterns). |
-| **MCP servers** | Thin HTTP bridges: **`duckdb`** (schema, SQL, directory listing under `/data-local`), **`storage`** (list/get/put objects on MinIO), **`dagster`** (projects, deploy helpers, catalog SQL). URLs are defined in root **`mcp.json`** (Docker DNS names on the shared network, or host ports for local dev). |
-| **Skills** (`skills/`) | Versioned **`SKILL.md`** playbooks (e.g. INDEC EPH ingest, catalog SQL, analysis templates). The agent loads these for repeatable procedures instead of ad-hoc guesses. |
-| **Human in the loop** | Users steer via the **UI** or API; the stack favors explicit SQL and logged tool calls for review. |
-
-Optional **`infra/litellm/`** and **`infra/langfuse/`** stacks (see `Makefile` comments) can sit in front of model providers for routing and observability; wire them via root **`docker-compose.yaml`** / `.env` as needed.
-
 ---
 
-## Repository layout
+## Skills: tu conocimiento de dominio se vuelve capacidad del sistema
 
-| Path | Role |
-|------|------|
-| `agent/` | Brain service (FastAPI), MCP clients, graph/orchestration |
-| `ui/` | Vite frontend; proxies API to the brain |
-| `skills/` | Deep Agents skill playbooks (`SKILL.md`) |
-| `data-local/` | Local data mirror for DuckDB paths (**gitignored**; bind-mounted into DuckDB MCP) |
-| `mcp.json` | HTTP MCP server URLs for the brain |
-| `compose.env` | Comment template for Docker/brain env (merge with root `.env`) |
-| `docker-compose.yaml` | Root stack: brain, UI |
-| `AGENTS.md` | **Authoritative** agent + warehouse + MCP constraints (also mounted into the brain container) |
-| `Makefile` | Bootstrap, infra, MCP slice, agent, full stack targets (`make help`) |
+Una **skill** es un `SKILL.md` versionado. El Brain las descubre al arrancar y el agente las sigue como *playbooks ejecutables* cuando reconoce el dominio.
 
-### Infra stacks (`infra/`)
+> Una skill bien escrita le enseña al sistema a **ingerir un dataset**, **derivar tablas nuevas**, **correr un análisis recurrente** o **producir un reporte** — sin tocar código del brain ni de la UI.
 
-Each stack has its own **`docker-compose.yaml`** and service-specific subfolders:
 
-| Stack | Compose file | Notes |
-|-------|----------------|--------|
-| **Object storage** | `infra/object-storage/docker-compose.yaml` | MinIO + **storage-mcp** |
-| **Distribution (registry)** | `infra/distribution/docker-compose.yaml` | [OCI Distribution](https://hub.docker.com/_/registry) (**`registry:3`**). Stack images use **`${DATASYN_IMAGE_REGISTRY}/${DATASYN_IMAGE_NAMESPACE}/…`**. HTTP API v2 probes: **`make registry-api-v2`**. Apple Silicon → server **linux/amd64** push: **`make storage-mcp-build-push-remote`** / **`make dagster-user-code-build-push-remote`** (set **`DATASYN_IMAGE_REGISTRY`**) + **`infra/distribution/buildkit-registry-insecure.toml`**. |
-| **DuckDB** | `infra/duckdb/docker-compose.yaml` | Warehouse + **duckdb-mcp**; **profile `ui`** = DuckDB Local UI (holds DB lock while running) |
-| **Dagster** | `infra/dagster/docker-compose.yaml` | Webserver, daemon, Postgres, **dagster-mcp**, bind-mounted **`mcp/dagster-code/projects/`** |
+Quién las escribe: **analistas, periodistas de datos, investigadores académicos, etc...**. Lo único que se necesita es Markdown + saber qué `WHERE`, qué `GROUP BY`, qué ponderación corresponde para tu dataset.
 
-Active code location: **`infra/dagster/mcp/dagster-code/projects/datasyn/`** (built as service **`dagster_user_code`** in **`infra/dagster/docker-compose.yaml`**; image ref follows **`DATASYN_*`** like other stacks).
-
-Other optional folders: **`infra/langfuse/`**, **`infra/litellm/`**.
-
+### Anatomía mínima, ejemplo de una SKILL.md
+```markdown
+---
+name: analyze-presupuesto-municipio-x
+description: Ejecución presupuestaria del municipio X — gasto por función y partida.
 ---
 
-## Prerequisites
+## Tabla y columnas
+- `gold.presupuesto_muni_x` (`ejercicio`, `mes`, `funcion`, `partida`, `monto_devengado`)
+- `monto_devengado` llega como VARCHAR → `TRY_CAST(... AS DOUBLE)`
 
-- **Docker** and **Docker Compose** v2
-- **Make** (optional but recommended)
-- For **local dev without Docker brain**: **Python 3.11+** and **Node.js** for `agent-dev` (see Makefile)
+## Reglas
+- Excluir `partida = '00 - No imputable'`
+- Para series interanuales: deflactar por `silver.ipc_base_2016`
 
----
+## SQL canónica
+SELECT funcion, SUM(TRY_CAST(monto_devengado AS DOUBLE)) AS total
+FROM gold.presupuesto_muni_x
+WHERE ejercicio = $year
+GROUP BY 1 ORDER BY 2 DESC;
 
-## Quick start
-
-1. **Shared Docker network and volumes** (once per machine):
-
-   ```bash
-   make bootstrap
-   ```
-
-   Creates network **`infra-datasynk`** and volumes **`duckdb_data`**, **`storage`**. Legacy alias: **`make bootstrap-infra-primitives`**.
-
-2. **Registry-backed images** (recommended once per machine before **`make agent-up`**):
-
-   ```bash
-   make images-prepare
-   ```
-
-   Starts the local registry (**`make registry-up`** is included) and builds all application images with tags under **`localhost:5000/datasyn/…`** (override host/port/namespace/tag via **`REGISTRY_PUBLISH_PORT`**, **`DATASYN_IMAGE_REGISTRY`**, **`DATASYN_IMAGE_NAMESPACE`**, **`DATASYN_IMAGE_TAG`** in the environment). For HTTP registries, add that host:port to Docker **`insecure-registries`**.
-
-   Publish to the registry only (CI / shared cache): **`make publish`** (**`images-prepare`** + **`images-push`**). On a host that should only consume images: **`make images-pull`** then **`make infra-up`** / **`make agent-up`**.
-
-3. **Infra** — registry, object storage, DuckDB + MCP, Dagster (+ MCP):
-
-   ```bash
-   make infra-up
-   ```
-
-   Equivalent legacy build target: **`make infra-build`** → **`make images-build`**.
-
-4. **Agent + UI** (after infra is healthy):
-
-   ```bash
-   make agent-up
-   ```
-
-   Full stack: **`make stack-up`** (infra then agent).
-
-5. **Local development** (brain on host with hot reload, UI on Vite):
-
-   ```bash
-   make mcp-up    # if infra is not already up
-   make agent-dev
-   ```
-
-   With the brain on the host, **`mcp.json`** service hostnames (`duckdb-mcp`, `dagster-mcp`, `storage-mcp`) are rewritten to **`127.0.0.1`** on ports **8040**, **8043**, **8044**. See `compose.env` for commentary.
-
-### Compose-only equivalent
-
-```bash
-docker network create infra-datasynk 2>/dev/null || true
-docker volume create duckdb_data 2>/dev/null || true
-docker volume create storage 2>/dev/null || true
-
-export REGISTRY_PUBLISH_PORT=5000
-export DATASYN_IMAGE_REGISTRY=localhost:${REGISTRY_PUBLISH_PORT}
-export DATASYN_IMAGE_NAMESPACE=datasyn
-export DATASYN_IMAGE_TAG=latest
-
-docker compose -f infra/distribution/docker-compose.yaml up -d
-docker compose -f infra/object-storage/docker-compose.yaml up -d
-docker compose -f infra/duckdb/docker-compose.yaml up -d
-docker compose -f infra/dagster/docker-compose.yaml up -d
-docker compose up -d
+## Salida esperada
+- Tabla Markdown ordenada por total descendente
+- Bloque SQL ejecutado
+- Nota si faltan meses en el ejercicio consultado
 ```
 
-Start **object storage** before consumers; align **`mcp.json`** URLs with where MCP services listen (Docker service names on the shared network vs. `localhost` for hybrid dev).
+A partir de ese archivo, *"gasto por función del municipio X en 2024"* hace que el agente cargue la skill, ejecute la SQL canónica, y devuelva la respuesta en el formato pedido — sin que vos vuelvas a escribir nada de eso.
 
-### MCP-only slice
+### Lo que las skills habilitan
 
-```bash
-make mcp-up
+| Caso | Lo que escribe el analista | Lo que hace el agente |
+|---|---|---|
+| **Ingesta de dataset nuevo** | Skill + asset Dagster bronze (clonado de un ejemplo) | Materializa, valida tipos, registra |
+| **Tabla derivada (silver/gold)** | Skill con SQL canónica y columnas finales | Crea/actualiza la tabla |
+| **Análisis recurrente** | Skill con filtros, ponderaciones, breakdowns | Ejecuta on-demand, devuelve tabla + SQL |
+| **Reporte periódico** | Skill con secciones esperadas y formato | Produce Markdown, guarda en `reports/` |
+
+---
+
+## Pipelines incluidos
+
+Datasets que el sistema ya sabe ingerir (`infra/dagster/.../assets/bronze/`):
+
+| Dataset | Fuente | Granularidad |
+|---|---|---|
+| INDEC EPH (microdatos) | `usu_hogar_*.txt`, `usu_individual_*.txt` | Trimestral, append por quarter |
+| INDEC Censo 2022 | Radios censales + indicadores UCA | Por radio / departamento / provincia |
+| Elecciones 2023 — Generales | argentina.gob.ar (ZIP oficial) | Por mesa / circuito |
+| Boletín Oficial — 3ª Sección | boletinoficial.gob.ar | Daily partition (PDF + HTML + manifest) |
+| Prensa | Infobae · Clarín · La Nación | Daily partition por sección |
+
+Cada pipeline es un asset Dagster reproducible. Para sumar el tuyo: clonás uno y adaptás la lectura. La lógica de análisis se documenta como skill, no como notebook personal.
+
+---
+
+## Soberanía
+
+| Pieza | Dónde corre |
+|---|---|
+| Datos crudos y warehouse | `data-local/` + MinIO + DuckDB **en tu host** |
+| Pipelines, brain, UI | Containers en tu red `infra-datasynk` |
+| LLM | A elección: local (Ollama/vLLM vía LiteLLM), OpenRouter o Gemini |
+| Trazas | Langfuse self-hosted (opcional) |
+
+Único egress posible: la llamada al modelo. Apuntando LiteLLM a un modelo on-prem el sistema queda offline. Lo que viaja al modelo son resúmenes, SQL y nombres de columnas — **no archivos**.
+
+---
+
+## Bajo el capó (resumen)
+
+![Arquitectura](docs/diagrams/architecture.svg)
+
+> Editable: [`docs/diagrams/architecture.drawio`](docs/diagrams/architecture.drawio) · [PNG](docs/diagrams/architecture.png) · Detalle de despliegue: [`INSTALL.md`](INSTALL.md).
+
+Cuatro piezas, cada una estándar y reemplazable:
+
+- **DuckDB** como warehouse local (`bronze` / `silver` / `gold`).
+- **MinIO** como zona de aterrizaje S3-compatible.
+- **Dagster** para los pipelines de ingesta (assets reproducibles, partitions, schedules).
+- **Servidores MCP HTTP** (`duckdb-mcp`, `storage-mcp`, `dagster-mcp`) que exponen un contrato chico y auditable al agente.
+
+Sobre eso, un brain (FastAPI + Deep Agents + LangChain) y una UI (React/Vite). La elección del LLM es del operador. Reglas duras del agente y antipatrones, en [`AGENTS.md`](AGENTS.md).
+
+---
+
+## Estado
+
+| Componente | Estado |
+|---|---|
+| Brain + UI | Operativo |
+| MCP servers (`duckdb`, `storage`, `dagster`) | Operativos |
+| Pipelines bronze (INDEC, BOA, elecciones, prensa) | Operativos |
+| Capas `silver` / `gold` | Mínimas (sólo `gold.indec_eph_*`) |
+| Catálogo de metadatos | Opcional, contrato definido |
+| Iceberg REST | Implementado, opt-in |
+| Licencia opensource | A definir (MIT / Apache-2.0 sugeridos) |
+
+Roadmap corto: ampliar `silver`/`gold`, sumar pipelines provinciales / municipales / sectoriales, formalizar gobernanza opensource.
+
+---
+
+## Comunidad
+
+La forma más alta de leverage es **escribir skills**: cada skill convierte conocimiento de dominio en una capacidad nueva del sistema, accesible para todos los demás analistas que lo desplieguen.
+
+Aportes esperados, en orden de menor a mayor esfuerzo técnico:
+
+- **Skill `SKILL.md`** sobre un dataset que ya está en el warehouse — Markdown puro.
+- **Skill + asset Dagster bronze** para sumar un dataset público nuevo (provincia, municipio, organismo, sectorial).
+- **Reportar discrepancias** entre lo que responde el agente y un análisis manual — son los bugs más valiosos del proyecto.
+- **Componentes reutilizables** (`utils/`, `components/`) cuando una transformación se repite en varios assets.
+
+Issues y PRs bienvenidos. PRs chicos, una pieza por PR.
+
+---
+
+## Estructura
+
+```
+agent/                Brain (FastAPI + Deep Agents + clientes MCP)
+ui/                   Frontend Vite/React
+skills/               Playbooks SKILL.md
+infra/                MinIO · DuckDB · Dagster · MCP servers · registry
+data-local/           Mirror local para DuckDB (gitignored)
+docs/diagrams/        Diagramas .drawio + SVG/PNG
+mcp.json              URLs MCP que carga el brain
+AGENTS.md             Reglas autoritativas del agente
+INSTALL.md            Despliegue, troubleshooting, backends de modelo
+Makefile              Targets de operación (make help)
 ```
 
-Useful when you want tool endpoints for `make agent-dev` without the full root compose.
+---
 
-### DuckDB Local UI (optional)
+## Referencias
 
-The warehouse file allows **one writer at a time**. The Local UI holds a long-lived lock. It is behind compose **profile `ui`**:
+- [`AGENTS.md`](AGENTS.md) — contrato del agente y reglas operativas.
+- [`INSTALL.md`](INSTALL.md) — despliegue completo, backends de modelo, troubleshooting.
+- [`docs/diagrams/`](docs/diagrams/) — `.drawio` editables (arquitectura, flujo de datos, ciclo de pregunta).
+- [`Makefile`](Makefile) — `make help` para operar el stack.
+- [`skills/`](skills/) — playbooks ejecutables.
+- [`mcp.json`](mcp.json) — URLs MCP.
 
-```bash
-make infra-duckdb-ui-up
-```
+Inspiraciones explícitas:
 
-Stop it before heavy MCP ingest if you see lock errors: `make infra-duckdb-ui-down`.
+- Dagster — [AI-Driven Data Engineering](https://dagster.io/blog/announcing-ai-driven-data-engineering) (marzo 2026).
+- DuckDB — motor analítico embebido, columnar, sobre archivos locales.
+- Model Context Protocol — contrato chico y verificable entre agente y herramientas.
 
 ---
 
-## Configuration
-
-| Area | What to configure |
-|------|---------------------|
-| **Per-stack env** | Copy `*.env.example` → `.env` under `infra/object-storage/`, `infra/dagster/`, `infra/duckdb/`, etc. |
-| **DuckDB MCP** | Optional `infra/duckdb/mcp/.env` (see `infra/duckdb/mcp/.env.example`) |
-| **Dagster user code** | Built as compose service **`dagster_user_code`** (`make images-build` / `make dagster-user-code-image`); image ref **`$DATASYN_IMAGE_REGISTRY/$DATASYN_IMAGE_NAMESPACE/dagster_user_code_image:$DATASYN_IMAGE_TAG`** (defaults in root **`Makefile`**) |
-| **Brain** | Root `.env` + `compose.env`; **`mcp.json`** at repo root sets MCP base URLs |
-| **Catalog** | Set `DATABASE_URL` or `CATALOG_DATABASE_URL` on **dagster-mcp** for `dagster_catalog_*` tools; see `skills/catalog-sql/` |
-
----
-
-## Security and `.gitignore`
-
-**Do not commit:**
-
-- `.env` / `.env.*` (except allowed `*.env.example` patterns)
-- Private keys: `*.pem`, `*.p12`, `*.pfx`, SSH key material
-- Local data and DB files: `data-local/`, `*.duckdb`, etc.
-
-Nested stacks may add rules; **`infra/dagster/mcp/dagster-code/projects/.gitignore`** covers generated paths under projects.
-
-If a private key was ever committed, **rotate** it and scrub history (`git filter-repo`, BFG) on shared remotes.
-
----
-
-## Operations and troubleshooting
-
-| Symptom | Likely cause | Mitigation |
-|---------|----------------|------------|
-| DuckDB **lock** / IO errors from MCP | Another process has the DB file open (often **DuckDB UI** profile) | `make infra-duckdb-ui-down` or avoid `--profile ui` during ingest |
-| **InvalidAccessKeyId** from storage MCP | Wrong MinIO host or credentials | Use the application MinIO endpoint from **`infra/object-storage`** docs; match **`MINIO_ROOT_*`** in `.env` |
-| Agent cannot reach MCP | `mcp.json` URLs / firewall | On host dev, use `make mcp-up` and ports 8040/8043/8044; in Docker, use service names on **`infra-datasynk`** |
-| Dagster code not updating | Stale user-code image | `make dagster-user-code-image` or `docker compose -f infra/dagster/docker-compose.yaml build dagster_user_code` then recreate **`dagster_user_code`** |
-
-Use **`make help`** for all targets; warehouse and tool naming details live in **`AGENTS.md`**.
-
----
-
-## Further reading
-
-- **[`AGENTS.md`](AGENTS.md)** — MCP tool names, DuckDB ingest rules, catalog-first workflow, forbidden patterns
-- **[`Makefile`](Makefile)** — `make help` for orchestration commands
-- **[`skills/`](skills/)** — Ingest and analysis playbooks
+> Si algo del README no coincide con el código, abrí un issue. Las discrepancias documentales son tan importantes como los bugs de código.

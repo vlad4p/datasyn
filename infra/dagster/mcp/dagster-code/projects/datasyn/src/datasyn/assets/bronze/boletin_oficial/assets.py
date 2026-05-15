@@ -1,7 +1,5 @@
 """Boletín Oficial — tercera sección (contrataciones): portada → MinIO (PDF/HTML/manifest) → bronze."""
 
-from __future__ import annotations
-
 import json
 import os
 import time

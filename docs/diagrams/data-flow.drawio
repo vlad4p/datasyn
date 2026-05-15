@@ -1,0 +1,89 @@
+<mxfile host="app.diagrams.net" modified="2026-05-15T03:30:00.000Z" agent="DataSyn docs" version="24.7.5">
+  <diagram name="Flujo de datos" id="datasyn-data-flow">
+    <mxGraphModel dx="1422" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Stages -->
+        <mxCell id="s_source" value="Fuente pública&#10;(URL / API / scrape)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=center;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="280" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="s_landing" value="Landing&#10;MinIO bucket data-local/&#10;data-local/ (mirror)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#dae8fc;strokeColor=#6c8ebf;align=center;" vertex="1" parent="1">
+          <mxGeometry x="280" y="270" width="200" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="s_bronze" value="bronze.&lt;tabla&gt;&#10;DuckDB · tipos crudos · 1:1 con la fuente" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fde9d9;strokeColor=#cc8800;align=center;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="540" y="280" width="220" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="s_silver" value="silver.&lt;tabla&gt;&#10;tipos limpios, llaves, dedupe" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dddddd;strokeColor=#666666;align=center;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="820" y="280" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="s_gold" value="gold.&lt;tabla&gt; · marts&#10;granos analíticos, ponderaciones, joins" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#bf8f00;align=center;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="280" width="240" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Dagster lane -->
+        <mxCell id="dg_label" value="Dagster — assets versionados, partitions, schedules, sensors" style="text;html=1;align=center;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="280" y="180" width="1040" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="dg_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#82b366;dashed=1;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="270" y="220" width="1060" height="170" as="geometry" />
+        </mxCell>
+
+        <!-- Skills + Catalog -->
+        <mxCell id="sk" value="Skills (SKILL.md)&#10;cómo el agente analiza este dataset" style="shape=document;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=center;" vertex="1" parent="1">
+          <mxGeometry x="820" y="500" width="240" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="cat" value="Catálogo (opcional)&#10;descripciones, columnas, lineage, tags" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#e1f5fe;strokeColor=#6c8ebf;align=center;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1100" y="490" width="240" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Agent -->
+        <mxCell id="agent" value="Agente (brain)&#10;consume vía duckdb-mcp / dagster-mcp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b6d7a8;strokeColor=#82b366;align=center;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="540" y="500" width="240" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Edges main flow -->
+        <mxCell id="ef1" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="s_source" target="s_landing">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ef2" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="s_landing" target="s_bronze">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ef3" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="s_bronze" target="s_silver">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ef4" style="endArrow=block;html=1;rounded=0;strokeWidth=2;" edge="1" parent="1" source="s_silver" target="s_gold">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Agent reads gold/silver -->
+        <mxCell id="ea1" style="endArrow=block;html=1;rounded=0;strokeColor=#82b366;dashed=0;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" edge="1" parent="1" source="agent" target="s_gold">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ea2" style="endArrow=block;html=1;rounded=0;strokeColor=#82b366;exitX=0.3;exitY=0;entryX=0.5;entryY=1;" edge="1" parent="1" source="agent" target="s_silver">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ea3" style="endArrow=block;html=1;rounded=0;strokeColor=#82b366;exitX=0.1;exitY=0;entryX=0.5;entryY=1;" edge="1" parent="1" source="agent" target="s_bronze">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Agent reads skills -->
+        <mxCell id="es1" style="endArrow=block;html=1;rounded=0;strokeColor=#82b366;startArrow=block;startFill=1;" edge="1" parent="1" source="agent" target="sk">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="es2" style="endArrow=block;html=1;rounded=0;strokeColor=#6c8ebf;dashed=1;" edge="1" parent="1" source="agent" target="cat">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Title -->
+        <mxCell id="title" value="Ciclo de un dataset: fuente → landing → bronze → silver → gold → consumo del agente" style="text;html=1;align=center;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="1320" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="Cada flecha es un asset Dagster reproducible; bronze→silver→gold es el patrón medallón." style="text;html=1;align=center;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="1320" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
