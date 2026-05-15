@@ -1,16 +1,23 @@
-# Dagster docker-compose deploy. Run from: live/mvp/dagster
+# Dagster docker-compose deploy. This Makefile lives in ``infra/dagster``;
+# ``build-datasyn-image`` resolves paths from here so ``make -f infra/dagster/Makefile …``
+# works from the repo root.
 #
 # Requires: docker + docker compose plugin on the host.
 
 COMPOSE  ?= docker compose
 DATA_DIR ?= /tmp/dagster_data
+# Code-location image (``dagster_user_code`` in docker-compose.yaml).
+DATASYN_IMAGE ?= dagster_user_code_image
+DATASYN_IMAGE_TAG ?= latest
+_DAGSTER_INFRA_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+DATASYN_DOCKER_CONTEXT ?= $(_DAGSTER_INFRA_DIR)/mcp/dagster-code/projects/datasyn
 PYTHON   ?= python3
 VENV     ?= .venv
 PIP      ?= $(VENV)/bin/pip
 PYTEST   ?= $(VENV)/bin/pytest
 RUFF     ?= $(VENV)/bin/ruff
 
-.PHONY: help up down restart logs ps build pull clean psql shell-webserver \
+.PHONY: help up down restart logs logs-mcp ps build build-datasyn-image pull clean psql shell-webserver \
         seed-data view-output clean-data \
         venv install test lint
 
@@ -20,8 +27,10 @@ help:
 	@echo "  down             Stop and remove containers and network (keeps DB volume)"
 	@echo "  restart          Restart all services"
 	@echo "  logs             Tail logs for all services"
+	@echo "  logs-mcp         Tail logs for dagster-mcp only (HTTP MCP on 8043)"
 	@echo "  ps               List services"
-	@echo "  build            Build code-location and Dagster runtime images"
+	@echo "  build            Build code-location and Dagster runtime images (full compose)"
+	@echo "  build-datasyn-image  docker build only $(DATASYN_DOCKER_CONTEXT) → $(DATASYN_IMAGE):$(DATASYN_IMAGE_TAG)"
 	@echo "  pull             Pull base images"
 	@echo "  clean            Down + remove DB volume (DESTRUCTIVE)"
 	@echo "  psql             Open a psql shell against the Dagster Postgres"
@@ -50,11 +59,17 @@ restart:
 logs:
 	$(COMPOSE) logs -f --tail=200
 
+logs-mcp:
+	$(COMPOSE) logs -f --tail=200 dagster-mcp
+
 ps:
 	$(COMPOSE) ps
 
 build:
 	$(COMPOSE) build
+
+build-datasyn-image:
+	docker build -t "$(DATASYN_IMAGE):$(DATASYN_IMAGE_TAG)" "$(DATASYN_DOCKER_CONTEXT)"
 
 pull:
 	$(COMPOSE) pull

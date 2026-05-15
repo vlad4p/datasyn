@@ -1,0 +1,146 @@
+<mxfile host="app.diagrams.net" modified="2026-05-15T03:30:00.000Z" agent="DataSyn docs" version="24.7.5">
+  <diagram name="Arquitectura" id="datasyn-architecture">
+    <mxGraphModel dx="1422" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ===== Lane: Fuentes públicas ===== -->
+        <mxCell id="lane_sources" value="Fuentes públicas" style="swimlane;fontStyle=1;fontSize=14;startSize=30;fillColor=#fff2cc;strokeColor=#d6b656;align=center;horizontal=1;swimlaneFillColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="240" height="780" as="geometry" />
+        </mxCell>
+        <mxCell id="src_indec" value="INDEC&#10;(EPH, Censo)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;" vertex="1" parent="lane_sources">
+          <mxGeometry x="40" y="60" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="src_boa" value="Boletín Oficial&#10;(3ª sección)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;" vertex="1" parent="lane_sources">
+          <mxGeometry x="40" y="150" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="src_elec" value="Elecciones&#10;argentina.gob.ar" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;" vertex="1" parent="lane_sources">
+          <mxGeometry x="40" y="240" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="src_press" value="Prensa&#10;(Infobae, Clarín, La Nación)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;" vertex="1" parent="lane_sources">
+          <mxGeometry x="40" y="330" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="src_own" value="Tus propios datasets&#10;(provincia, municipio…)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#d6b656;dashed=1;" vertex="1" parent="lane_sources">
+          <mxGeometry x="40" y="420" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ===== Lane: Plataforma de datos (tu infra) ===== -->
+        <mxCell id="lane_platform" value="Plataforma de datos — tu infra" style="swimlane;fontStyle=1;fontSize=14;startSize=30;fillColor=#dae8fc;strokeColor=#6c8ebf;align=center;horizontal=1;swimlaneFillColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="320" y="40" width="500" height="780" as="geometry" />
+        </mxCell>
+        <mxCell id="minio" value="MinIO&#10;(object storage / landing)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="lane_platform">
+          <mxGeometry x="40" y="60" width="180" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="datalocal" value="data-local/&#10;(mirror DuckDB)" style="shape=note;whiteSpace=wrap;html=1;fillColor=#e1f5fe;strokeColor=#6c8ebf;" vertex="1" parent="lane_platform">
+          <mxGeometry x="280" y="60" width="180" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="dagster" value="Dagster&#10;assets · jobs · schedules · sensors&#10;(webserver + daemon + Postgres)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3;strokeColor=#6c8ebf;align=center;" vertex="1" parent="lane_platform">
+          <mxGeometry x="40" y="200" width="420" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="duckdb" value="DuckDB&#10;warehouse.duckdb&#10;bronze · silver · gold" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="lane_platform">
+          <mxGeometry x="40" y="320" width="200" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="iceberg" value="Iceberg REST&#10;(opcional)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#e1f5fe;strokeColor=#6c8ebf;dashed=1;" vertex="1" parent="lane_platform">
+          <mxGeometry x="280" y="320" width="180" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="catalog" value="Catálogo de metadatos&#10;Postgres (opcional)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#e1f5fe;strokeColor=#6c8ebf;dashed=1;" vertex="1" parent="lane_platform">
+          <mxGeometry x="40" y="500" width="420" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ===== Lane: Capa de IA (tu infra) ===== -->
+        <mxCell id="lane_ai" value="Capa de IA — tu infra" style="swimlane;fontStyle=1;fontSize=14;startSize=30;fillColor=#d5e8d4;strokeColor=#82b366;align=center;horizontal=1;swimlaneFillColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="860" y="40" width="380" height="780" as="geometry" />
+        </mxCell>
+        <mxCell id="ui" value="UI (React/Vite)&#10;Markdown · Plotly · Vega · Mermaid" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=center;" vertex="1" parent="lane_ai">
+          <mxGeometry x="40" y="60" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="brain" value="Brain&#10;FastAPI + Deep Agents + LangChain" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b6d7a8;strokeColor=#82b366;align=center;fontStyle=1;" vertex="1" parent="lane_ai">
+          <mxGeometry x="40" y="170" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="mcp" value="Servidores MCP HTTP&#10;duckdb-mcp · storage-mcp · dagster-mcp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=center;" vertex="1" parent="lane_ai">
+          <mxGeometry x="40" y="280" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="skills" value="Skills (SKILL.md)&#10;playbooks versionados" style="shape=document;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=center;" vertex="1" parent="lane_ai">
+          <mxGeometry x="40" y="390" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="langfuse" value="Langfuse&#10;trazas (opcional, self-hosted)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#82b366;dashed=1;align=center;" vertex="1" parent="lane_ai">
+          <mxGeometry x="40" y="510" width="300" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ===== LLM externo ===== -->
+        <mxCell id="llm" value="LLM&#10;local (Ollama/vLLM vía LiteLLM)&#10;o API (OpenRouter / Gemini)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f4cccc;strokeColor=#cc0000;align=center;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="940" y="700" width="300" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="egress_label" value="único egress posible&#10;(controlado por LiteLLM)" style="text;html=1;align=center;fontStyle=2;fontColor=#cc0000;" vertex="1" parent="1">
+          <mxGeometry x="700" y="740" width="220" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ===== Edges ===== -->
+        <mxCell id="e1" style="endArrow=block;html=1;rounded=0;exitX=1;exitY=0.5;entryX=0;entryY=0.2;strokeColor=#666666;" edge="1" parent="1" source="src_indec" target="dagster">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="endArrow=block;html=1;rounded=0;exitX=1;exitY=0.5;entryX=0;entryY=0.4;strokeColor=#666666;" edge="1" parent="1" source="src_boa" target="dagster">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" style="endArrow=block;html=1;rounded=0;exitX=1;exitY=0.5;entryX=0;entryY=0.6;strokeColor=#666666;" edge="1" parent="1" source="src_elec" target="dagster">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" style="endArrow=block;html=1;rounded=0;exitX=1;exitY=0.5;entryX=0;entryY=0.8;strokeColor=#666666;" edge="1" parent="1" source="src_press" target="dagster">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" style="endArrow=block;html=1;rounded=0;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.9;strokeColor=#666666;" edge="1" parent="1" source="src_own" target="dagster">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_dg_minio" style="endArrow=block;html=1;rounded=0;startArrow=block;startFill=1;strokeColor=#6c8ebf;" edge="1" parent="1" source="dagster" target="minio">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dg_dl" style="endArrow=block;html=1;rounded=0;startArrow=block;startFill=1;strokeColor=#6c8ebf;" edge="1" parent="1" source="dagster" target="datalocal">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dg_dd" style="endArrow=block;html=1;rounded=0;strokeColor=#6c8ebf;" edge="1" parent="1" source="dagster" target="duckdb">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dg_ic" style="endArrow=block;html=1;rounded=0;dashed=1;strokeColor=#6c8ebf;" edge="1" parent="1" source="dagster" target="iceberg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dg_cat" style="endArrow=block;html=1;rounded=0;dashed=1;strokeColor=#6c8ebf;" edge="1" parent="1" source="dagster" target="catalog">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_ui_brain" style="endArrow=block;html=1;rounded=0;strokeColor=#82b366;" edge="1" parent="1" source="ui" target="brain">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_brain_mcp" style="endArrow=block;html=1;rounded=0;strokeColor=#82b366;" edge="1" parent="1" source="brain" target="mcp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_brain_sk" style="endArrow=block;html=1;rounded=0;strokeColor=#82b366;" edge="1" parent="1" source="brain" target="skills">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_brain_lf" style="endArrow=block;html=1;rounded=0;strokeColor=#82b366;dashed=1;" edge="1" parent="1" source="brain" target="langfuse">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- MCP → plataforma -->
+        <mxCell id="e_mcp_dd" style="endArrow=block;html=1;rounded=0;exitX=0;exitY=0.3;entryX=1;entryY=0.4;strokeColor=#6c8ebf;" edge="1" parent="1" source="mcp" target="duckdb">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mcp_minio" style="endArrow=block;html=1;rounded=0;exitX=0;exitY=0.5;entryX=1;entryY=0.5;strokeColor=#6c8ebf;" edge="1" parent="1" source="mcp" target="minio">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mcp_dg" style="endArrow=block;html=1;rounded=0;exitX=0;exitY=0.7;entryX=1;entryY=0.5;strokeColor=#6c8ebf;" edge="1" parent="1" source="mcp" target="dagster">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mcp_cat" style="endArrow=block;html=1;rounded=0;exitX=0;exitY=0.9;entryX=1;entryY=0.5;strokeColor=#6c8ebf;dashed=1;" edge="1" parent="1" source="mcp" target="catalog">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Brain → LLM (egress) -->
+        <mxCell id="e_brain_llm" style="endArrow=block;html=1;rounded=0;strokeColor=#cc0000;strokeWidth=2;dashed=1;dashPattern=8 4;" edge="1" parent="1" source="brain" target="llm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

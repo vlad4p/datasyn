@@ -9,6 +9,11 @@
       "type": "remote",
       "url": "http://10.13.10.119:8044/mcp",
       "enabled": true
+    },
+    "dagster": {
+      "type": "remote",
+      "url": "http://10.13.10.119:8043/mcp",
+      "enabled": true
     }
   }
 }

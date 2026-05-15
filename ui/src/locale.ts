@@ -25,8 +25,6 @@ type Strings = {
   tagline: string;
   /** Workspace tab: primary assistant view */
   navChat: string;
-  /** Workspace tab: Jupyter Lab */
-  navNotebook: string;
   /** Reset conversation and stored history */
   newChat: string;
   /** `aria-label` for Chat / Dashboard tab bar */
@@ -42,8 +40,6 @@ type Strings = {
   streamThinkingTitle: string;
   /** Quick prompts when locale matches */
   suggestions: string[];
-  notebookOpenExternal: string;
-  notebookIframeTitle: string;
   dashboard: {
     title: string;
     refresh: string;
@@ -79,7 +75,6 @@ type Strings = {
 const EN: Strings = {
   tagline: "Warehouse agent · health",
   navChat: "Chat",
-  navNotebook: "Notebook",
   newChat: "New chat",
   workspaceNavAria: "Main workspace",
   chatEmpty: `Ask anything. Replies can include **Markdown tables**, **Mermaid** diagrams (fenced \`mermaid\`), **Vega-Lite** charts (fenced \`vega-lite\` JSON), **Plotly** interactive charts (fenced \`plotly\` JSON with \`data\` array), and images (\`https://\`, \`data:image/…\`, or files under \`/project/reports/…\` served by the API).`,
@@ -95,8 +90,6 @@ const EN: Strings = {
     "Run SELECT * FROM example_sales LIMIT 10 and format results as a markdown table.",
     "Reply with a Mermaid flowchart in a fenced mermaid code block (ingest → warehouse → report).",
   ],
-  notebookOpenExternal: "Open Jupyter in new tab",
-  notebookIframeTitle: "Jupyter notebook",
   dashboard: {
     title: "Dashboard",
     refresh: "Refresh",
@@ -132,7 +125,6 @@ const EN: Strings = {
 const ES: Strings = {
   tagline: "Agente de almacén · estado",
   navChat: "Chat",
-  navNotebook: "Notebook",
   newChat: "Nuevo chat",
   workspaceNavAria: "Área principal",
   chatEmpty: `Pregunta lo que quieras. Las respuestas pueden incluir **tablas Markdown**, diagramas **Mermaid** (bloque \`mermaid\`), gráficos **Vega-Lite** (JSON en bloque \`vega-lite\`), gráficos interactivos **Plotly** (JSON en bloque \`plotly\` con arreglo \`data\`) e imágenes (\`https://\`, \`data:image/…\` o archivos bajo \`/project/reports/…\` servidos por la API).`,
@@ -148,8 +140,6 @@ const ES: Strings = {
     "Ejecuta SELECT * FROM example_sales LIMIT 10 y formatea el resultado como tabla Markdown.",
     "Responde con un diagrama Mermaid en un bloque de código mermaid (ingest → almacén → reporte).",
   ],
-  notebookOpenExternal: "Abrir Jupyter en nueva pestaña",
-  notebookIframeTitle: "Jupyter notebook",
   dashboard: {
     title: "Panel",
     refresh: "Actualizar",

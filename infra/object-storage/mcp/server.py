@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import logging
+import mimetypes
 import os
 import sys
 import time
@@ -39,13 +42,20 @@ MINIO_SECURE = os.environ.get("MINIO_SECURE", "false").lower() in {"1", "true", 
 MINIO_DEFAULT_BUCKET = os.environ.get("MINIO_DEFAULT_BUCKET", "data-local")
 MAX_TEXT_BYTES = max(1, int(os.environ.get("MAX_TEXT_BYTES", "5242880")))
 LIST_PAGE_SIZE = max(1, int(os.environ.get("LIST_PAGE_SIZE", "1000")))
+# Absolute path prefix for ``put_object_from_path`` (host bind-mount in compose).
+STORAGE_MCP_READ_ROOT = os.environ.get("STORAGE_MCP_READ_ROOT", "/data-local")
+# Max decoded size for ``put_object_base64`` (PDFs, images, etc. sent over MCP as base64).
+MAX_PUT_B64_DECODED_BYTES = max(1, int(os.environ.get("STORAGE_MCP_MAX_PUT_B64_BYTES", str(50 * 1024 * 1024))))
 
 mcp = FastMCP(
     name="storage-mcp",
     instructions=(
         "Datacyber object storage MCP for MinIO/S3. Tools: `list_buckets`, "
-        "`list_objects`, `get_object_text`, `put_object_text`, and `delete_object`. "
-        "Default bucket is `data-local` unless another bucket is provided."
+        "`list_objects`, `get_object_text`, `put_object_text`, `put_object_base64`, "
+        "`put_object_from_path`, and `delete_object`. Default bucket is `data-local` "
+        "unless another bucket is provided. Use `put_object_base64` for binary uploads "
+        "(PDF, images) from the client; use `put_object_from_path` for large files on the "
+        "server mount under STORAGE_MCP_READ_ROOT."
     ),
 )
 
@@ -72,6 +82,27 @@ def _resolve_bucket(bucket: str | None) -> str:
 
 def _safe_error(exc: Exception) -> str:
     return f"{type(exc).__name__}: {exc}"
+
+
+def _resolve_under_read_root(source_path: str) -> Path:
+    """Return a resolved file path that must live under ``STORAGE_MCP_READ_ROOT``."""
+    raw = (source_path or "").strip()
+    if not raw:
+        raise ValueError("source_path is required")
+    candidate = Path(raw).expanduser()
+    if not candidate.is_absolute():
+        candidate = Path(STORAGE_MCP_READ_ROOT) / candidate
+    resolved = candidate.resolve()
+    root = Path(STORAGE_MCP_READ_ROOT).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(
+            f"path {resolved} escapes allowed root {root} (STORAGE_MCP_READ_ROOT)"
+        ) from exc
+    if not resolved.is_file():
+        raise ValueError(f"not a file or missing: {resolved}")
+    return resolved
 
 
 @mcp.tool()
@@ -182,7 +213,10 @@ def put_object_text(
     content_type: str = "text/plain; charset=utf-8",
     create_bucket_if_missing: bool = True,
 ) -> str:
-    """Write text content to an object key."""
+    """Write UTF-8 text only. Not for arbitrary binary (PDF/images): bytes are not round-tripped
+    through a Unicode string. Use ``put_object_base64`` (client sends base64) or
+    ``put_object_from_path`` (file already on the MCP host under ``STORAGE_MCP_READ_ROOT``).
+    """
     resolved_bucket = _resolve_bucket(bucket)
     object_key = (key or "").strip()
     if not object_key:
@@ -216,6 +250,148 @@ def put_object_text(
     except (BotoCoreError, ClientError) as exc:
         log.exception("tool put_object_text failed")
         return _json({"ok": False, "bucket": resolved_bucket, "key": object_key, "error": _safe_error(exc)})
+
+
+@mcp.tool()
+def put_object_base64(
+    key: str,
+    data_base64: str,
+    bucket: str = "",
+    content_type: str = "",
+    create_bucket_if_missing: bool = True,
+) -> str:
+    """Write binary content to an object key (standard base64; PDF, images, etc.).
+
+    Decoded payload must not exceed ``STORAGE_MCP_MAX_PUT_B64_BYTES`` (default 50 MiB).
+    For larger objects, use ``put_object_from_path`` when the file is on the MCP host.
+    """
+    resolved_bucket = _resolve_bucket(bucket)
+    object_key = (key or "").strip()
+    if not object_key:
+        return _json({"ok": False, "error": "ValueError: key is required"})
+    raw_b64 = (data_base64 or "").strip()
+    if not raw_b64:
+        return _json({"ok": False, "error": "ValueError: data_base64 is required"})
+    t0 = time.perf_counter()
+    client = _s3()
+    try:
+        body = base64.b64decode(raw_b64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        return _json({"ok": False, "bucket": resolved_bucket, "key": object_key, "error": _safe_error(exc)})
+    if len(body) > MAX_PUT_B64_DECODED_BYTES:
+        return _json(
+            {
+                "ok": False,
+                "bucket": resolved_bucket,
+                "key": object_key,
+                "error": (
+                    f"ValueError: decoded size {len(body)} exceeds limit "
+                    f"{MAX_PUT_B64_DECODED_BYTES} (set STORAGE_MCP_MAX_PUT_B64_BYTES or use "
+                    "put_object_from_path)"
+                ),
+            }
+        )
+    ct = (content_type or "").strip()
+    if not ct:
+        guessed, _ = mimetypes.guess_type(object_key)
+        ct = guessed or "application/octet-stream"
+    log.info(
+        "tool put_object_base64 bucket=%r key=%r bytes=%s",
+        resolved_bucket,
+        object_key,
+        len(body),
+    )
+    try:
+        if create_bucket_if_missing:
+            try:
+                client.head_bucket(Bucket=resolved_bucket)
+            except ClientError:
+                client.create_bucket(Bucket=resolved_bucket)
+        client.put_object(
+            Bucket=resolved_bucket,
+            Key=object_key,
+            Body=body,
+            ContentType=ct,
+        )
+        log.info("tool put_object_base64 ok ms=%.2f", (time.perf_counter() - t0) * 1000)
+        return _json(
+            {
+                "ok": True,
+                "bucket": resolved_bucket,
+                "key": object_key,
+                "bytes_written": len(body),
+                "content_type": ct,
+            }
+        )
+    except (BotoCoreError, ClientError) as exc:
+        log.exception("tool put_object_base64 failed")
+        return _json({"ok": False, "bucket": resolved_bucket, "key": object_key, "error": _safe_error(exc)})
+
+
+@mcp.tool()
+def put_object_from_path(
+    source_path: str,
+    key: str,
+    bucket: str = "",
+    content_type: str = "",
+    create_bucket_if_missing: bool = True,
+) -> str:
+    """Upload a file from disk (under ``STORAGE_MCP_READ_ROOT``) to an object key.
+
+    Uses boto3 ``upload_file`` so large objects use multipart uploads. Intended for
+    bind-mounting the repo ``data-local`` tree at ``/data-local`` in ``storage-mcp``.
+    """
+    resolved_bucket = _resolve_bucket(bucket)
+    object_key = (key or "").strip()
+    if not object_key:
+        return _json({"ok": False, "error": "ValueError: key is required"})
+    log.info(
+        "tool put_object_from_path bucket=%r key=%r source=%r",
+        resolved_bucket,
+        object_key,
+        source_path,
+    )
+    t0 = time.perf_counter()
+    client = _s3()
+    try:
+        src = _resolve_under_read_root(source_path)
+        ct = (content_type or "").strip()
+        if not ct:
+            guessed, _ = mimetypes.guess_type(src.name)
+            ct = guessed or "application/octet-stream"
+        if create_bucket_if_missing:
+            try:
+                client.head_bucket(Bucket=resolved_bucket)
+            except ClientError:
+                client.create_bucket(Bucket=resolved_bucket)
+        extra = {"ContentType": ct} if ct else {}
+        client.upload_file(str(src), resolved_bucket, object_key, ExtraArgs=extra)
+        size = src.stat().st_size
+        log.info(
+            "tool put_object_from_path ok bytes=%s ms=%.2f",
+            size,
+            (time.perf_counter() - t0) * 1000,
+        )
+        return _json(
+            {
+                "ok": True,
+                "bucket": resolved_bucket,
+                "key": object_key,
+                "source_path": str(src),
+                "bytes_written": size,
+                "content_type": ct,
+            }
+        )
+    except (OSError, ValueError) as exc:
+        log.exception("tool put_object_from_path validation failed")
+        return _json(
+            {"ok": False, "bucket": resolved_bucket, "key": object_key, "error": _safe_error(exc)}
+        )
+    except (BotoCoreError, ClientError) as exc:
+        log.exception("tool put_object_from_path failed")
+        return _json(
+            {"ok": False, "bucket": resolved_bucket, "key": object_key, "error": _safe_error(exc)}
+        )
 
 
 @mcp.tool()

@@ -50,19 +50,9 @@ run_launcher:
       - MINIO_SECRET_KEY
       - MINIO_BUCKET
       - MINIO_SECURE
-      # INDEC EPH trimestral landing root (see ``data_local_root()`` and ``discover_txt_paths``).
+      # Landing / ``read_csv_auto`` paths under the ``data-local`` mount.
       - DATA_LOCAL_ROOT
-      # ``indec_eph_variables`` (single LiteLLM call, whole PDF inline → bronze.indec_eph_variables).
-      # Do not list GOOGLE_API_KEY / GEMINI_API_KEY here unless every daemon has them set;
-      # assets use LITELLM_KEY + LITELLM_PROXY_BASE in Docker runs when using the proxy.
-      - INDEC_EPH_VARIABLES_LITELLM_MODEL
-      - INDEC_EPH_VARIABLES_LITELLM_KEY
-      - INDEC_EPH_VARIABLES_LITELLM_HTTP_TIMEOUT
-      - INDEC_EPH_VARIABLES_LITELLM_MAX_TOKENS
-      - INDEC_EPH_VARIABLES_MAX_RETRIES
-      - INDEC_EPH_VARIABLES_QUARTER
-      - INDEC_EPH_VARIABLES_URL
-      # DuckDB → Iceberg REST (``indec_usu_hogar`` / ``indec_usu_individual`` when endpoint set).
+      # DuckDB → Iceberg REST (optional).
       - ICEBERG_REST_ENDPOINT
       - ICEBERG_REST_TOKEN
       - ICEBERG_REST_WAREHOUSE
@@ -73,7 +63,7 @@ run_launcher:
       - ICEBERG_REST_OAUTH_URI
     network: infra-datasynk
     container_kwargs:
-      # Per-run job containers (assets). Tune if LiteLLM/PDF steps OOM.
+      # Per-run job containers (assets). Tune if remote LLM or large I/O steps OOM.
       # https://docker-py.readthedocs.io/en/stable/containers.html — passed to ``containers.create``.
       mem_limit: "8g"
       nano_cpus: 4000000000
@@ -88,12 +78,12 @@ run_launcher:
         # Docker Desktop). Override by editing this file if you need a different
         # location; container_kwargs.volumes does not support env interpolation.
         - /tmp/dagster_data:/opt/dagster/data
-        # Same warehouse and INDEC landing tree as the ``dagster_user_code`` service.
+        # Same warehouse and ``/data-local`` host tree as ``dagster_user_code``.
         # ``container_kwargs.volumes`` does not support env interpolation, so the
         # ``data-local`` host path is hard-coded; align with the Datacyber repo or
         # use a symlink if your tree differs.
         - duckdb_data:/data
-        # RW: ``indec_eph_trimestral_files`` writes under ``landing/indec/eph/<year>/Q<n>/``.
+        # RW under ``/data-local`` (e.g. ``landing/...``) for assets that sync to MinIO.
         - /Users/vlad/project/datacyber/data-local:/data-local
 
 run_storage:

@@ -1,0 +1,41 @@
+{
+  "name": "put_object_base64",
+  "description": "Upload binary object (PDF, images, etc.) using standard base64. Decoded size capped by STORAGE_MCP_MAX_PUT_B64_BYTES (default 50 MiB). For larger files use put_object_from_path on the MCP host.",
+  "arguments": {
+    "type": "object",
+    "properties": {
+      "key": {
+        "type": "string",
+        "description": "S3 object key"
+      },
+      "data_base64": {
+        "type": "string",
+        "description": "Standard base64 (RFC 4648) of file bytes"
+      },
+      "bucket": {
+        "default": "",
+        "type": "string"
+      },
+      "content_type": {
+        "default": "",
+        "type": "string"
+      },
+      "create_bucket_if_missing": {
+        "default": true,
+        "type": "boolean"
+      }
+    },
+    "required": ["key", "data_base64"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "result": {
+        "type": "string"
+      }
+    },
+    "required": ["result"],
+    "x-fastmcp-wrap-result": true
+  }
+}
