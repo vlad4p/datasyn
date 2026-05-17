@@ -6,4 +6,5 @@
 - ``clarin``: noticias Clarín (política, economía, rural) → MinIO markdown + bronze.
 - ``lanacion``: noticias La Nación + opinión/columnistas (landing + bronze).
 - ``boletin_oficial``: Boletín Oficial tercera (contrataciones) → MinIO PDF/HTML + bronze.
+- ``tn``: noticias TN (tecno, política, economía, opinión) → MinIO markdown + bronze.
 """

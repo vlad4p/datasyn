@@ -25,6 +25,7 @@ from .assets.bronze import elecciones_argentina as bronze_elecciones
 from .assets.bronze import infobae as bronze_infobae
 from .assets.bronze import clarin as bronze_clarin
 from .assets.bronze import lanacion as bronze_lanacion
+from .assets.bronze import tn as bronze_tn
 from . import jobs, schedules, sensors
 from .utils.collect import collect_named
 
@@ -44,6 +45,7 @@ defs = Definitions(
                 bronze_lanacion,
                 bronze_clarin,
                 bronze_boletin_oficial,
+                bronze_tn,
             ]
         ),
         uca_censo,
