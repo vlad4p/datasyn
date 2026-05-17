@@ -391,9 +391,9 @@ def _pipeline_snapshot() -> dict[str, Any]:
             "ui_lists_files": False,
         },
         "skills": {
-            "where": "./skills/analyze-indec-eph-hogar/SKILL.md, ./skills/analyze-news-sentimental/SKILL.md, ./skills/ingest-indec-mercadolaboral/SKILL.md, ./skills/scrape-indec-mercado-laboral/SKILL.md, ./skills/update-catalog/SKILL.md, ./skills/catalog-sql/SKILL.md",
+            "where": "./skills/analyze-indec-eph-hogar/SKILL.md, ./skills/analyze-news-sentimental/SKILL.md, ./skills/ingest-indec-mercadolaboral/SKILL.md, ./skills/ingest-scrape-news-bronze/SKILL.md, ./skills/scrape-indec-mercado-laboral/SKILL.md, ./skills/update-catalog/SKILL.md, ./skills/catalog-sql/SKILL.md",
             "how": "Deep Agents `skills=[\"/skills/\"]` on create_deep_agent — SkillsMiddleware treats this as a PARENT directory and auto-discovers every subdir with a SKILL.md "
-            "(immediate children only; e.g. analyze-indec-eph-hogar, analyze-news-sentimental, ingest-indec-mercadolaboral, scrape-indec-mercado-laboral, update-catalog, catalog-sql). "
+            "(immediate children only; e.g. analyze-indec-eph-hogar, analyze-news-sentimental, ingest-indec-mercadolaboral, ingest-scrape-news-bronze, scrape-indec-mercado-laboral, update-catalog, catalog-sql). "
             "See also `./skills/langfuse/` (Langfuse observability skill for maintainers; no SKILL.md, not agent-injected).",
         },
     }

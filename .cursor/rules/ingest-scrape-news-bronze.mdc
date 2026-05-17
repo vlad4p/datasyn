@@ -1,0 +1,20 @@
+---
+description: >-
+  Web scrape → MinIO landing → bronze DuckDB for news/opinion pipelines. Load
+  skill ingest-scrape-news-bronze when editing Dagster bronze scrape assets.
+globs: >-
+  infra/dagster/mcp/dagster-code/projects/datasyn/src/datasyn/assets/bronze/**/*
+alwaysApply: false
+---
+
+# Ingesta bronze desde scraping (noticias)
+
+Antes de crear o modificar pipelines de prensa:
+
+1. Leé **`skills/ingest-scrape-news-bronze/SKILL.md`** (o **`.cursor/.skills/ingest-scrape-news-bronze/SKILL.md`**).
+2. Cloná el patrón de **`infobae`**, **`lanacion`** o **`lanacion/opinion_*`** según una o dos tablas.
+3. En **`assets.py`** con `@asset` y `database: DuckDBResource`: **no** uses `from __future__ import annotations`.
+4. Tabla en schema **`bronze`** con metadatos: `tema`, `titulo`, `url`, `cuerpo_md`, `fecha_publicacion`, `scraped_at`, `landing_key`.
+5. Compose: una sola entrada `build:` por imagen compartida (ej. `dagster-runtime`).
+
+Validá con `SELECT COUNT(*)` tras materializar una partición.

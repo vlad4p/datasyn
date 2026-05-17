@@ -4,5 +4,6 @@
 - ``elecciones_argentina``: elecciones nacionales (landing ZIP/MinIO + tablas bronze).
 - ``infobae``: noticias Infobae (política, judiciales, economía) → MinIO markdown + bronze.
 - ``clarin``: noticias Clarín (política, economía, rural) → MinIO markdown + bronze.
+- ``lanacion``: noticias La Nación + opinión/columnistas (landing + bronze).
 - ``boletin_oficial``: Boletín Oficial tercera (contrataciones) → MinIO PDF/HTML + bronze.
 """
