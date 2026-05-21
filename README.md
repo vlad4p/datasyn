@@ -113,7 +113,7 @@ A partir de ese archivo, *"gasto por función del municipio X en 2024"* hace que
 
 ---
 
-## Pipelines incluidos
+## Algunos ejemplos
 
 Datasets que el sistema ya sabe ingerir (`infra/dagster/.../assets/bronze/`):
 

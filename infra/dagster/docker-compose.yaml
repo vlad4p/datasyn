@@ -163,10 +163,9 @@ services:
     restart: unless-stopped
 
   # dagster-daemon dequeues runs and evaluates schedules/sensors.
+  # Same image as ``dagster_webserver`` — only one ``build:`` here so ``docker compose build``
+  # does not export ``dagster-runtime`` twice in parallel (BuildKit: "already exists").
   dagster_daemon:
-    build:
-      context: ./runtime
-      dockerfile: Dockerfile
     image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/dagster-runtime:${DATASYN_IMAGE_TAG:-latest}
     entrypoint:
       - dagster-daemon

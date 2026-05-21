@@ -258,7 +258,7 @@ When the user asks to scaffold or modify a Dagster code-location project:
 
 ## Skills
 
-Skills live under **`./skills/<name>/SKILL.md`**. **`agent/graph.py`** passes **`skills=["/skills/"]`** to Deep Agents so **every** subdirectory containing a **`SKILL.md`** is discovered (today in-repo examples include **`analyze-indec-eph-hogar`**, **`analyze-indec-eph-individual`**, **`analyze-news-sentimental`**, **`extract-variables-pdf`**, **`ingest-indec-mercadolaboral`**, **`scrape-indec-mercado-laboral`**, **`update-catalog`**, **`improve-response-format`**). **`catalog-sql`** documents SQL shapes for **`dagster_catalog_execute_query`** / **`dagster_catalog_get_schema`** on **dagster-mcp**. Injected snippets may be short; when a task clearly matches a domain, call **`read_file`** with argument **`file_path`** (required by the tool) using a **virtual absolute path** under the project root, e.g. **`file_path="/skills/analyze-indec-eph-hogar/SKILL.md"`**; do not use a host path like `/Users/.../project/skills/...`. Relative repo paths like `skills/...` are normalized to the same virtual path.
+Skills live under **`./skills/<name>/SKILL.md`**. **`agent/graph.py`** passes **`skills=["/skills/"]`** to Deep Agents so **every** subdirectory containing a **`SKILL.md`** is discovered (today in-repo examples include **`analyze-indec-eph-hogar`**, **`analyze-indec-eph-individual`**, **`analyze-news-sentimental`**, **`extract-variables-pdf`**, **`ingest-indec-mercadolaboral`**, **`ingest-scrape-news-bronze`**, **`scrape-indec-mercado-laboral`**, **`update-catalog`**, **`improve-response-format`**). **`catalog-sql`** documents SQL shapes for **`dagster_catalog_execute_query`** / **`dagster_catalog_get_schema`** on **dagster-mcp**. Injected snippets may be short; when a task clearly matches a domain, call **`read_file`** with argument **`file_path`** (required by the tool) using a **virtual absolute path** under the project root, e.g. **`file_path="/skills/analyze-indec-eph-hogar/SKILL.md"`**; do not use a host path like `/Users/.../project/skills/...`. Relative repo paths like `skills/...` are normalized to the same virtual path.
 
 For **`/data-local/indec/mercado_laboral/`** EPH loads, **`ingest-indec-mercadolaboral`** overrides the generic bronze-first rule. When a task matches a domain, **follow the skill** instead of improvising.
 
@@ -284,6 +284,12 @@ Use **`./skills/analyze-indec-eph-hogar/SKILL.md`** when the user wants to **ana
 Use **`./skills/analyze-indec-eph-individual/SKILL.md`** when the user asks to analyze, summarize, profile, or tabulate the EPH **individual** table (**`gold.indec_eph_usu_individual`** / `indec_usu_individual`) or explicitly asks to map individual columns against **`bronze.indec_eph_variables`**.
 
 **Recognition to action:** If the request matches the paragraph above, **load** the skill with **`read_file(file_path="/skills/analyze-indec-eph-individual/SKILL.md")`** (unless already in context) and execute its workflow: confirm table and volume, inventory columns via `information_schema`, LEFT JOIN against `bronze.indec_eph_variables` by `campo` (filter `WHERE version_number = '3T2025'`), compute coverage metrics, and return the final result as a concise narrative plus markdown table(s).
+
+### Ingesta bronze desde scraping de noticias / opinión
+
+Use **`./skills/ingest-scrape-news-bronze/SKILL.md`** when the user asks to **scrape and ingest** a news site, add a **bronze** table for articles (Infobae / La Nación / Clarín style), create **Dagster assets** under `assets/bronze/<medio>/`, or land HTML in MinIO then DuckDB with columns **`tema`**, **`titulo`**, **`url`**, **`cuerpo_md`**, **`fecha_publicacion`**, **`scraped_at`**, **`landing_key`**.
+
+**Recognition to action:** **load** the skill with **`read_file(file_path="/skills/ingest-scrape-news-bronze/SKILL.md", limit=1000)`** (unless already in context). Follow scrape → MinIO → bronze; clone **`infobae`** or **`lanacion`** code paths. In Dagster **`assets.py`** with **`DuckDBResource`**, **never** use **`from __future__ import annotations`** (breaks resource binding). **`lib.py`** may use it. Prefer **`dagster_*`** tools for project code, not filesystem helpers on `/projects/...`.
 
 ### Infobae política — análisis sentimental y resumen (`silver.noticias_politica`)
 
