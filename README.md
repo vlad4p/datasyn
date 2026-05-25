@@ -6,6 +6,24 @@
 
 DataSyn es una sistema para **ingestar, descubrir, estructurar y analizar información** mediante agentes que operan sobre el warehouse, asegurando el correcto Gobierno de cada Agente y cada fuente de datos, disminuyendo el gap tecnico que representa mantener y procesar diversas fuentes de infomacion, tales como datos estrucutrados como no estructurados.
 
+## Como lo instalo, Como lo uso?
+
+Dependiendo si deseas analizar informacion o ingestar, limpiar las diferentes fuentes de datos. 
+
+### MCP DataSyn
+
+Principalmente, se puede configurar el servidor MCP de datasyn para poder analizar la informacion que este disponible en este repositorio publico. De esta forma, podrias utilizar tu asistente de IA que permita esta configuracion (Kilo-code, VsCode, Claude, Cursor, OpenClaw, etc..).
+
+Esta seria la forma mas directa de poder trabajar con los datos en **Datasyn**, donde tu asistente ejecuta las consultas contra la DB, por lo que debes considerar el uso de tokens de tu cuenta. 
+
+Se recomienda configurar Kilo-code sobre VsCode, donde se pueden aprovechar los modelos free.
+
+### Ingestas de datos
+
+Actualmente las ingestas de nuevas fuentes de datos se puede realizar utilizando este repositorio del proyecto. Creando un nuevo job, siento asistido por las Skills para realizar este proceso. Una ve agregada una nueva fuente de datos, se puede crear un **PR** a la branch **main** donde sera revisado por alguien interno del proyecto.
+
+Esta forma tambien es valida para crear nuevas **tablas** y **vistas** para ser consultadas posteriormente desde diferentes interfaces, gracias a **MCP**
+
 [Cómo correrlo →](INSTALL.md) · [Reglas del agente →](AGENTS.md) · [Skills →](skills/) · [Pipelines incluidos →](infra/dagster/mcp/dagster-code/projects/datasyn/src/datasyn/assets/) · [Diagramas →](docs/diagrams/)
 
 ---
@@ -15,7 +33,6 @@ DataSyn es una sistema para **ingestar, descubrir, estructurar y analizar inform
 > Un sistema que entregue **insight de la sociedad en tiempo real** para informar mejor decisiones, y que **no necesita ser privado**: las políticas públicas no necesitan información desagrupada — necesitan información comprensible y revisable.
 
 Hoy, el analisis de datos, al igual que muchas otras areas, se ha visto atravesado y potenciado por la IA, permitiendo a cientificos, analistas politicos, economistas, entre otros;  trabajar mediante *lenguajenatural* sobre la informacion, manteniendo las buenas practicas de un sistema de alto nivel.
-A diferencia de otras soluciones, donde la informacion es **subida a un tercero**: tu archivo viaja a un proveedor, la respuesta vuelve sin trazabilidad, y el conocimiento operativo queda dentro del producto.
 
 DataSyn toma una posición distinta:
 
