@@ -7,4 +7,5 @@
 - ``lanacion``: noticias La Nación + opinión/columnistas (landing + bronze).
 - ``boletin_oficial``: Boletín Oficial tercera (contrataciones) → MinIO PDF/HTML + bronze.
 - ``tn``: noticias TN (tecno, política, economía, opinión) → MinIO markdown + bronze.
+- ``oecd_ai_incidents``: OECD AIM Argentina incidents → MinIO JSON + bronze.
 """
