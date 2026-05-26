@@ -159,14 +159,27 @@ def run_dagster_container(
     return _run(args)
 
 
-def container_logs(name: str, *, tail: int = 200) -> dict[str, Any]:
-    return _run(["logs", "--tail", str(int(tail)), name], check=False)
+def container_logs(name: str, *, tail: int = 200, since: str | None = None) -> dict[str, Any]:
+    args = ["logs", "--tail", str(int(tail))]
+    if since and since.strip():
+        args.extend(["--since", since.strip()])
+    args.append(name)
+    return _run(args, check=False)
 
 
-def container_status(label_filter: str | None = None) -> dict[str, Any]:
+def container_status(
+    label_filter: str | None = None,
+    *,
+    name_filter: str | None = None,
+    all_containers: bool = True,
+) -> dict[str, Any]:
     args = ["ps", "-a", "--format", "{{json .}}"]
+    if not all_containers:
+        args = ["ps", "--format", "{{json .}}"]
     if label_filter:
         args.extend(["--filter", f"label={label_filter}"])
+    if name_filter:
+        args.extend(["--filter", f"name={name_filter}"])
     return _run(args)
 
 
@@ -201,3 +214,45 @@ def compose_force_recreate(
     args.append("--force-recreate")
     args.extend(services)
     return _run(args, cwd=cwd)
+
+
+def compose_ps(
+    *,
+    compose_file: str | Path,
+    project_name: str | None = None,
+    services: list[str] | None = None,
+    all_containers: bool = True,
+) -> dict[str, Any]:
+    """``docker compose ps --format json`` for a mounted Compose stack."""
+    cf = Path(compose_file).resolve()
+    cwd = cf.parent
+    args = ["compose"]
+    if project_name:
+        args.extend(["-p", project_name])
+    args.extend(["-f", str(cf), "ps"])
+    if all_containers:
+        args.append("--all")
+    args.extend(["--format", "json"])
+    args.extend([s for s in services or [] if s])
+    return _run(args, cwd=cwd, check=False)
+
+
+def compose_logs(
+    *,
+    compose_file: str | Path,
+    services: list[str],
+    tail: int = 200,
+    since: str | None = None,
+    project_name: str | None = None,
+) -> dict[str, Any]:
+    """``docker compose logs`` for one or more services in a mounted stack."""
+    cf = Path(compose_file).resolve()
+    cwd = cf.parent
+    args = ["compose"]
+    if project_name:
+        args.extend(["-p", project_name])
+    args.extend(["-f", str(cf), "logs", "--no-color", "--tail", str(int(tail))])
+    if since and since.strip():
+        args.extend(["--since", since.strip()])
+    args.extend(services)
+    return _run(args, cwd=cwd, check=False)
