@@ -23,6 +23,8 @@ Tools (LangChain prefixes them with the MCP key ``dagster``):
                                  force-recreate ``dagster_user_code``.
 - ``dagster_deploy``          — ``docker build`` then ``docker rm -f`` + ``docker run``.
 - ``dagster_stop`` / ``dagster_remove`` / ``dagster_logs`` / ``dagster_status``
+- ``dagster_list_containers`` / ``dagster_container_logs`` — debug host Docker containers.
+- ``dagster_compose_ps`` / ``dagster_compose_logs`` — debug the mounted Dagster Compose stack.
 - ``dagster_daemon_info`` — confirm host Docker daemon socket.
 
 **Metadata catalog (PostgreSQL)**
@@ -134,6 +136,14 @@ DAGSTER_USER_CODE_BUILD_PROJECT = (
 DAGSTER_USER_CODE_IMAGE_NAME = (
     os.environ.get("DAGSTER_USER_CODE_IMAGE_NAME") or "dagster_user_code_image"
 ).strip()
+DAGSTER_COMPOSE_LOG_SERVICES = [
+    s.strip()
+    for s in (
+        os.environ.get("DAGSTER_COMPOSE_LOG_SERVICES")
+        or "dagster_daemon,dagster_webserver,dagster_user_code"
+    ).split(",")
+    if s.strip()
+]
 
 LIST_CAP_CATALOG = max(1, min(int(os.environ.get("CATALOG_LIST_CAP", "100")), 500))
 
@@ -145,7 +155,8 @@ mcp = FastMCP(
         "Use bounded tools: `create_project`, `add_asset`, `add_job`, `add_schedule`, `add_sensor`, "
         "`build_image` (optional `DOCKER_REGISTRY` mirror tags + `DOCKER_PUSH_AFTER_BUILD`), "
         "`push_image`, `user_code_refresh` (rebuild `datasyn` → `dagster_user_code_image` + compose recreate), "
-        "`compose_force_recreate`, `deploy`, catalog SQL. "
+        "`compose_force_recreate`, `compose_ps`, `compose_logs`, `list_containers`, "
+        "`container_logs`, `deploy`, catalog SQL. "
         "Never invent paths: list projects first. The MCP does not import Dagster; it writes files "
         "and shells out to `docker` on the host socket. Set `DATABASE_URL` / `CATALOG_DATABASE_URL` "
         "for catalog tools."
@@ -159,6 +170,71 @@ def _json(payload: object) -> str:
 
 def _err(exc: BaseException, **extra: Any) -> str:
     return _json({"ok": False, "error": f"{type(exc).__name__}: {exc}", **extra})
+
+
+def _bounded_tail(tail: int) -> int:
+    return max(1, min(int(tail or 200), 5000))
+
+
+def _json_rows(stdout: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    text = (stdout or "").strip()
+    if not text:
+        return rows
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return [r if isinstance(r, dict) else {"raw": r} for r in parsed]
+        if isinstance(parsed, dict):
+            return [parsed]
+    except json.JSONDecodeError:
+        pass
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            parsed = json.loads(line)
+            rows.append(parsed if isinstance(parsed, dict) else {"raw": parsed})
+        except json.JSONDecodeError:
+            rows.append({"raw": line})
+    return rows
+
+
+def _compose_file_or_raise(compose_file: str | None = None) -> Path:
+    cf = (compose_file or DAGSTER_COMPOSE_FILE or "").strip()
+    if not cf:
+        raise ValueError(
+            "compose_file is required (or set DAGSTER_COMPOSE_FILE in dagster-mcp env)"
+        )
+    p = Path(cf)
+    if not p.is_file():
+        raise FileNotFoundError(
+            f"compose file not found: {cf!r} (mount infra/dagster into dagster-mcp "
+            "and set DAGSTER_COMPOSE_FILE, e.g. /dagster-compose/docker-compose.yaml)"
+        )
+    return p
+
+
+def _compose_project_name(compose_project: str | None = None) -> str | None:
+    return (compose_project or DAGSTER_COMPOSE_PROJECT or "").strip() or None
+
+
+def _service_list(
+    service: str | None = None,
+    services: list[str] | None = None,
+    *,
+    default: list[str] | None = None,
+) -> list[str]:
+    if services is not None:
+        out = [str(s).strip() for s in services if s and str(s).strip()]
+    elif service and str(service).strip():
+        out = [str(service).strip()]
+    else:
+        out = list(default or [])
+    if not out:
+        raise ValueError("at least one service is required")
+    return out
 
 
 def _image_for(project: str, tag: str | None) -> str:
@@ -693,6 +769,155 @@ def user_code_refresh(
 
 
 @mcp.tool()
+def list_containers(
+    name: str | None = None,
+    label: str | None = None,
+    all_containers: bool = True,
+) -> str:
+    """List Docker containers visible from the MCP host daemon.
+
+    Use ``name="dagster"`` to find the runtime stack containers
+    (``dagster_daemon``, ``dagster_webserver``, ``dagster_user_code``, etc.).
+    Use ``label`` only for containers created by ``dagster_deploy`` or other
+    flows that explicitly set Docker labels.
+    """
+    log.info("tool list_containers name=%r label=%r all=%s", name, label, all_containers)
+    try:
+        result = docker_ops.container_status(
+            label_filter=(label or "").strip() or None,
+            name_filter=(name or "").strip() or None,
+            all_containers=all_containers,
+        )
+        return _json(
+            {
+                "ok": True,
+                "name_filter": (name or "").strip(),
+                "label_filter": (label or "").strip(),
+                "containers": _json_rows(result.get("stdout") or ""),
+                **result,
+            }
+        )
+    except Exception as exc:
+        log.exception("list_containers failed")
+        return _err(exc, name=name, label=label)
+
+
+@mcp.tool()
+def container_logs(
+    container: str,
+    tail: int = 200,
+    since: str | None = None,
+) -> str:
+    """Tail logs for an arbitrary Docker container name.
+
+    This is the low-level debug primitive for the real runtime container names
+    from ``infra/dagster/docker-compose.yaml``: ``dagster_daemon``,
+    ``dagster_webserver``, ``dagster_user_code``, ``dagster_postgresql`` and
+    ``dagster-mcp``.
+    """
+    name = (container or "").strip()
+    if not name:
+        return _err(ValueError("container is required"))
+    lim = _bounded_tail(tail)
+    log.info("tool container_logs container=%r tail=%s since=%r", name, lim, since)
+    try:
+        return _json(
+            {
+                "ok": True,
+                "container": name,
+                **docker_ops.container_logs(name, tail=lim, since=since),
+            }
+        )
+    except Exception as exc:
+        log.exception("container_logs failed")
+        return _err(exc, container=name)
+
+
+@mcp.tool()
+def compose_ps(
+    compose_file: str | None = None,
+    compose_project: str | None = None,
+    service: str | None = None,
+    services: list[str] | None = None,
+    all_containers: bool = True,
+) -> str:
+    """List containers for the mounted Dagster Compose stack.
+
+    Defaults to ``DAGSTER_COMPOSE_FILE`` (normally
+    ``/dagster-compose/docker-compose.yaml``) and ``DAGSTER_COMPOSE_PROJECT``.
+    """
+    log.info("tool compose_ps compose_file=%r service=%r services=%r", compose_file, service, services)
+    try:
+        p = _compose_file_or_raise(compose_file)
+        svcs = (
+            [str(s).strip() for s in services if s and str(s).strip()]
+            if services is not None
+            else ([str(service).strip()] if service and str(service).strip() else [])
+        )
+        proj = _compose_project_name(compose_project)
+        result = docker_ops.compose_ps(
+            compose_file=p,
+            project_name=proj,
+            services=svcs,
+            all_containers=all_containers,
+        )
+        return _json(
+            {
+                "ok": result.get("exit_code") == 0,
+                "compose_file": str(p),
+                "compose_project": proj or "",
+                "services": svcs,
+                "containers": _json_rows(result.get("stdout") or ""),
+                **result,
+            }
+        )
+    except Exception as exc:
+        log.exception("compose_ps failed")
+        return _err(exc, compose_file=compose_file)
+
+
+@mcp.tool()
+def compose_logs(
+    compose_file: str | None = None,
+    compose_project: str | None = None,
+    service: str | None = None,
+    services: list[str] | None = None,
+    tail: int = 200,
+    since: str | None = None,
+) -> str:
+    """Tail logs for one or more services in the mounted Dagster Compose stack.
+
+    Without ``service`` / ``services`` it tails the operational services most
+    useful for run debugging: ``dagster_daemon``, ``dagster_webserver`` and
+    ``dagster_user_code`` (overridable with ``DAGSTER_COMPOSE_LOG_SERVICES``).
+    """
+    log.info("tool compose_logs compose_file=%r service=%r services=%r", compose_file, service, services)
+    try:
+        p = _compose_file_or_raise(compose_file)
+        svcs = _service_list(service, services, default=DAGSTER_COMPOSE_LOG_SERVICES)
+        proj = _compose_project_name(compose_project)
+        result = docker_ops.compose_logs(
+            compose_file=p,
+            services=svcs,
+            tail=_bounded_tail(tail),
+            since=since,
+            project_name=proj,
+        )
+        return _json(
+            {
+                "ok": result.get("exit_code") == 0,
+                "compose_file": str(p),
+                "compose_project": proj or "",
+                "services": svcs,
+                **result,
+            }
+        )
+    except Exception as exc:
+        log.exception("compose_logs failed")
+        return _err(exc, compose_file=compose_file)
+
+
+@mcp.tool()
 def stop(project: str) -> str:
     """``docker stop`` the project container (does not remove it)."""
     name = _container_for(project)
@@ -728,33 +953,106 @@ def remove(
 
 @mcp.tool()
 def logs(project: str, tail: int = 200) -> str:
-    """Tail the project container's logs (last ``tail`` lines)."""
-    name = _container_for(project)
-    log.info("tool logs project=%r container=%s tail=%s", project, name, tail)
+    """Tail logs for a deployed project or the main Dagster runtime stack.
+
+    Backwards-compatible behavior:
+    - If ``project`` is a real container name, tail it directly.
+    - Else if ``<DAGSTER_CONTAINER_PREFIX>-<project>`` exists, tail that legacy
+      deployed project container.
+    - Else, for the default ``datasyn`` code location, tail the Compose runtime
+      services instead of failing on the obsolete ``dagster-datasyn`` name.
+    """
+    requested = (project or "").strip()
+    legacy_name = _container_for(requested)
+    lim = _bounded_tail(tail)
+    log.info("tool logs project=%r legacy_container=%s tail=%s", requested, legacy_name, lim)
     try:
-        return _json({"ok": True, "container": name, **docker_ops.container_logs(name, tail=tail)})
+        if requested and docker_ops.container_exists(requested):
+            return _json(
+                {
+                    "ok": True,
+                    "mode": "container",
+                    "container": requested,
+                    **docker_ops.container_logs(requested, tail=lim),
+                }
+            )
+        if docker_ops.container_exists(legacy_name):
+            return _json(
+                {
+                    "ok": True,
+                    "mode": "legacy_project_container",
+                    "container": legacy_name,
+                    **docker_ops.container_logs(legacy_name, tail=lim),
+                }
+            )
+        if requested == DAGSTER_USER_CODE_BUILD_PROJECT and DAGSTER_COMPOSE_FILE:
+            p = _compose_file_or_raise()
+            proj = _compose_project_name()
+            result = docker_ops.compose_logs(
+                compose_file=p,
+                services=DAGSTER_COMPOSE_LOG_SERVICES,
+                tail=lim,
+                project_name=proj,
+            )
+            return _json(
+                {
+                    "ok": result.get("exit_code") == 0,
+                    "mode": "compose_runtime_fallback",
+                    "requested_project": requested,
+                    "obsolete_container_name": legacy_name,
+                    "compose_file": str(p),
+                    "compose_project": proj or "",
+                    "services": DAGSTER_COMPOSE_LOG_SERVICES,
+                    **result,
+                }
+            )
+        return _json(
+            {
+                "ok": False,
+                "project": requested,
+                "obsolete_container_name": legacy_name,
+                "error": (
+                    "No matching container found. Use list_containers(name='dagster') "
+                    "or compose_logs(service='dagster_daemon') for the Compose runtime."
+                ),
+            }
+        )
     except Exception as exc:
         log.exception("logs failed")
-        return _err(exc, project=project)
+        return _err(exc, project=requested)
 
 
 @mcp.tool()
 def status(project: str | None = None) -> str:
-    """List Docker containers labeled ``datacyber.dagster.project`` (optionally filter)."""
+    """List Dagster-related Docker containers.
+
+    Containers created by ``deploy`` are discovered by the
+    ``datacyber.dagster.project`` label. The main Compose stack does not use
+    that label, so this tool falls back to container names containing
+    ``dagster`` when the label lookup is empty.
+    """
     label = f"datacyber.dagster.project={project}" if project else "datacyber.dagster.project"
     log.info("tool status filter=%s", label)
     try:
         result = docker_ops.container_status(label_filter=label)
-        rows: list[dict[str, Any]] = []
-        for line in (result.get("stdout") or "").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rows.append(json.loads(line))
-            except json.JSONDecodeError:
-                rows.append({"raw": line})
-        return _json({"ok": True, "filter": label, "containers": rows})
+        rows = _json_rows(result.get("stdout") or "")
+        mode = "label"
+        fallback_name_filter = ""
+        if not rows:
+            fallback_name_filter = "dagster"
+            result = docker_ops.container_status(name_filter=fallback_name_filter)
+            rows = _json_rows(result.get("stdout") or "")
+            mode = "name_fallback"
+        return _json(
+            {
+                "ok": True,
+                "mode": mode,
+                "label_filter": label,
+                "name_filter": fallback_name_filter,
+                "containers": rows,
+                **result,
+            }
+        )
     except Exception as exc:
         log.exception("status failed")
         return _err(exc)

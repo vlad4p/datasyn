@@ -58,9 +58,13 @@ pattern.
 | `dagster_build_image`      | `docker build`; optional ``DOCKER_REGISTRY`` extra ``-t``; optional push when ``DOCKER_PUSH_AFTER_BUILD``. |
 | `dagster_push_image`       | `docker push <ref>` for publishing a built tag. |
 | `dagster_deploy`           | Default: `docker build` from the project dir, then replace `<prefix>-<project>` on `infra-datasynk`. Optional `image_name`; set `rebuild=false` to skip build and only recreate the container. |
-| `dagster_stop` / `dagster_remove` | Lifecycle (`docker stop`, `docker rm -f`, optional image cleanup). |
-| `dagster_logs`             | Tail container logs. |
-| `dagster_status`           | List containers labeled `datacyber.dagster.project`. |
+| `dagster_stop` / `dagster_remove` | Lifecycle for containers created by `dagster_deploy` (`docker stop`, `docker rm -f`, optional image cleanup). |
+| `dagster_logs`             | Backwards-compatible log helper: tails a real container, a deployed `<prefix>-<project>` container, or the main Compose runtime for `datasyn`. |
+| `dagster_status`           | List Dagster-related containers; tries the `datacyber.dagster.project` label first, then falls back to names containing `dagster` for the Compose stack. |
+| `dagster_list_containers`  | List arbitrary Docker containers visible to the MCP host daemon; use `name="dagster"` for the runtime stack. |
+| `dagster_container_logs`   | Tail logs by exact container name, e.g. `dagster_daemon`, `dagster_webserver`, `dagster_user_code`, `dagster-mcp`. |
+| `dagster_compose_ps`       | `docker compose ps --format json` for the mounted Dagster Compose file. |
+| `dagster_compose_logs`     | `docker compose logs` for one or more services; defaults to `dagster_daemon`, `dagster_webserver`, and `dagster_user_code`. |
 | `dagster_daemon_info`      | `docker info -f json` — confirms socket access. |
 | `dagster_compose_force_recreate` | `docker compose … up -d --force-recreate` for mounted stack (e.g. refresh `dagster_user_code` after retagging an image). |
 | `dagster_user_code_refresh` | Build default code-location project as `dagster_user_code_image`, then force-recreate `dagster_user_code` (needs `DAGSTER_COMPOSE_FILE` mounted). |
@@ -136,6 +140,7 @@ The Dagster UI ports start at `3001` to avoid colliding with `langfuse` on
 | `DAGSTER_COMPOSE_FILE`         | *(see compose)*       | Path to `docker-compose.yaml` inside the MCP container (Compose mounts `infra/dagster` at `/dagster-compose`). |
 | `DAGSTER_COMPOSE_PROJECT`      | `dagster`             | `docker compose -p` project name (match the host). |
 | `DAGSTER_COMPOSE_USER_CODE_SERVICE` | `dagster_user_code` | Default service for `compose_force_recreate` / `user_code_refresh`. |
+| `DAGSTER_COMPOSE_LOG_SERVICES` | `dagster_daemon,dagster_webserver,dagster_user_code` | Default services for `dagster_compose_logs` and the `dagster_logs(project="datasyn")` runtime fallback. |
 | `DAGSTER_USER_CODE_BUILD_PROJECT` | `datasyn`         | Project directory under `DAGSTER_PROJECTS_ROOT` to build as the main code location image. |
 | `DAGSTER_USER_CODE_IMAGE_NAME` | `dagster_user_code_image` | Image tag target for that build. |
 | `DAGSTER_DEPLOY_VOLUMES`       | `duckdb_data:…;storage:…` | Semicolon-separated `src:dst` mounts for `dagster_deploy`. |

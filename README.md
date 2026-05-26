@@ -2,226 +2,243 @@
 
 ![status](https://img.shields.io/badge/status-active%20development-orange) ![license](https://img.shields.io/badge/license-TBD-lightgrey) ![approach](https://img.shields.io/badge/approach-AI--driven-success) ![focus](https://img.shields.io/badge/focus-public%20data-blue) ![locale](https://img.shields.io/badge/docs-es-informational) [![en](https://img.shields.io/badge/README-EN-lightgrey)](README.en.md)
 
-**Análisis de datos asistido por IA.**
+## 🎯 ¿Qué es DataSyn?
 
-DataSyn es una sistema para **ingestar, descubrir, estructurar y analizar información** mediante agentes que operan sobre el warehouse, asegurando el correcto Gobierno de cada Agente y cada fuente de datos, disminuyendo el gap tecnico que representa mantener y procesar diversas fuentes de infomacion, tales como datos estrucutrados como no estructurados.
+**DataSyn** es un sistema para **buscar, organizar y analizar datos públicos** con ayuda de inteligencia artificial.
 
-[Cómo correrlo →](INSTALL.md) · [Reglas del agente →](AGENTS.md) · [Skills →](skills/) · [Pipelines incluidos →](infra/dagster/mcp/dagster-code/projects/datasyn/src/datasyn/assets/) · [Diagramas →](docs/diagrams/)
+No necesitas saber programar ni escribir consultas SQL: puedes hacerle preguntas en **lenguaje natural** a tu asistente de IA (Cursor, VS Code, Claude, etc.) y el sistema responde con tablas, gráficos y el detalle de cómo llegó a ese resultado.
 
----
-
-## Por qué existe
-
-> Un sistema que entregue **insight de la sociedad en tiempo real** para informar mejor decisiones, y que **no necesita ser privado**: las políticas públicas no necesitan información desagrupada — necesitan información comprensible y revisable.
-
-Hoy, el analisis de datos, al igual que muchas otras areas, se ha visto atravesado y potenciado por la IA, permitiendo a cientificos, analistas politicos, economistas, entre otros;  trabajar mediante *lenguajenatural* sobre la informacion, manteniendo las buenas practicas de un sistema de alto nivel.
-A diferencia de otras soluciones, donde la informacion es **subida a un tercero**: tu archivo viaja a un proveedor, la respuesta vuelve sin trazabilidad, y el conocimiento operativo queda dentro del producto.
-
-DataSyn toma una posición distinta:
-
-- **Datos públicos como bien común.** El código que los procesa también es público. Si un análisis aparece en una nota o un informe, el lector puede reproducirlo.
-- **IA como amplificador del análisis ciudadano**, no como caja negra que centraliza el control. Tu eliges el modelo (incluso uno local) y el sistema corre en tu infraestructura.
-- **El conocimiento de dominio se versiona.** Lo que un analista sabe hacer "a mano" se escribe una vez como **skill** y queda disponible para todos los demás. Ejemplo: El analisis de un dataset, o como realizar una ingesta especifica.
+Todo el código y los datos que procesa son **públicos y reproducibles**: si un análisis aparece en una nota o informe, cualquiera puede verificarlo.
 
 ---
 
-## El planteo: AI-driven, no AI-assisted
+## 🚀 ¿Cómo empiezo?
 
-En este ultimo tiempo los agentes ya no "ayudan" puntualmente — **operan** el stack, mientras la persona aporta dirección, contexto y juicio. DataSyn aplica esa idea al **análisis** de datos.
+Hay dos caminos según lo que quieras hacer:
 
-El agente hace el trabajo rutinario:
-
-| Vos hacés | El agente hace |
+| Quiero… | Qué hacer |
 |---|---|
-| Formulás la pregunta en lenguaje natural | Resuelve a qué tabla y columnas corresponde |
-| Aportás conocimiento de dominio una sola vez (en una skill) | Ejecuta los pasos del playbook cada vez que matchea |
-| Decidís qué interpretar y qué reportar | Lista esquemas, valida tipos, normaliza decimales, aplica `TRY_CAST`, elige la ponderación correcta |
-| Revisás el SQL devuelto | Escribe **un** `SELECT` por llamada, lo corre, devuelve filas + supuestos |
-| Pedís otro corte | Reutiliza contexto, no vuelve a empezar |
+| **Consultar y analizar** datos que ya están en DataSyn | Conectar el asistente de IA vía MCP (abajo) |
+| **Instalar** DataSyn en mi computadora o servidor | Seguir la guía [`INSTALL.md`](INSTALL.md) |
+| **Agregar** una fuente de datos nueva | Pedírselo al asistente de IA (ver más abajo) |
 
-Lo que se evita: scripts ad-hoc por archivo, notebooks que sólo entiende quien los escribió, y promptear *"escribime una SQL para…"* sin saber si la columna existe o si el tipo es correcto.
+### 💡 Opción recomendada: conectar tu asistente de IA (MCP)
+
+Es la forma más simple de usar DataSyn **sin instalar nada**.
+
+1. **Elige un asistente** que soporte MCP: [Cursor](https://cursor.com), VS Code con [Kilo Code](https://kilocode.ai) (tiene modelos gratuitos), Claude Desktop, etc.
+2. **Configura los servidores MCP** apuntando a una instancia de DataSyn. El archivo [`mcp.json`](mcp.json) del repo muestra el formato; tu administrador te dará las URLs (por ejemplo `http://tu-servidor:8040/mcp`).
+3. **Pregunta en español**, por ejemplo:
+   - *"¿Qué datasets hay disponibles?"*
+   - *"¿Cuántos hogares en NOA estuvieron bajo la línea de pobreza en el último trimestre?"*
+   - *"Muéstrame la consulta SQL que usaste."*
+
+> **Nota sobre costos:** las consultas las ejecuta tu asistente de IA, por lo que consumen tokens de tu cuenta. Con Kilo Code + VS Code puedes usar modelos free.
+
+### 🖥️ Instalación completa
+
+Si quieres ejecutar DataSyn en tu propia máquina (datos, pipelines, interfaz web), sigue la guía paso a paso en **[`INSTALL.md`](INSTALL.md)**. Resumen en dos comandos:
+
+```bash
+make bootstrap      # prepara la red y los volúmenes
+make stack-up       # levanta todo el sistema
+```
+
+Luego abre la interfaz web en `http://localhost:8003`.
 
 ---
 
-## Cómo se ve usarlo
+## 💬 ¿Cómo se ve usarlo?
 
 ![Ciclo de una pregunta](docs/diagrams/question-lifecycle.svg)
 
-> Editable: [`docs/diagrams/question-lifecycle.drawio`](docs/diagrams/question-lifecycle.drawio) · [PNG](docs/diagrams/question-lifecycle.png).
+> Diagrama editable: [`docs/diagrams/question-lifecycle.drawio`](docs/diagrams/question-lifecycle.drawio) · [PNG](docs/diagrams/question-lifecycle.png)
+
+**Ejemplo de conversación:**
 
 ```text
-Vos:     ¿Qué porcentaje de hogares en NOA tuvo IPCF bajo la línea
-         de pobreza en T3-2025? Mostrame la SQL.
+Usuario: ¿Qué porcentaje de hogares en NOA tuvo IPCF bajo la línea
+         de pobreza en T3-2025? Muéstrame la SQL.
 
-Agente:  · Lee el catálogo (descripciones de IPCF, REGION, PONDIH).
-         · Confirma tipos (IPCF llega como VARCHAR → TRY_CAST).
-         · Ejecuta UN SELECT con la ponderación correcta.
-         · Devuelve tabla + bloque SQL + supuestos + cobertura.
+Agente:  · Busca en el catálogo qué significan IPCF, REGION y PONDIH.
+         · Verifica los tipos de datos y aplica la ponderación correcta.
+         · Ejecuta la consulta y devuelve una tabla con resultados.
+         · Incluye el SQL usado y los supuestos que tomó.
 
-UI:      Markdown renderizado, gráfico opcional, SQL copiable.
-Trazas:  request_id cruza brain ↔ MCP ↔ Langfuse.
+Resultado: tabla en Markdown, SQL copiable, y notas sobre la cobertura de datos.
 ```
 
 ---
 
-## Skills: tu conocimiento de dominio se vuelve capacidad del sistema
+## 🌍 ¿Por qué existe?
 
-Una **skill** es un `SKILL.md` versionado. El Brain las descubre al arrancar y el agente las sigue como *playbooks ejecutables* cuando reconoce el dominio.
+> Un sistema que entregue **información comprensible sobre la sociedad**, en tiempo real, para tomar mejores decisiones — y que **no necesita ser privado**: las políticas públicas no requieren datos desagregados, sino información clara y verificable.
 
-> Una skill bien escrita le enseña al sistema a **ingerir un dataset**, **derivar tablas nuevas**, **correr un análisis recurrente** o **producir un reporte** — sin tocar código del brain ni de la UI.
+DataSyn parte de tres ideas:
 
+- 📂 **Datos públicos como bien común.** El código que los procesa también es público.
+- 🤖 **IA como amplificador**, no como caja negra. Puedes elegir el modelo (incluso uno local) y el sistema corre en tu infraestructura.
+- 📝 **El conocimiento se versiona.** Lo que un analista sabe hacer "a mano" se escribe una vez como **skill** y queda disponible para todos.
 
-Quién las escribe: **analistas, periodistas de datos, investigadores académicos, etc...**. Lo único que se necesita es Markdown + saber qué `WHERE`, qué `GROUP BY`, qué ponderación corresponde para tu dataset.
-
-### Anatomía mínima, ejemplo de una SKILL.md
-```markdown
----
-name: analyze-presupuesto-municipio-x
-description: Ejecución presupuestaria del municipio X — gasto por función y partida.
 ---
 
-## Tabla y columnas
-- `gold.presupuesto_muni_x` (`ejercicio`, `mes`, `funcion`, `partida`, `monto_devengado`)
-- `monto_devengado` llega como VARCHAR → `TRY_CAST(... AS DOUBLE)`
+## 📚 Skills: tu conocimiento, reutilizable por todos
 
-## Reglas
-- Excluir `partida = '00 - No imputable'`
-- Para series interanuales: deflactar por `silver.ipc_base_2016`
+Una **skill** es un archivo Markdown (`SKILL.md`) que le enseña al agente **cómo analizar un dataset**, **cómo ingerir una fuente** o **cómo generar un reporte**.
 
-## SQL canónica
-SELECT funcion, SUM(TRY_CAST(monto_devengado AS DOUBLE)) AS total
-FROM gold.presupuesto_muni_x
-WHERE ejercicio = $year
-GROUP BY 1 ORDER BY 2 DESC;
+Quién las escribe: analistas, periodistas de datos, investigadores. Solo hace falta Markdown y conocer el dominio (qué columnas usar, qué filtros aplicar, etc.).
 
-## Salida esperada
-- Tabla Markdown ordenada por total descendente
-- Bloque SQL ejecutado
-- Nota si faltan meses en el ejercicio consultado
-```
-
-A partir de ese archivo, *"gasto por función del municipio X en 2024"* hace que el agente cargue la skill, ejecute la SQL canónica, y devuelva la respuesta en el formato pedido — sin que vos vuelvas a escribir nada de eso.
-
-### Lo que las skills habilitan
-
-| Caso | Lo que escribe el analista | Lo que hace el agente |
+| Caso | Lo que escribes | Lo que hace el agente |
 |---|---|---|
-| **Ingesta de dataset nuevo** | Skill + asset Dagster bronze (clonado de un ejemplo) | Materializa, valida tipos, registra |
-| **Tabla derivada (silver/gold)** | Skill con SQL canónica y columnas finales | Crea/actualiza la tabla |
-| **Análisis recurrente** | Skill con filtros, ponderaciones, breakdowns | Ejecuta on-demand, devuelve tabla + SQL |
-| **Reporte periódico** | Skill con secciones esperadas y formato | Produce Markdown, guarda en `reports/` |
+| **Análisis recurrente** | Filtros, ponderaciones, columnas clave | Ejecuta la consulta y devuelve tabla + SQL |
+| **Ingesta de dataset nuevo** | Pasos para leer y guardar la fuente | Crea el pipeline y valida los datos |
+| **Reporte periódico** | Secciones y formato esperado | Produce Markdown y lo guarda en `reports/` |
+
+Ejemplos en la carpeta [`skills/`](skills/).
 
 ---
 
-## Algunos ejemplos
+## 📊 Datos disponibles
 
-Datasets que el sistema ya sabe ingerir (`infra/dagster/.../assets/bronze/`):
+Fuentes que el sistema ya sabe procesar:
 
-| Dataset | Fuente | Granularidad |
+| Dataset | Fuente | Frecuencia |
 |---|---|---|
-| INDEC EPH (microdatos) | `usu_hogar_*.txt`, `usu_individual_*.txt` | Trimestral, append por quarter |
-| INDEC Censo 2022 | Radios censales + indicadores UCA | Por radio / departamento / provincia |
+| INDEC EPH (microdatos) | Encuesta Permanente de Hogares | Trimestral |
+| INDEC Censo 2022 | Radios censales + indicadores UCA | Por radio / departamento |
 | Elecciones 2023 — Generales | argentina.gob.ar (ZIP oficial) | Por mesa / circuito |
-| Boletín Oficial — 3ª Sección | boletinoficial.gob.ar | Daily partition (PDF + HTML + manifest) |
-| Prensa | Infobae · Clarín · La Nación | Daily partition por sección |
+| Boletín Oficial — 3ª Sección | boletinoficial.gob.ar | Diaria |
+| Prensa | Infobae · Clarín · La Nación | Diaria por sección |
+| OECD AI Incidents | oecd.ai | Por fecha de incidente |
 
-Cada pipeline es un asset Dagster reproducible. Para sumar el tuyo: clonás uno y adaptás la lectura. La lógica de análisis se documenta como skill, no como notebook personal.
+Para sumar una fuente nueva, pídele al asistente que cree el job de ingesta (ver ejemplo abajo).
 
 ---
 
-## Soberanía
+## ➕ Ejemplo: agregar una fuente de datos nueva
 
-| Pieza | Dónde corre |
+Supongamos que quieres sumar **incidentes de IA de la OECD** al sistema.
+
+### Paso 1 — Pídele al agente
+
+Describe la fuente, qué guardar y cómo debe funcionar:
+
+```text
+Crear un nuevo job para ingestar incidentes de OECD AI:
+
+- Fuente: https://oecd.ai/en/incidents?countries=ARG&...
+- Para cada incidente, extraer toda la información y estructurar un JSON.
+- Guardar cada JSON en object storage.
+- Crear una tabla DuckDB en schema bronze.
+- El job debe recibir una fecha de scrape como input.
+- Tomar como referencia el estilo de otros jobs Dagster del repo.
+```
+
+### Paso 2 — Revisión y publicación
+
+El agente crea el código, lo valida y prepara un **Pull Request** a la rama `main`. Un revisor interno lo aprueba y la fuente queda disponible para todos.
+
+> **Para operadores técnicos:** los pasos de build de imagen Docker, push al registry y redeploy en servidor están documentados en [`INSTALL.md`](INSTALL.md) (secciones *Publicar imágenes* y *Redeploy*).
+
+---
+
+## 🔒 Privacidad y control
+
+| Qué | Dónde vive |
 |---|---|
-| Datos crudos y warehouse | `data-local/` + MinIO + DuckDB **en tu host** |
-| Pipelines, brain, UI | Containers en tu red `infra-datasynk` |
-| LLM | A elección: local (Ollama/vLLM vía LiteLLM), OpenRouter o Gemini |
-| Trazas | Langfuse self-hosted (opcional) |
+| Datos y warehouse | En **tu** computadora o servidor |
+| Pipelines y asistente | Contenedores en tu red local |
+| Modelo de IA | A tu elección: local, OpenRouter, Gemini, etc. |
+| Trazas de uso | Langfuse self-hosted (opcional) |
 
-Único egress posible: la llamada al modelo. Apuntando LiteLLM a un modelo on-prem el sistema queda offline. Lo que viaja al modelo son resúmenes, SQL y nombres de columnas — **no archivos**.
+Lo único que puede salir de tu red es la llamada al modelo de IA — y solo viajan resúmenes, SQL y nombres de columnas, **nunca archivos completos**. Con un modelo local, el sistema funciona sin conexión a internet.
 
 ---
 
-## Bajo el capó (resumen)
+## 🛠️ Para desarrolladores
+
+### Arquitectura
 
 ![Arquitectura](docs/diagrams/architecture.svg)
 
-> Editable: [`docs/diagrams/architecture.drawio`](docs/diagrams/architecture.drawio) · [PNG](docs/diagrams/architecture.png) · Detalle de despliegue: [`INSTALL.md`](INSTALL.md).
+> Editable: [`docs/diagrams/architecture.drawio`](docs/diagrams/architecture.drawio) · [PNG](docs/diagrams/architecture.png)
 
-Cuatro piezas, cada una estándar y reemplazable:
+Cuatro piezas principales:
 
-- **DuckDB** como warehouse local (`bronze` / `silver` / `gold`).
-- **MinIO** como zona de aterrizaje S3-compatible.
-- **Dagster** para los pipelines de ingesta (assets reproducibles, partitions, schedules).
-- **Servidores MCP HTTP** (`duckdb-mcp`, `storage-mcp`, `dagster-mcp`) que exponen un contrato chico y auditable al agente.
+- **DuckDB** — base de datos analítica local (`bronze` / `silver` / `gold`).
+- **MinIO** — almacenamiento de archivos compatible con S3.
+- **Dagster** — orquestación de pipelines de ingesta.
+- **Servidores MCP** — interfaz entre el agente de IA y el sistema (`duckdb`, `storage`, `dagster`).
 
-Sobre eso, un brain (FastAPI + Deep Agents + LangChain) y una UI (React/Vite). La elección del LLM es del operador. Reglas duras del agente y antipatrones, en [`AGENTS.md`](AGENTS.md).
+Sobre eso: un brain (FastAPI + Deep Agents) y una UI (React/Vite). Reglas del agente en [`AGENTS.md`](AGENTS.md).
 
----
+### AI-driven, no solo AI-assisted
 
-## Estado
+El agente **opera** el stack; tú aportas dirección y criterio:
+
+| Tú haces | El agente hace |
+|---|---|
+| Formulas la pregunta en lenguaje natural | Resuelve a qué tabla y columnas corresponde |
+| Escribes una skill con el conocimiento de dominio | Ejecuta el playbook cada vez que aplica |
+| Revisas el SQL devuelto | Escribe y corre la consulta, devuelve filas + supuestos |
+
+### Estado del proyecto
 
 | Componente | Estado |
 |---|---|
-| Brain + UI | Operativo |
-| MCP servers (`duckdb`, `storage`, `dagster`) | Operativos |
-| Pipelines bronze (INDEC, BOA, elecciones, prensa) | Operativos |
-| Capas `silver` / `gold` | Mínimas (sólo `gold.indec_eph_*`) |
-| Catálogo de metadatos | Opcional, contrato definido |
-| Iceberg REST | Implementado, opt-in |
-| Licencia opensource | A definir (MIT / Apache-2.0 sugeridos) |
+| Brain + UI | ✅ Operativo |
+| Servidores MCP | ✅ Operativos |
+| Pipelines bronze (INDEC, BOA, elecciones, prensa) | ✅ Operativos |
+| Capas silver / gold | 🟡 Mínimas |
+| Catálogo de metadatos | 🟡 Opcional |
+| Licencia open source | 🔲 A definir |
 
-Roadmap corto: ampliar `silver`/`gold`, sumar pipelines provinciales / municipales / sectoriales, formalizar gobernanza opensource.
-
----
-
-## Comunidad
-
-La forma más alta de leverage es **escribir skills**: cada skill convierte conocimiento de dominio en una capacidad nueva del sistema, accesible para todos los demás analistas que lo desplieguen.
-
-Aportes esperados, en orden de menor a mayor esfuerzo técnico:
-
-- **Skill `SKILL.md`** sobre un dataset que ya está en el warehouse — Markdown puro.
-- **Skill + asset Dagster bronze** para sumar un dataset público nuevo (provincia, municipio, organismo, sectorial).
-- **Reportar discrepancias** entre lo que responde el agente y un análisis manual — son los bugs más valiosos del proyecto.
-- **Componentes reutilizables** (`utils/`, `components/`) cuando una transformación se repite en varios assets.
-
-Issues y PRs bienvenidos. PRs chicos, una pieza por PR.
-
----
-
-## Estructura
+### Estructura del repositorio
 
 ```
 agent/                Brain (FastAPI + Deep Agents + clientes MCP)
 ui/                   Frontend Vite/React
 skills/               Playbooks SKILL.md
 infra/                MinIO · DuckDB · Dagster · MCP servers · registry
-data-local/           Mirror local para DuckDB (gitignored)
+data-local/           Datos locales para DuckDB (gitignored)
 docs/diagrams/        Diagramas .drawio + SVG/PNG
 mcp.json              URLs MCP que carga el brain
-AGENTS.md             Reglas autoritativas del agente
-INSTALL.md            Despliegue, troubleshooting, backends de modelo
-Makefile              Targets de operación (make help)
+AGENTS.md             Reglas del agente
+INSTALL.md            Instalación, despliegue y troubleshooting
+Makefile              Comandos de operación (make help)
 ```
 
 ---
 
-## Referencias
+## 🤝 Comunidad
 
-- [`AGENTS.md`](AGENTS.md) — contrato del agente y reglas operativas.
-- [`INSTALL.md`](INSTALL.md) — despliegue completo, backends de modelo, troubleshooting.
-- [`docs/diagrams/`](docs/diagrams/) — `.drawio` editables (arquitectura, flujo de datos, ciclo de pregunta).
-- [`Makefile`](Makefile) — `make help` para operar el stack.
-- [`skills/`](skills/) — playbooks ejecutables.
-- [`mcp.json`](mcp.json) — URLs MCP.
+La forma más valiosa de contribuir es **escribir skills**: cada una convierte conocimiento de dominio en una capacidad nueva para todos.
 
-Inspiraciones explícitas:
+| Esfuerzo | Contribución |
+|---|---|
+| 🟢 Bajo | Skill `SKILL.md` sobre un dataset existente |
+| 🟡 Medio | Skill + pipeline Dagster para una fuente pública nueva |
+| 🔴 Alto | Componentes reutilizables cuando una transformación se repite |
 
-- Dagster — [AI-Driven Data Engineering](https://dagster.io/blog/announcing-ai-driven-data-engineering) (marzo 2026).
-- DuckDB — motor analítico embebido, columnar, sobre archivos locales.
-- Model Context Protocol — contrato chico y verificable entre agente y herramientas.
+Issues y PRs bienvenidos. PRs pequeños, una pieza por PR.
 
 ---
 
-> Si algo del README no coincide con el código, abrí un issue. Las discrepancias documentales son tan importantes como los bugs de código.
+## 📎 Referencias
+
+- [`INSTALL.md`](INSTALL.md) — instalación, despliegue y solución de problemas.
+- [`AGENTS.md`](AGENTS.md) — reglas operativas del agente.
+- [`skills/`](skills/) — playbooks ejecutables.
+- [`docs/diagrams/`](docs/diagrams/) — diagramas editables.
+- [`Makefile`](Makefile) — `make help` para operar el stack.
+- [`mcp.json`](mcp.json) — configuración de servidores MCP.
+
+Inspiraciones:
+
+- [Dagster — AI-Driven Data Engineering](https://dagster.io/blog/announcing-ai-driven-data-engineering) (marzo 2026).
+- [DuckDB](https://duckdb.org/) — motor analítico embebido sobre archivos locales.
+- [Model Context Protocol](https://modelcontextprotocol.io/) — contrato entre agente y herramientas.
+
+---
+
+> 🐛 Si algo del README no coincide con el código, abre un issue. Las discrepancias documentales son tan importantes como los bugs de código.

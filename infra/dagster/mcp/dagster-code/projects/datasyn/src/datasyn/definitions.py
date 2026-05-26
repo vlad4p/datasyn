@@ -26,6 +26,7 @@ from .assets.bronze import infobae as bronze_infobae
 from .assets.bronze import clarin as bronze_clarin
 from .assets.bronze import lanacion as bronze_lanacion
 from .assets.bronze import tn as bronze_tn
+from .assets.bronze import oecd_ai_incidents as bronze_oecd_ai_incidents
 from . import jobs, schedules, sensors
 from .utils.collect import collect_named
 
@@ -46,6 +47,7 @@ defs = Definitions(
                 bronze_clarin,
                 bronze_boletin_oficial,
                 bronze_tn,
+                bronze_oecd_ai_incidents,
             ]
         ),
         uca_censo,
