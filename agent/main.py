@@ -43,6 +43,12 @@ from agent.utils.litellm_chat import (
     probe_litellm_proxy,
     running_in_docker,
 )
+from agent.utils.chat_model_state import (
+    chat_model_source,
+    effective_chat_model,
+    set_runtime_chat_model,
+)
+from agent.utils.openrouter_models import list_openrouter_models
 from agent.config import (
     ENV_DOTENV_LOADED_AT_IMPORT,
     ENV_DOTENV_RESOLVED_PATH,
@@ -138,6 +144,7 @@ def _log_effective_llm_env() -> None:
 
 
 _log_effective_llm_env()
+logger.info("Effective Dagster GraphQL: DAGSTER_GRAPHQL_URL=%r", settings.dagster_graphql_url)
 log_langfuse_docker_loopback_hint()
 
 
@@ -301,6 +308,35 @@ class AnalysisExportRequest(BaseModel):
     request_ids: list[str] = Field(default_factory=list)
 
 
+class ChatModelUpdateRequest(BaseModel):
+    chat_model: str = Field(..., min_length=1, max_length=256)
+
+
+@app.get("/health/llm/models")
+async def health_llm_models(
+    free_only: bool = Query(False, description="When true, return only free OpenRouter models."),
+    refresh: bool = Query(False, description="Bypass the in-process models cache."),
+) -> dict[str, Any]:
+    """OpenRouter model catalog for the UI model switch (requires MODEL_PROVIDER=openrouter)."""
+    return await list_openrouter_models(free_only=free_only, force_refresh=refresh)
+
+
+@app.put("/health/llm/model")
+def health_llm_model_update(body: ChatModelUpdateRequest) -> dict[str, Any]:
+    """Set the runtime chat model (session override; does not write ``.env``)."""
+    model_id = body.chat_model.strip()
+    if "*" in model_id:
+        raise HTTPException(status_code=400, detail="Model id must not contain '*'")
+    effective = set_runtime_chat_model(model_id)
+    if not effective:
+        raise HTTPException(status_code=400, detail="chat_model must be non-empty")
+    logger.info("Runtime chat model set to %r (source=runtime)", effective)
+    return {
+        "status": "ok",
+        **_llm_config_snapshot(),
+    }
+
+
 def _llm_config_snapshot() -> dict[str, Any]:
     """Static LLM settings (no network)."""
     key = settings.litellm_key or ""
@@ -324,8 +360,11 @@ def _llm_config_snapshot() -> dict[str, Any]:
         "openai_api_key_env_set": bool(oai),
         "openai_api_key_env_suffix": oai_suffix,
         "in_docker": running_in_docker(),
-        "chat_model": settings.chat_model,
+        "chat_model": effective_chat_model() or "",
+        "chat_model_env": settings.chat_model or "",
+        "chat_model_source": chat_model_source(),
         "langfuse_tracing_enabled": langfuse_tracing_enabled(),
+        "dagster_graphql_url": settings.dagster_graphql_url,
     }
 
 

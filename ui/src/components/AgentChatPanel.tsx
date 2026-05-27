@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { BrainHealth } from "../api";
-import { getHealth } from "../api";
+import { getHealth, setChatModel } from "../api";
 import type { UiLocale } from "../locale";
 import { uiStrings } from "../locale";
 import { MarkdownMessage } from "./MarkdownMessage";
+import { ModelSwitch, readStoredChatModel } from "./ModelSwitch";
 import type { ChatMsg } from "../types/chat";
 
 export type { ChatMsg };
@@ -47,7 +48,24 @@ export function AgentChatPanel({
 
   useEffect(() => {
     getHealth()
-      .then(setHealth)
+      .then(async (h) => {
+        setHealth(h);
+        const stored = readStoredChatModel();
+        const current = (h.chat_model || "").trim();
+        if (
+          stored &&
+          stored !== current &&
+          h.model_provider === "openrouter" &&
+          h.has_openrouter_key
+        ) {
+          try {
+            const updated = await setChatModel(stored);
+            setHealth((prev) => (prev ? { ...prev, chat_model: updated.chat_model } : prev));
+          } catch {
+            /* keep env/default model */
+          }
+        }
+      })
       .catch(() => setHealth(null));
   }, []);
 
@@ -90,7 +108,16 @@ export function AgentChatPanel({
           <span className="agent-avatar" aria-hidden />
           <div className="agent-identity-text">
             <h2>{s.agentTitle}</h2>
-            <p className="agent-model">{modelLabel}</p>
+            <ModelSwitch
+              locale={locale}
+              modelProvider={health?.model_provider}
+              hasOpenRouterKey={health?.has_openrouter_key}
+              chatModel={modelLabel}
+              disabled={busy}
+              onModelChange={(modelId) =>
+                setHealth((prev) => (prev ? { ...prev, chat_model: modelId } : prev))
+              }
+            />
           </div>
           <span
             className={`agent-status-dot ${statusOk ? "" : "error"}`}

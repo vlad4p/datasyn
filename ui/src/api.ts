@@ -252,8 +252,35 @@ export type BrainHealth = {
   openai_api_key_env_suffix?: string | null;
   in_docker?: boolean;
   chat_model?: string;
+  chat_model_env?: string;
+  chat_model_source?: "env" | "runtime";
   /** Same object as ``GET /health/pipeline``; embedded so the UI needs only one request. */
   pipeline?: Record<string, unknown>;
+};
+
+export type OpenRouterModelItem = {
+  id: string;
+  name: string;
+  description?: string;
+  context_length?: number | null;
+  is_free?: boolean;
+};
+
+export type OpenRouterModelsResponse = {
+  status: string;
+  model_provider?: string;
+  models: OpenRouterModelItem[];
+  count?: number;
+  free_only?: boolean;
+  error?: string | null;
+};
+
+export type ChatModelUpdateResponse = {
+  status: string;
+  chat_model: string;
+  chat_model_env?: string;
+  chat_model_source?: "env" | "runtime";
+  model_provider?: string;
 };
 
 export type ToolInventoryItem = {
@@ -366,6 +393,29 @@ export async function probeLlm(): Promise<unknown> {
   return res.json();
 }
 
+export async function getOpenRouterModels(options?: {
+  freeOnly?: boolean;
+  refresh?: boolean;
+}): Promise<OpenRouterModelsResponse> {
+  const params = new URLSearchParams();
+  if (options?.freeOnly) params.set("free_only", "true");
+  if (options?.refresh) params.set("refresh", "true");
+  const qs = params.toString();
+  const res = await fetch(brainApiUrl(`/health/llm/models${qs ? `?${qs}` : ""}`));
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<OpenRouterModelsResponse>;
+}
+
+export async function setChatModel(chatModel: string): Promise<ChatModelUpdateResponse> {
+  const res = await fetch(brainApiUrl("/health/llm/model"), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_model: chatModel }),
+  });
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<ChatModelUpdateResponse>;
+}
+
 /**
  * Optional alias: same JSON as ``GET /health`` → ``pipeline`` (older brains may 404 — prefer ``pipeline`` on health).
  */
@@ -413,6 +463,19 @@ export async function getWarehouseTables(): Promise<WarehouseTablesResponse> {
   return res.json() as Promise<WarehouseTablesResponse>;
 }
 
+export type DagsterMetadataEntry = {
+  label: string;
+  type?: string;
+  value: string | number | boolean;
+};
+
+export type DagsterLatestMaterialization = {
+  run_id?: string | null;
+  timestamp?: string | null;
+  partition?: string | null;
+  metadata?: DagsterMetadataEntry[];
+};
+
 export type CatalogDatasetCard = {
   fqn: string;
   schema: string;
@@ -431,6 +494,13 @@ export type CatalogDatasetCard = {
   dagster_group?: string | null;
   dagster_asset_key?: string | null;
   dagster_asset_path?: string[];
+  dagster_table_fqn?: string | null;
+  dagster_compute_kind?: string | null;
+  dagster_kinds?: string[];
+  dagster_owners?: string[];
+  dagster_is_partitioned?: boolean;
+  dagster_latest_materialization?: DagsterLatestMaterialization | null;
+  dagster_definition_metadata?: DagsterMetadataEntry[];
   dagster_only?: boolean;
   last_updated?: string | null;
   in_warehouse: boolean;
@@ -462,6 +532,7 @@ export type CatalogDatasetDetailResponse = {
   catalog_columns?: CatalogColumnRow[];
   warehouse_columns?: CatalogColumnRow[];
   dagster?: Record<string, unknown> | null;
+  dagster_graphql_url?: string | null;
   lineage?: { upstream?: string[]; downstream?: string[] };
   error?: string | null;
 };

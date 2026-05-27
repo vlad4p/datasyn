@@ -31,6 +31,43 @@ function LineageList({ title, items }: { title: string; items: string[] }) {
   );
 }
 
+function formatMetadataValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function DagsterMetadataTable({
+  title,
+  entries,
+}: {
+  title: string;
+  entries: { label: string; value: unknown; type?: string }[];
+}) {
+  if (entries.length === 0) return null;
+  return (
+    <div className="dagster-metadata-block">
+      <h3>{title}</h3>
+      <table className="dagster-metadata-table">
+        <thead>
+          <tr>
+            <th>Label</th>
+            <th>Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((row) => (
+            <tr key={row.label}>
+              <td className="mono">{row.label}</td>
+              <td className="mono wrap">{formatMetadataValue(row.value)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function DatasetCatalog({ className, id, locale, onAnalyzeDataset }: Props) {
   const c = uiStrings(locale).catalog;
   const [loading, setLoading] = useState(true);
@@ -113,7 +150,7 @@ export function DatasetCatalog({ className, id, locale, onAnalyzeDataset }: Prop
       <p className="small muted">{c.hint}</p>
       {payload?.dagster_graphql_url && (
         <p className="tiny muted">
-          Dagster GraphQL: {payload.dagster_graphql_url}
+          Dagster GraphQL ({c.dagsterOk}): {payload.dagster_graphql_url}
         </p>
       )}
       {statusHints.map((h) => (
@@ -226,8 +263,52 @@ export function DatasetCatalog({ className, id, locale, onAnalyzeDataset }: Prop
                     {c.dagsterJob}: {(detail.dataset.dagster_jobs ?? []).join(", ")}
                   </p>
                 )}
+                {detail.dataset.dagster_table_fqn && (
+                  <p className="small muted">
+                    {c.dagsterTableFqn}:{" "}
+                    <span className="mono">{detail.dataset.dagster_table_fqn}</span>
+                  </p>
+                )}
+                {detail.dataset.dagster_compute_kind && (
+                  <p className="small muted">
+                    {c.dagsterComputeKind}: {detail.dataset.dagster_compute_kind}
+                  </p>
+                )}
+                {(detail.dataset.dagster_owners ?? []).length > 0 && (
+                  <p className="small muted">
+                    {c.dagsterOwners}: {(detail.dataset.dagster_owners ?? []).join(", ")}
+                  </p>
+                )}
+                {detail.dataset.dagster_latest_materialization && (
+                  <p className="small muted">
+                    {c.dagsterLatestMaterialization}:{" "}
+                    {detail.dataset.dagster_latest_materialization.partition
+                      ? `partition ${detail.dataset.dagster_latest_materialization.partition}`
+                      : "—"}
+                    {detail.dataset.dagster_latest_materialization.run_id
+                      ? ` · run ${detail.dataset.dagster_latest_materialization.run_id.slice(0, 8)}…`
+                      : ""}
+                  </p>
+                )}
               </>
             )}
+
+            <DagsterMetadataTable
+              title={c.dagsterMetadata}
+              entries={
+                detail?.dagster?.latest_materialization &&
+                typeof detail.dagster.latest_materialization === "object" &&
+                detail.dagster.latest_materialization !== null &&
+                Array.isArray(
+                  (detail.dagster.latest_materialization as { metadata?: unknown }).metadata,
+                )
+                  ? (
+                      (detail.dagster.latest_materialization as { metadata: { label: string; value: unknown; type?: string }[] })
+                        .metadata
+                    )
+                  : detail?.dataset?.dagster_latest_materialization?.metadata ?? []
+              }
+            />
 
             <h3 className="lineage-section-title">{c.lineageTitle}</h3>
             {detail?.lineage &&
@@ -331,6 +412,11 @@ function DatasetCard({
         {d.in_warehouse && <span className="badge-pill warehouse">DuckDB</span>}
         {d.in_catalog && <span className="badge-pill catalog">Postgres</span>}
         {d.in_dagster && <span className="badge-pill dagster">Dagster</span>}
+        {(d.dagster_latest_materialization?.metadata?.length ?? 0) > 0 && (
+          <span className="badge-pill dagster">
+            meta {d.dagster_latest_materialization?.metadata?.length}
+          </span>
+        )}
         {(up > 0 || down > 0) && (
           <span className="badge-pill lineage">
             ↑{up} ↓{down}

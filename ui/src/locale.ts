@@ -45,6 +45,16 @@ type Strings = {
   chatAria: string;
   subagentLabel: string;
   streamThinkingTitle: string;
+  modelSwitch: {
+    switchTitle: string;
+    searchPlaceholder: string;
+    freeOnly: string;
+    freeBadge: string;
+    currentBadge: string;
+    loading: string;
+    empty: string;
+    loadFailed: string;
+  };
   suggestions: string[];
   catalog: {
     title: string;
@@ -75,6 +85,11 @@ type Strings = {
     close: string;
     analyzeInAgent: string;
     dagsterJob: string;
+    dagsterMetadata: string;
+    dagsterLatestMaterialization: string;
+    dagsterTableFqn: string;
+    dagsterOwners: string;
+    dagsterComputeKind: string;
     columnsCatalog: string;
     columnsWarehouse: string;
     systemTools: string;
@@ -142,6 +157,16 @@ const EN: Strings = {
   chatAria: "Agent chat",
   subagentLabel: "Specialist",
   streamThinkingTitle: "Thinking",
+  modelSwitch: {
+    switchTitle: "Switch model",
+    searchPlaceholder: "Search models…",
+    freeOnly: "Free only",
+    freeBadge: "Free",
+    currentBadge: "Active",
+    loading: "Loading models…",
+    empty: "No models match.",
+    loadFailed: "Could not load models from OpenRouter.",
+  },
   suggestions: [
     "List all files under /data-local (including subfolders) using duckdb tools.",
     "What models does the brain use? Summarize litellm_base and CHAT_MODEL from your tools.",
@@ -164,7 +189,7 @@ const EN: Strings = {
     columns: "Columns",
     catalogUnavailable: "Postgres catalog MCP not configured.",
     catalogOk: "Postgres catalog metadata merged.",
-    dagsterUnavailable: "Dagster GraphQL unreachable — start Dagster on port 3001 or set DAGSTER_GRAPHQL_URL.",
+    dagsterUnavailable: "Dagster GraphQL unreachable — set DAGSTER_GRAPHQL_URL in .env (remote server, not localhost).",
     dagsterOk: "Dagster asset catalog loaded via GraphQL.",
     filterDuckdbTable: "DuckDB table",
     filterDuckdbAll: "All warehouse tables",
@@ -177,6 +202,11 @@ const EN: Strings = {
     close: "Close",
     analyzeInAgent: "Analyze in Agent",
     dagsterJob: "Dagster job",
+    dagsterMetadata: "Asset metadata (latest materialization)",
+    dagsterLatestMaterialization: "Latest materialization",
+    dagsterTableFqn: "Warehouse table",
+    dagsterOwners: "Owners",
+    dagsterComputeKind: "Compute kind",
     columnsCatalog: "Catalog columns",
     columnsWarehouse: "Warehouse columns",
     systemTools: "System & tools",
@@ -244,6 +274,16 @@ const ES: Strings = {
   chatAria: "Chat con el agente",
   subagentLabel: "Especialista",
   streamThinkingTitle: "Pensando",
+  modelSwitch: {
+    switchTitle: "Cambiar modelo",
+    searchPlaceholder: "Buscar modelos…",
+    freeOnly: "Solo gratis",
+    freeBadge: "Gratis",
+    currentBadge: "Activo",
+    loading: "Cargando modelos…",
+    empty: "Ningún modelo coincide.",
+    loadFailed: "No se pudieron cargar modelos desde OpenRouter.",
+  },
   suggestions: [
     "Lista todos los archivos bajo /data-local (incl. subcarpetas) con las herramientas duckdb.",
     "¿Qué modelos usa el brain? Resume litellm_base y CHAT_MODEL a partir de tus herramientas.",
@@ -266,7 +306,7 @@ const ES: Strings = {
     columns: "Columnas",
     catalogUnavailable: "Catálogo Postgres MCP no configurado.",
     catalogOk: "Metadatos del catálogo Postgres fusionados.",
-    dagsterUnavailable: "GraphQL de Dagster no disponible — levantá Dagster en el puerto 3001 o configurá DAGSTER_GRAPHQL_URL.",
+    dagsterUnavailable: "GraphQL de Dagster no disponible — configurá DAGSTER_GRAPHQL_URL en .env (servidor remoto, no localhost).",
     dagsterOk: "Catálogo de assets Dagster cargado vía GraphQL.",
     filterDuckdbTable: "Tabla DuckDB",
     filterDuckdbAll: "Todas las tablas",
@@ -279,6 +319,11 @@ const ES: Strings = {
     close: "Cerrar",
     analyzeInAgent: "Analizar en Agente",
     dagsterJob: "Job Dagster",
+    dagsterMetadata: "Metadatos del asset (última materialización)",
+    dagsterLatestMaterialization: "Última materialización",
+    dagsterTableFqn: "Tabla en almacén",
+    dagsterOwners: "Owners",
+    dagsterComputeKind: "Compute kind",
     columnsCatalog: "Columnas (catálogo)",
     columnsWarehouse: "Columnas (almacén)",
     systemTools: "Sistema y herramientas",

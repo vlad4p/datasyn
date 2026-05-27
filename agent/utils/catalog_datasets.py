@@ -10,6 +10,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient as MultiServerToo
 
 from agent.utils.dagster_graphql import (
     dagster_assets_by_fqn,
+    dagster_graphql_url,
     fetch_dagster_asset_catalog,
     fetch_dagster_asset_detail,
 )
@@ -165,6 +166,20 @@ def _apply_dagster_meta(card: dict[str, Any], dagster: dict[str, Any]) -> None:
         card["dagster_jobs"] = dagster["job_names"]
     if dagster.get("group_name"):
         card["dagster_group"] = dagster["group_name"]
+    if dagster.get("compute_kind"):
+        card["dagster_compute_kind"] = dagster["compute_kind"]
+    if dagster.get("kinds"):
+        card["dagster_kinds"] = dagster["kinds"]
+    if dagster.get("owners"):
+        card["dagster_owners"] = dagster["owners"]
+    if dagster.get("is_partitioned") is not None:
+        card["dagster_is_partitioned"] = dagster["is_partitioned"]
+    if dagster.get("latest_materialization"):
+        card["dagster_latest_materialization"] = dagster["latest_materialization"]
+    if dagster.get("definition_metadata"):
+        card["dagster_definition_metadata"] = dagster["definition_metadata"]
+    if dagster.get("duckdb_fqn") and not card.get("fqn", "").startswith("dagster/"):
+        card["dagster_table_fqn"] = dagster["duckdb_fqn"]
     extra_tags = dagster.get("tags") or []
     if extra_tags:
         existing = set(card.get("tags") or [])
@@ -271,6 +286,12 @@ def merge_dataset_cards(
         }
         if asset.get("job_names"):
             card["dagster_jobs"] = asset["job_names"]
+        if asset.get("group_name"):
+            card["dagster_group"] = asset["group_name"]
+        if asset.get("latest_materialization"):
+            card["dagster_latest_materialization"] = asset["latest_materialization"]
+        if asset.get("duckdb_fqn"):
+            card["dagster_table_fqn"] = asset["duckdb_fqn"]
         cards[pseudo] = card
 
     result = list(cards.values())
@@ -389,5 +410,6 @@ async def catalog_dataset_detail_payload(fqn: str) -> dict[str, Any]:
         "catalog_columns": catalog_cols,
         "warehouse_columns": wh_cols,
         "dagster": dagster_detail,
+        "dagster_graphql_url": dagster_graphql_url(),
         "lineage": lineage,
     }

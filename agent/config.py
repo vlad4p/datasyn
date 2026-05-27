@@ -117,6 +117,15 @@ def _litellm_base_from_env() -> str | None:
 
 
 OPENROUTER_DEFAULT_API_BASE = "https://openrouter.ai/api/v1"
+DAGSTER_DEFAULT_GRAPHQL_URL = "http://127.0.0.1:3001/graphql"
+
+
+def _dagster_graphql_url_from_env() -> str:
+    """Dagster webserver GraphQL endpoint (``DAGSTER_GRAPHQL_URL`` in repo ``.env``)."""
+    raw = _env_first("DAGSTER_GRAPHQL_URL")
+    if raw:
+        return raw.strip().rstrip("/")
+    return DAGSTER_DEFAULT_GRAPHQL_URL.rstrip("/")
 
 
 def _openrouter_base_from_env() -> str | None:
@@ -142,6 +151,7 @@ class Settings:
     openrouter_api_key: str | None
     openrouter_api_base: str | None
     gemini_api_key: str | None
+    dagster_graphql_url: str
     duckdb_path_in_process: str
     sql_row_cap: int
     warehouse_api_url: str
@@ -165,6 +175,7 @@ class Settings:
             openrouter_api_key=_env_first("OPENROUTER_API_KEY", "OPENROUTER_KEY"),
             openrouter_api_base=_openrouter_base_from_env(),
             gemini_api_key=_gemini_api_key(),
+            dagster_graphql_url=_dagster_graphql_url_from_env(),
             duckdb_path_in_process=os.environ.get("DUCKDB_PATH", "/data/warehouse.duckdb"),
             sql_row_cap=int(os.environ.get("SQL_ROW_CAP", "500")),
             warehouse_api_url=os.environ.get("WAREHOUSE_API_URL", "http://127.0.0.1:8080"),
