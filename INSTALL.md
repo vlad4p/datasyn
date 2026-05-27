@@ -131,7 +131,11 @@ make infra-duckdb-ui-down
 
 ## Catálogo de metadatos (opcional)
 
-Si tu organización tiene un catálogo (Postgres con descripciones de columnas, lineage, tags), apuntá un servidor MCP **dagster** en `mcp.json` (puede vivir en otro repo/despliegue) con `dagster_catalog_get_schema` y `dagster_catalog_execute_query`. El agente prioriza catálogo antes de tocar archivos. Patrones de SQL en `skills/catalog-sql/SKILL.md`.
+Si tu organización tiene un catálogo (Postgres con descripciones de columnas, lineage, tags), apuntá un servidor MCP **dagster** en `mcp.json` (puede vivir en otro repo/despliegue) con `dagster_catalog_get_schema` y `dagster_catalog_execute_query`. El agente prioriza catálogo antes de tocar archivos. La UI (**pestaña Datasets**) consume `GET /api/catalog/datasets` y fusiona tablas DuckDB con `dataset_entity`; sin dagster en `mcp.json` verás solo el almacén. Patrones de SQL en `skills/catalog-sql/SKILL.md` cuando exista en el repo.
+
+Los análisis exportados desde la UI se guardan en `./reports/analyses/` (montado en el contenedor `brain` como `/project/reports`).
+
+**Datasets tab:** el brain consulta el [GraphQL API de Dagster](https://docs.dagster.io/api/graphql) (`DAGSTER_GRAPHQL_URL`, default `http://127.0.0.1:3001/graphql`) para assets, jobs y linaje; lo fusiona con tablas DuckDB vía MCP.
 
 ---
 
@@ -143,6 +147,8 @@ make agent-ps              # estado de brain + UI
 make registry-api-v2       # GET /v2/ del registry
 curl -s http://localhost:8002/api/health        | jq .       # brain
 curl -s http://localhost:8002/api/health/tools  | jq '.tools | length'   # tools MCP cargadas
+curl -s http://localhost:8002/api/catalog/datasets | jq '.count'
+uv run pytest tests/test_analysis_export.py -q   # export de análisis (sin MCP)
 ```
 
 UI: `http://localhost:8003` · Dagster: `http://localhost:3001` · MinIO console: `http://localhost:9001`.

@@ -46,10 +46,9 @@ services:
     volumes:
       - ./skills:/project/skills:ro
       - ./AGENTS.md:/project/AGENTS.md:ro
+      - ./reports:/project/reports
     command:
       [
-        "python",
-        "-m",
         "uvicorn",
         "agent.main:app",
         "--host",

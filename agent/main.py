@@ -34,6 +34,9 @@ from agent.utils.langfuse_tracing import (
 )
 from agent.utils.mcp_connections import load_mcp_tool_connections
 from agent.utils.otel_tracing import init_otel_tracing
+from agent.utils.analysis_export import export_analysis, get_analysis, list_analyses
+from agent.utils.dagster_graphql import dagster_graphql_url
+from agent.utils.catalog_datasets import catalog_dataset_detail_payload, catalog_datasets_payload
 from agent.utils.warehouse_schema import warehouse_tables_payload
 from agent.utils.litellm_chat import (
     explain_litellm_http_exception,
@@ -285,6 +288,19 @@ class ChatResponse(BaseModel):
     )
 
 
+class AnalysisExportMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = ""
+
+
+class AnalysisExportRequest(BaseModel):
+    messages: list[AnalysisExportMessage] = Field(default_factory=list)
+    locale: Literal["en", "es"] = "en"
+    title: str | None = None
+    dataset_fqn: str | None = None
+    request_ids: list[str] = Field(default_factory=list)
+
+
 def _llm_config_snapshot() -> dict[str, Any]:
     """Static LLM settings (no network)."""
     key = settings.litellm_key or ""
@@ -435,6 +451,68 @@ async def health_warehouse_tables() -> dict[str, Any]:
             "raw_line_count": 0,
             "error": str(exc)[:500],
         }
+
+
+@app.get("/catalog/datasets")
+async def catalog_datasets(
+    duckdb_table: str | None = Query(None, description="Filter to one DuckDB schema.table FQN"),
+) -> dict[str, Any]:
+    """Merged DuckDB tables + Dagster GraphQL catalog + optional Postgres dataset_entity."""
+    try:
+        payload = await catalog_datasets_payload(duckdb_table=duckdb_table)
+        payload["dagster_graphql_url"] = dagster_graphql_url()
+        return payload
+    except Exception as exc:
+        logger.warning("GET /catalog/datasets failed: %s", exc)
+        return {
+            "status": "error",
+            "catalog_status": "error",
+            "datasets": [],
+            "count": 0,
+            "error": str(exc)[:500],
+        }
+
+
+@app.get("/catalog/datasets/{fqn:path}")
+async def catalog_dataset_detail(fqn: str) -> dict[str, Any]:
+    """Dataset detail: catalog columns + warehouse information_schema."""
+    try:
+        return await catalog_dataset_detail_payload(fqn)
+    except Exception as exc:
+        logger.warning("GET /catalog/datasets/%s failed: %s", fqn, exc)
+        return {"status": "error", "error": str(exc)[:500]}
+
+
+@app.get("/analyses")
+def analyses_list(limit: int = Query(50, ge=1, le=100)) -> dict[str, Any]:
+    """List exported analysis manifests (newest first)."""
+    items = list_analyses(limit=limit)
+    return {"status": "ok", "analyses": items, "count": len(items)}
+
+
+@app.get("/analyses/{analysis_id}")
+def analyses_detail(analysis_id: str) -> dict[str, Any]:
+    """Full analysis: manifest + report markdown."""
+    data = get_analysis(analysis_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    return {"status": "ok", **data}
+
+
+@app.post("/analyses/export")
+def analyses_export(body: AnalysisExportRequest) -> dict[str, Any]:
+    """Export chat messages as a report-style analysis under reports/analyses/."""
+    msgs = [m.model_dump() for m in body.messages if (m.content or "").strip()]
+    if not msgs:
+        raise HTTPException(status_code=400, detail="No messages to export")
+    manifest = export_analysis(
+        messages=msgs,
+        locale=body.locale,
+        title=body.title,
+        dataset_fqn=body.dataset_fqn,
+        request_ids=body.request_ids,
+    )
+    return {"status": "ok", "analysis": manifest}
 
 
 @app.get("/health/tools")

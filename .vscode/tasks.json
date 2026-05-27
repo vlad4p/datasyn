@@ -42,6 +42,22 @@
           "endsPattern": "Application startup complete"
         }
       }
+    },
+    {
+      "label": "brain-restart (uv)",
+      "type": "shell",
+      "command": "make brain-restart",
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": { "regexp": "^$" },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "uv run brain-dev",
+          "endsPattern": "Application startup complete"
+        }
+      }
     }
   ]
 }
