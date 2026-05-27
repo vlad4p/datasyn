@@ -1,244 +1,296 @@
-# DataSyn
+# 🧠 datasyn
 
-![status](https://img.shields.io/badge/status-active%20development-orange) ![license](https://img.shields.io/badge/license-TBD-lightgrey) ![approach](https://img.shields.io/badge/approach-AI--driven-success) ![focus](https://img.shields.io/badge/focus-public%20data-blue) ![locale](https://img.shields.io/badge/docs-es-informational) [![en](https://img.shields.io/badge/README-EN-lightgrey)](README.en.md)
+> [English](README.en.md)
 
-## 🎯 ¿Qué es DataSyn?
+> **⚠️ Repositorio en desarrollo activo**
+>
+> Plataforma **AI-driven** para analizar **datos públicos** sobre infraestructura propia o cloud: warehouse DuckDB, object storage MinIO, orquestación Dagster y agente operativo vía **MCP**.
+>
+---
 
-**DataSyn** es un sistema para **buscar, organizar y analizar datos públicos** con ayuda de inteligencia artificial.
+## Índice
 
-No necesitas saber programar ni escribir consultas SQL: puedes hacerle preguntas en **lenguaje natural** a tu asistente de IA (Cursor, VS Code, Claude, etc.) y el sistema responde con tablas, gráficos y el detalle de cómo llegó a ese resultado.
-
-Todo el código y los datos que procesa son **públicos y reproducibles**: si un análisis aparece en una nota o informe, cualquiera puede verificarlo.
+- [📖 Sobre el proyecto](#sobre-el-proyecto)
+- [🏗️ Arquitectura](#arquitectura)
+- [🏅 Patrón medalla](#patron-medalla)
+- [📦 Layout distribuido](#layout-distribuido)
+- [➕ Nueva ingesta (gitflow)](#nueva-ingesta)
+- [🔌 Servidores MCP](#servidores-mcp)
+- [🔄 Ciclo de una consulta](#ciclo-consulta)
+- [💬 Desarrollo con IA](#desarrollo-ia)
+- [🚀 Ejecutar en local](#ejecutar-local)
+- [📊 Datasets operativos](#datasets)
+- [🛠️ Makefile](#makefile)
+- [📚 Referencias](#referencias)
+- [🤖 Aviso](#aviso)
 
 ---
 
-## 🚀 ¿Cómo empiezo?
+<a id="sobre-el-proyecto"></a>
 
-Hay dos caminos según lo que quieras hacer:
+## 📖 Sobre el proyecto
 
-| Quiero… | Qué hacer |
-|---|---|
-| **Consultar y analizar** datos que ya están en DataSyn | Conectar el asistente de IA vía MCP (abajo) |
-| **Instalar** DataSyn en mi computadora o servidor | Seguir la guía [`INSTALL.md`](INSTALL.md) |
-| **Agregar** una fuente de datos nueva | Pedírselo al asistente de IA (ver más abajo) |
+**datasyn** es la **capa de plataforma**: brain (FastAPI + Deep Agents), UI React, servidores MCP HTTP y stacks Docker (`infra/duckdb`, `infra/object-storage`, `infra/dagster`, registry OCI).
 
-### 💡 Opción recomendada: conectar tu asistente de IA (MCP)
+Los **pipelines Dagster** viven en el repo hermano [`datasyn-code`](../datasyn-code). El **runtime Dagster** (webserver, daemon, user code gRPC) se despliega desde `infra/dagster/` en este repo.
 
-Es la forma más simple de usar DataSyn **sin instalar nada**.
+El agente no “asiste” en abstracto: **ejecuta** SQL, lista objetos en MinIO y dispara materializaciones Dagster — con trazabilidad (SQL, tool calls, skills versionadas). Los MCP operativos hoy son **`duckdb-mcp`** y **`storage-mcp`**.
 
-1. **Elige un asistente** que soporte MCP: [Cursor](https://cursor.com), VS Code con [Kilo Code](https://kilocode.ai) (tiene modelos gratuitos), Claude Desktop, etc.
-2. **Configura los servidores MCP** apuntando a una instancia de DataSyn. El archivo [`mcp.json`](mcp.json) del repo muestra el formato; tu administrador te dará las URLs (por ejemplo `http://tu-servidor:8040/mcp`).
-3. **Pregunta en español**, por ejemplo:
-   - *"¿Qué datasets hay disponibles?"*
-   - *"¿Cuántos hogares en NOA estuvieron bajo la línea de pobreza en el último trimestre?"*
-   - *"Muéstrame la consulta SQL que usaste."*
+**Glosario rápido**
 
-> **Nota sobre costos:** las consultas las ejecuta tu asistente de IA, por lo que consumen tokens de tu cuenta. Con Kilo Code + VS Code puedes usar modelos free.
+| Término | Significado |
+|---------|-------------|
+| **Brain** | API FastAPI que orquesta el grafo del agente y los clientes MCP |
+| **MCP** | [Model Context Protocol](https://modelcontextprotocol.io/) — contrato HTTP entre IDE/agente y herramientas (`duckdb_*`, `storage_*`) |
+| **Skill** | Playbook `SKILL.md` cargado bajo demanda (ingesta, análisis, catálogo) |
+| **Code location** | Imagen gRPC Dagster con el paquete `datasyn` (`dagster_user_code`) |
+| **Medallion** | Schemas DuckDB `bronze` → `silver` → `gold` |
 
-### 🖥️ Instalación completa
+### Layout del repo (datasyn)
 
-Si quieres ejecutar DataSyn en tu propia máquina (datos, pipelines, interfaz web), sigue la guía paso a paso en **[`INSTALL.md`](INSTALL.md)**. Resumen en dos comandos:
+<p align="center"><img src="docs/diagrams/repo-layout.svg" alt="Layout del repositorio datasyn" width="560"/></p>
+
+Raíz: `Makefile`, `mcp.json`, `AGENTS.md`, `docker-compose.yaml` (brain/UI), `pyproject.toml` + `uv` para desarrollo local.
+
+---
+
+<a id="arquitectura"></a>
+
+## 🏗️ Arquitectura
+
+<p align="center"><img src="docs/diagrams/architecture.svg" alt="Arquitectura de plataforma" width="880"/></p>
+
+Cada servicio corre en **su propio contenedor** Docker sobre la red **`infra-datasynk`**. Dos formas de acceder:
+
+| Ruta | Quién | Flujo |
+|------|-------|-------|
+| **A — agent / UI** | Navegador o cliente HTTP | `ui` (:8003) → `brain` (:8002) → servidores MCP → datos |
+| **B — MCP directo** | IDE con cliente MCP | `mcp.json` → `duckdb-mcp` / `storage-mcp` (sin pasar por brain) |
+
+**Observabilidad (opcional):** el contenedor **brain** puede enviar trazas a **[Langfuse](https://langfuse.com/)** (`infra/langfuse/`) — spans de LLM, tool calls MCP y sesiones, visibles en la UI de Langfuse server-side. Ver [`INSTALL.md`](INSTALL.md) (`LANGFUSE_*`).
+
+| Contenedor | Imagen OCI | Rol | Puerto host |
+|------------|------------|-----|-------------|
+| **brain** | `datasyn/brain` | Grafo Deep Agents, clientes MCP, `AGENTS.md` | `:8002` |
+| **ui** | `datasyn/ui` | React; proxy `/api` → brain | `:8003` |
+| **duckdb-mcp** | `datasyn/duckdb-mcp` | SQL, schema, listado `/data-local` | `:8040` |
+| **storage-mcp** | `datasyn/storage-mcp` | MinIO list/get/put | `:8044` |
+| **dagster_*** | `datasyn/dagster-*` | Webserver, daemon, Postgres, gRPC user code | UI `:3001` |
+| **MinIO** | `minio/minio` | Object storage `data-local` | `:9000` interno |
+| **Langfuse** | stack `infra/langfuse/` | Trazas del brain (opcional) | ver compose |
+
+Reglas operativas del agente: [`AGENTS.md`](AGENTS.md).
+
+---
+
+<a id="patron-medalla"></a>
+
+## 🏅 Patrón medalla
+
+<p align="center"><img src="docs/diagrams/medallion.svg" alt="Patron medalla bronze silver gold" width="420"/></p>
+
+| Schema | Uso en datasyn |
+|--------|----------------|
+| **bronze** | Landing + tablas crudas (Dagster assets en `datasyn-code`) |
+| **silver** | Limpieza y modelos intermedios (mínimo hoy) |
+| **gold** | Marts analíticos; excepción INDEC EPH (`gold.indec_eph_*`) |
+
+Implementación de pipelines: repo [`datasyn-code`](../datasyn-code) — ver su README para scrape vs MinIO→CSV.
+
+---
+
+<a id="layout-distribuido"></a>
+
+## 📦 Layout distribuido
+
+Patrón [Dagster distributed code location](https://docs.dagster.io/deployment/overview): runtime en **datasyn**, user code en repo hermano **datasyn-code**.
+
+<p align="center"><img src="docs/diagrams/distributed-layout.svg" alt="Layout distribuido dos repos" width="720"/></p>
 
 ```bash
-make bootstrap      # prepara la red y los volúmenes
-make stack-up       # levanta todo el sistema
+git clone …/datasyn.git
+git clone …/datasyn-code.git   # mismo directorio padre
+
+cd datasyn && make bootstrap && make infra-up
 ```
 
-Luego abre la interfaz web en `http://localhost:8003`.
+| Repo | Contenido | Comandos clave |
+|------|-----------|----------------|
+| **datasyn** | Brain, UI, skills, infra (duckdb, minio, Dagster runtime) | `make stack-up` · `make agent-dev` · [`INSTALL.md`](INSTALL.md) |
+| **datasyn-code** | Assets bronze, jobs, schedules, Dockerfile gRPC | `make dev` · `make push` |
 
 ---
 
-## 💬 ¿Cómo se ve usarlo?
+<a id="nueva-ingesta"></a>
 
-![Ciclo de una pregunta](docs/diagrams/question-lifecycle.svg)
+## ➕ Nueva ingesta (gitflow)
 
-> Diagrama editable: [`docs/diagrams/question-lifecycle.drawio`](docs/diagrams/question-lifecycle.drawio) · [PNG](docs/diagrams/question-lifecycle.png)
+Flujo recomendado para agregar una fuente de datos:
 
-**Ejemplo de conversación:**
+1. **Clonar** [`datasyn`](.) y [`datasyn-code`](../datasyn-code) al mismo nivel; levantar la plataforma (`make stack-up` en datasyn).
+2. **Configurar** el entorno del agente: [`mcp.json`](mcp.json), skills en [`skills/`](skills/) (p. ej. [`ingest-scrape-news-bronze`](skills/ingest-scrape-news-bronze/SKILL.md)), [`AGENTS.md`](AGENTS.md).
+3. **Desarrollar en gitflow** dentro de **`datasyn-code`**: rama `feature/<fuente>`, assets bajo `src/datasyn/assets/bronze/<fuente>/`, job y schedule; PR → merge a `main`.
+4. **Publicar** la code location: `make -C ../datasyn-code push` y redeploy de `dagster_user_code` (ver [`INSTALL.md`](INSTALL.md)).
+5. **Validar** en Dagster UI (`:3001`).
 
-```text
-Usuario: ¿Qué porcentaje de hogares en NOA tuvo IPCF bajo la línea
-         de pobreza en T3-2025? Muéstrame la SQL.
+El código de pipelines se desarrolla y revisa en **git** dentro de `datasyn-code`; el agente usa **`duckdb_*`** y **`storage_*`** para SQL, landing y validación sobre `/data-local`.
 
-Agente:  · Busca en el catálogo qué significan IPCF, REGION y PONDIH.
-         · Verifica los tipos de datos y aplica la ponderación correcta.
-         · Ejecuta la consulta y devuelve una tabla con resultados.
-         · Incluye el SQL usado y los supuestos que tomó.
+---
 
-Resultado: tabla en Markdown, SQL copiable, y notas sobre la cobertura de datos.
+<a id="servidores-mcp"></a>
+
+## 🔌 Servidores MCP (datasyn)
+
+Dos contenedores HTTP **FastMCP** — imagen `datasyn/<nombre>-mcp`, un servicio por stack en `infra/`:
+
+| Servidor | Compose | URL típica | Prefijo tools |
+|----------|---------|------------|---------------|
+| **duckdb-mcp** | `infra/duckdb/` | `http://<host>:8040/mcp` | `duckdb_*` |
+| **storage-mcp** | `infra/object-storage/` | `http://<host>:8044/mcp` | `storage_*` |
+
+Configuración de referencia en [`mcp.json`](mcp.json):
+
+```json
+{
+  "mcpServers": {
+    "duckdb":  { "type": "remote", "url": "http://<host>:8040/mcp" },
+    "storage": { "type": "remote", "url": "http://<host>:8044/mcp" }
+  }
+}
 ```
 
----
+**Ruta B:** el IDE/cliente MCP apunta `mcp.json` a esas URLs y habla directo con DuckDB o MinIO.
 
-## 🌍 ¿Por qué existe?
+**Ruta A:** el **brain** carga la misma config y reenvía tool calls a esos contenedores cuando el usuario usa la UI o la API del agente.
 
-> Un sistema que entregue **información comprensible sobre la sociedad**, en tiempo real, para tomar mejores decisiones — y que **no necesita ser privado**: las políticas públicas no requieren datos desagregados, sino información clara y verificable.
-
-DataSyn parte de tres ideas:
-
-- 📂 **Datos públicos como bien común.** El código que los procesa también es público.
-- 🤖 **IA como amplificador**, no como caja negra. Puedes elegir el modelo (incluso uno local) y el sistema corre en tu infraestructura.
-- 📝 **El conocimiento se versiona.** Lo que un analista sabe hacer "a mano" se escribe una vez como **skill** y queda disponible para todos.
+| Prefijo | Tools principales |
+|---------|-------------------|
+| `duckdb_*` | `get_schema`, `execute_query`, `list_data_mount` |
+| `storage_*` | `list_buckets`, `list_objects`, `get_object_text`, `put_object_*` |
 
 ---
 
-## 📚 Skills: tu conocimiento, reutilizable por todos
+<a id="ciclo-consulta"></a>
 
-Una **skill** es un archivo Markdown (`SKILL.md`) que le enseña al agente **cómo analizar un dataset**, **cómo ingerir una fuente** o **cómo generar un reporte**.
+## 🔄 Ciclo de una consulta
 
-Quién las escribe: analistas, periodistas de datos, investigadores. Solo hace falta Markdown y conocer el dominio (qué columnas usar, qué filtros aplicar, etc.).
+<p align="center"><img src="docs/diagrams/query-flow.svg" alt="Ciclo de una consulta analitica" width="520"/></p>
 
-| Caso | Lo que escribes | Lo que hace el agente |
-|---|---|---|
-| **Análisis recurrente** | Filtros, ponderaciones, columnas clave | Ejecuta la consulta y devuelve tabla + SQL |
-| **Ingesta de dataset nuevo** | Pasos para leer y guardar la fuente | Crea el pipeline y valida los datos |
-| **Reporte periódico** | Secciones y formato esperado | Produce Markdown y lo guarda en `reports/` |
+Ejemplo (Ruta A, EPH hogares):
 
-Ejemplos en la carpeta [`skills/`](skills/).
+<p align="center"><img src="docs/diagrams/query-example-chat.svg" alt="Ejemplo de consulta estilo chat EPH hogares" width="560"/></p>
+
+Contrato: **un SQL statement por** `duckdb_execute_query`. Sin inventar columnas — schema primero.
 
 ---
 
-## 📊 Datos disponibles
+<a id="desarrollo-ia"></a>
 
-Fuentes que el sistema ya sabe procesar:
+## 💬 Desarrollo con IA
 
-| Dataset | Fuente | Frecuencia |
-|---|---|---|
-| INDEC EPH (microdatos) | Encuesta Permanente de Hogares | Trimestral |
-| INDEC Censo 2022 | Radios censales + indicadores UCA | Por radio / departamento |
-| Elecciones 2023 — Generales | argentina.gob.ar (ZIP oficial) | Por mesa / circuito |
-| Boletín Oficial — 3ª Sección | boletinoficial.gob.ar | Diaria |
-| Prensa | Infobae · Clarín · La Nación | Diaria por sección |
-| OECD AI Incidents | oecd.ai | Por fecha de incidente |
+Skills en [`skills/`](skills/) — playbooks que el brain descubre al arrancar. Para pipelines Dagster, las skills de ingesta viven también en [`datasyn-code`](../datasyn-code).
 
-Para sumar una fuente nueva, pídele al asistente que cree el job de ingesta (ver ejemplo abajo).
+| Caso | Skill (datasyn) | Repo de código |
+|------|-----------------|----------------|
+| Análisis EPH hogares | [`analyze-indec-eph-hogar`](skills/analyze-indec-eph-hogar/SKILL.md) | warehouse |
+| Análisis EPH individual | [`analyze-indec-eph-individual`](skills/analyze-indec-eph-individual/SKILL.md) | warehouse |
+| Scrape → bronze | [`ingest-scrape-news-bronze`](skills/ingest-scrape-news-bronze/SKILL.md) | `datasyn-code` |
+| INDEC EPH ingest | [`ingest-indec-mercadolaboral`](skills/ingest-indec-mercadolaboral/SKILL.md) | warehouse `gold.*` |
+
+**Reglas:** [`AGENTS.md`](AGENTS.md) — mandato del agente, paths `/data-local`, disciplina MCP (`duckdb_*`, `storage_*`).
 
 ---
 
-## ➕ Ejemplo: agregar una fuente de datos nueva
+<a id="ejecutar-local"></a>
 
-Supongamos que quieres sumar **incidentes de IA de la OECD** al sistema.
+## 🚀 Ejecutar en local
 
-### Paso 1 — Pídele al agente
+Guía completa: **[`INSTALL.md`](INSTALL.md)** (bootstrap, registry, troubleshooting).
 
-Describe la fuente, qué guardar y cómo debe funcionar:
+**Stack Docker (producción local)**
 
-```text
-Crear un nuevo job para ingestar incidentes de OECD AI:
-
-- Fuente: https://oecd.ai/en/incidents?countries=ARG&...
-- Para cada incidente, extraer toda la información y estructurar un JSON.
-- Guardar cada JSON en object storage.
-- Crear una tabla DuckDB en schema bronze.
-- El job debe recibir una fecha de scrape como input.
-- Tomar como referencia el estilo de otros jobs Dagster del repo.
+```bash
+make bootstrap      # red infra-datasynk + volúmenes
+make stack-up       # infra + MCP + brain/UI
 ```
 
-### Paso 2 — Revisión y publicación
+**Desarrollo Mac (brain hot reload, [uv](https://docs.astral.sh/uv/))**
 
-El agente crea el código, lo valida y prepara un **Pull Request** a la rama `main`. Un revisor interno lo aprueba y la fuente queda disponible para todos.
-
-> **Para operadores técnicos:** los pasos de build de imagen Docker, push al registry y redeploy en servidor están documentados en [`INSTALL.md`](INSTALL.md) (secciones *Publicar imágenes* y *Redeploy*).
-
----
-
-## 🔒 Privacidad y control
-
-| Qué | Dónde vive |
-|---|---|
-| Datos y warehouse | En **tu** computadora o servidor |
-| Pipelines y asistente | Contenedores en tu red local |
-| Modelo de IA | A tu elección: local, OpenRouter, Gemini, etc. |
-| Trazas de uso | Langfuse self-hosted (opcional) |
-
-Lo único que puede salir de tu red es la llamada al modelo de IA — y solo viajan resúmenes, SQL y nombres de columnas, **nunca archivos completos**. Con un modelo local, el sistema funciona sin conexión a internet.
-
----
-
-## 🛠️ Para desarrolladores
-
-### Arquitectura
-
-![Arquitectura](docs/diagrams/architecture.svg)
-
-> Editable: [`docs/diagrams/architecture.drawio`](docs/diagrams/architecture.drawio) · [PNG](docs/diagrams/architecture.png)
-
-Cuatro piezas principales:
-
-- **DuckDB** — base de datos analítica local (`bronze` / `silver` / `gold`).
-- **MinIO** — almacenamiento de archivos compatible con S3.
-- **Dagster** — orquestación de pipelines de ingesta.
-- **Servidores MCP** — interfaz entre el agente de IA y el sistema (`duckdb`, `storage`, `dagster`).
-
-Sobre eso: un brain (FastAPI + Deep Agents) y una UI (React/Vite). Reglas del agente en [`AGENTS.md`](AGENTS.md).
-
-### AI-driven, no solo AI-assisted
-
-El agente **opera** el stack; tú aportas dirección y criterio:
-
-| Tú haces | El agente hace |
-|---|---|
-| Formulas la pregunta en lenguaje natural | Resuelve a qué tabla y columnas corresponde |
-| Escribes una skill con el conocimiento de dominio | Ejecuta el playbook cada vez que aplica |
-| Revisas el SQL devuelto | Escribe y corre la consulta, devuelve filas + supuestos |
-
-### Estado del proyecto
-
-| Componente | Estado |
-|---|---|
-| Brain + UI | ✅ Operativo |
-| Servidores MCP | ✅ Operativos |
-| Pipelines bronze (INDEC, BOA, elecciones, prensa) | ✅ Operativos |
-| Capas silver / gold | 🟡 Mínimas |
-| Catálogo de metadatos | 🟡 Opcional |
-| Licencia open source | 🔲 A definir |
-
-### Estructura del repositorio
-
+```bash
+cp .env.example .env
+uv sync
+make agent-dev      # brain :8002 + UI :5173
 ```
-agent/                Brain (FastAPI + Deep Agents + clientes MCP)
-ui/                   Frontend Vite/React
-skills/               Playbooks SKILL.md
-infra/                MinIO · DuckDB · Dagster · MCP servers · registry
-data-local/           Datos locales para DuckDB (gitignored)
-docs/diagrams/        Diagramas .drawio + SVG/PNG
-mcp.json              URLs MCP que carga el brain
-AGENTS.md             Reglas del agente
-INSTALL.md            Instalación, despliegue y troubleshooting
-Makefile              Comandos de operación (make help)
+
+Publicar user code tras cambios en pipelines:
+
+```bash
+make -C ../datasyn-code push
+# redeploy: ver INSTALL.md (compose recreate dagster_user_code)
 ```
 
 ---
 
-## 🤝 Comunidad
+<a id="datasets"></a>
 
-La forma más valiosa de contribuir es **escribir skills**: cada una convierte conocimiento de dominio en una capacidad nueva para todos.
+## 📊 Datasets operativos
 
-| Esfuerzo | Contribución |
-|---|---|
-| 🟢 Bajo | Skill `SKILL.md` sobre un dataset existente |
-| 🟡 Medio | Skill + pipeline Dagster para una fuente pública nueva |
-| 🔴 Alto | Componentes reutilizables cuando una transformación se repite |
+Fuentes con pipeline bronze (detalle en [`datasyn-code`](../datasyn-code)):
 
-Issues y PRs bienvenidos. PRs pequeños, una pieza por PR.
-
----
-
-## 📎 Referencias
-
-- [`INSTALL.md`](INSTALL.md) — instalación, despliegue y solución de problemas.
-- [`AGENTS.md`](AGENTS.md) — reglas operativas del agente.
-- [`skills/`](skills/) — playbooks ejecutables.
-- [`docs/diagrams/`](docs/diagrams/) — diagramas editables.
-- [`Makefile`](Makefile) — `make help` para operar el stack.
-- [`mcp.json`](mcp.json) — configuración de servidores MCP.
-
-Inspiraciones:
-
-- [Dagster — AI-Driven Data Engineering](https://dagster.io/blog/announcing-ai-driven-data-engineering) (marzo 2026).
-- [DuckDB](https://duckdb.org/) — motor analítico embebido sobre archivos locales.
-- [Model Context Protocol](https://modelcontextprotocol.io/) — contrato entre agente y herramientas.
+| Dataset | Grain / notas |
+|---------|----------------|
+| INDEC EPH | `gold.indec_eph_usu_hogar` / `_individual` — ver skills EPH |
+| INDEC Censo 2022 / UCA | Radios censales, CSV UCA |
+| Elecciones 2023 generales | Mesas / circuitos |
+| Boletín Oficial 3ª sección | Contrataciones diarias |
+| Prensa | Infobae, Clarín, La Nación, TN |
+| OECD AI Incidents | JSON landing + bronze |
 
 ---
 
-> 🐛 Si algo del README no coincide con el código, abre un issue. Las discrepancias documentales son tan importantes como los bugs de código.
+<a id="makefile"></a>
+
+## 🛠️ Makefile
+
+| Comando | Qué hace |
+|---------|----------|
+| `make bootstrap` | Red `infra-datasynk` + volúmenes `duckdb_data`, `storage` |
+| `make infra-up` / `infra-down` | Stacks `infra/*` (duckdb, minio, dagster) |
+| `make stack-up` | Infra + MCP + agent/UI |
+| `make agent-dev` | Brain + UI en dev (uv) |
+| `make uv-sync` | Sincroniza deps Python del brain |
+| `make images-push-remote` | buildx push imágenes del stack |
+
+Variables: `DATASYN_IMAGE_REGISTRY`, `DATASYN_CODE_DIR`, `API_PORT`.
+
+```bash
+make help
+make -C ../datasyn-code help
+```
+
+---
+
+<a id="referencias"></a>
+
+## 📚 Referencias
+
+| Tema | Enlace |
+|------|--------|
+| Instalación y deploy | [`INSTALL.md`](INSTALL.md) |
+| Agente warehouse | [`AGENTS.md`](AGENTS.md) |
+| Skills | [`skills/`](skills/) |
+| Diagramas (SVG) | [`docs/diagrams/`](docs/diagrams/) |
+| Pipelines Dagster | [`../datasyn-code`](../datasyn-code) |
+| MCP spec | https://modelcontextprotocol.io/ |
+| DuckDB | https://duckdb.org/ |
+| Dagster AI-driven DE | https://dagster.io/blog/announcing-ai-driven-data-engineering |
+
+---
+
+<a id="aviso"></a>
+
+## 🤖 Aviso
+
+Este repositorio fue creado mediante *vibe coding* 🤖 con [Cursor](https://cursor.com) y modelos de [Anthropic](https://www.anthropic.com).
+
+Este proyecto se apoya en un concepto de almacenado y procesamiento **distribuido** mediante instrucciones en **lenguaje natural**, como paso hacia una **descentralización** de la información necesaria para tomar decisiones.

@@ -36,11 +36,11 @@ services:
     restart: unless-stopped
 
   # gRPC server that loads user code. DAGSTER_CURRENT_IMAGE tells the DockerRunLauncher
-  # to reuse this same image for per-run containers. Add more gRPC services on their own
-  # ports and entries in workspace.yaml for additional code locations.
+  # to reuse this same image for per-run containers. Default image is an empty stub in
+  # ``user_code/``; production pipelines are built from sibling repo ``../datasyn-code``.
   dagster_user_code:
     build:
-      context: ./mcp/dagster-code/projects/datasyn
+      context: ./user_code
       dockerfile: Dockerfile
     container_name: dagster_user_code
     labels:
@@ -241,49 +241,6 @@ services:
         condition: service_healthy
       dagster_user_code:
         condition: service_healthy
-
-  # Dagster MCP: code locations under ``mcp/dagster-code/projects/``, drives host Docker (socket).
-  # See ``infra/dagster/mcp/README.md``.
-  dagster-mcp:
-    build:
-      context: ./mcp
-      dockerfile: Dockerfile
-    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/dagster-mcp:${DATASYN_IMAGE_TAG:-latest}
-    labels:
-      datacyber.dagster.project: datasyn
-      datacyber.dagster.component: mcp
-    restart: unless-stopped
-    ports:
-      - "8043:8043"
-    env_file:
-      - .env
-    environment:
-      HOST: "0.0.0.0"
-      PORT: "8043"
-      MCP_HTTP_PATH: /mcp
-      DATABASE_URL: "${DATABASE_URL:-}"
-      CATALOG_DATABASE_URL: "${CATALOG_DATABASE_URL:-}"
-      DAGSTER_PROJECTS_ROOT: /projects
-      DAGSTER_PROJECT_NETWORK: infra-datasynk
-      DAGSTER_IMAGE_PREFIX: dagster
-      DAGSTER_CONTAINER_PREFIX: dagster
-      DAGSTER_DEFAULT_HOST_PORT: "3001"
-      DAGSTER_WEBSERVER_PORT: "3000"
-      DAGSTER_COMPOSE_FILE: "${DAGSTER_COMPOSE_FILE:-/dagster-compose/docker-compose.yaml}"
-      DAGSTER_COMPOSE_PROJECT: "${DAGSTER_COMPOSE_PROJECT:-dagster}"
-      DAGSTER_COMPOSE_USER_CODE_SERVICE: "${DAGSTER_COMPOSE_USER_CODE_SERVICE:-dagster_user_code}"
-      DAGSTER_USER_CODE_BUILD_PROJECT: "${DAGSTER_USER_CODE_BUILD_PROJECT:-datasyn}"
-      DAGSTER_USER_CODE_IMAGE_NAME: "${DAGSTER_USER_CODE_IMAGE_NAME:-dagster_user_code_image}"
-      DAGSTER_DEPLOY_VOLUMES: "${DAGSTER_DEPLOY_VOLUMES:-duckdb_data:/data;storage:/storage}"
-      DOCKER_REGISTRY: "${DOCKER_REGISTRY:-${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}}"
-      DOCKER_PUSH_AFTER_BUILD: "${DOCKER_PUSH_AFTER_BUILD:-0}"
-    volumes:
-      - ./mcp/dagster-code/projects:/projects
-      - .:/dagster-compose:ro
-      - ${DATACYBER_DATA_LOCAL_HOST:-/Users/vlad/project/datacyber/data-local}:/data-local:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - infra
 
 networks:
   infra:

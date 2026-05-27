@@ -1,50 +1,28 @@
-# Diagramas — DataSyn
+# Diagramas — datasyn
 
-Diagramas técnicos del proyecto en formato **drawio** (XML mxGraph) con sus exportaciones SVG y PNG. Editables en:
+SVG hand-crafted con la paleta datasyn (fondo `#fffceb`, tinta `#49443b`, acentos rojo / amarillo / azul / verde / naranja). Referencia y mapeo de roles: [`../colors/`](../colors/).
 
-- **draw.io desktop** — `/Applications/draw.io.app` en macOS, equivalente en Linux/Windows.
-- **app.diagrams.net** — abrí el `.drawio` directamente en el navegador.
-- **VS Code / Cursor** — extensión [Draw.io Integration](https://marketplace.visualstudio.com/items?itemName=hediet.vscode-drawio).
+## Inventario (README)
 
-## Inventario
+| Diagrama | SVG |
+|---|---|
+| Arquitectura de plataforma | [`architecture.svg`](architecture.svg) |
+| Layout repo datasyn | [`repo-layout.svg`](repo-layout.svg) |
+| Despliegue distribuido | [`distributed-layout.svg`](distributed-layout.svg) |
+| Patrón medalla | [`medallion.svg`](medallion.svg) |
+| Ciclo de consulta | [`query-flow.svg`](query-flow.svg) |
+| Ejemplo chat (EPH) | [`query-example-chat.svg`](query-example-chat.svg) |
 
-| Diagrama | Editable | SVG (README) | PNG |
-|---|---|---|---|
-| Arquitectura general | [`architecture.drawio`](architecture.drawio) | [`architecture.svg`](architecture.svg) | [`architecture.png`](architecture.png) |
-| Flujo de datos (medallón) | [`data-flow.drawio`](data-flow.drawio) | [`data-flow.svg`](data-flow.svg) | [`data-flow.png`](data-flow.png) |
-| Ciclo de vida de una pregunta | [`question-lifecycle.drawio`](question-lifecycle.drawio) | [`question-lifecycle.svg`](question-lifecycle.svg) | [`question-lifecycle.png`](question-lifecycle.png) |
+El README embebe estos **SVG** directamente. Fondo a sangre: `style="background-color:#fffceb"` + `<rect width="100%" height="100%" fill="#fffceb"/>` (sin `rx` en el canvas — evita esquinas transparentes).
 
-## Re-exportar tras editar un `.drawio`
+## Editar
 
-Cualquiera de estos métodos sirve. Tras correr, **commiteá** los `.svg` / `.png` actualizados.
+XML editable (viewBox, `rect`, `text`, gradientes en `<defs>`).
 
-### macOS — draw.io desktop CLI
+- Fondo `#fffceb` (ivory)
+- Tipografía Arial/Helvetica; labels de sección `#585d5e` en mayúsculas con `letter-spacing="2"`
+- Strokes `#49443b` (ink), gruesos (2px+)
+- Validar: `xmllint --noout docs/diagrams/<nombre>.svg`
+- Paleta (hex + roles): [`../colors/`](../colors/)
 
-```bash
-cd docs/diagrams
-for f in architecture data-flow question-lifecycle; do
-  /Applications/draw.io.app/Contents/MacOS/draw.io --no-sandbox --export \
-    --format svg --output "$f.svg" "$f.drawio"
-  /Applications/draw.io.app/Contents/MacOS/draw.io --no-sandbox --export \
-    --format png --scale 1.5 --output "$f.png" "$f.drawio"
-done
-```
-
-### Linux — drawio-desktop AppImage
-
-```bash
-./drawio-x86_64.AppImage --no-sandbox --export --format svg --output "$f.svg" "$f.drawio"
-```
-
-(Headless server: prefijar con `xvfb-run -a`.)
-
-### Sin CLI — app.diagrams.net
-
-`File → Export as → SVG / PNG → Selection: Diagram → Embed Images: on`. Guardar al lado del `.drawio`.
-
-## Cuándo agregar un diagrama nuevo
-
-- Cuando una pieza estructural (componente nuevo, lane nuevo, contrato MCP nuevo) cambie y la prosa del README ya no alcance.
-- Cuando una secuencia operativa (un flujo de pregunta, un pipeline complejo) sea más clara visualmente que en pasos.
-
-Convención: `kebab-case.drawio` + mismas dos exportaciones (`.svg` para embeber, `.png` para previews y compatibilidad). Referenciar desde el README principal con `![Título](docs/diagrams/<nombre>.svg)`.
+Tras editar, commitear el `.svg` junto al README.

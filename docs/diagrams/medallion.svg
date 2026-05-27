@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="560" height="780" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 780" role="img" aria-label="Patron medallon: bronce, plata y oro">
+  <defs>
+    <linearGradient id="bronzeCard" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f9dac1"/>
+      <stop offset="45%" stop-color="#de6433"/>
+      <stop offset="100%" stop-color="#a33a29"/>
+    </linearGradient>
+    <radialGradient id="bronzeMedal" cx="50%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#e8c29e"/>
+      <stop offset="100%" stop-color="#d15c32"/>
+    </radialGradient>
+    <linearGradient id="silverCard" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#d1d5db"/>
+      <stop offset="100%" stop-color="#7e7f7e"/>
+    </linearGradient>
+    <radialGradient id="silverMedal" cx="30%" cy="25%" r="70%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#7e7f7e"/>
+    </radialGradient>
+    <linearGradient id="goldCard" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f4bd48"/>
+      <stop offset="50%" stop-color="#f4bd48"/>
+      <stop offset="100%" stop-color="#d15c32"/>
+    </linearGradient>
+    <radialGradient id="goldMedal" cx="35%" cy="30%" r="65%">
+      <stop offset="0%" stop-color="#f4bd48"/>
+      <stop offset="100%" stop-color="#d15c32"/>
+    </radialGradient>
+    <linearGradient id="sourceCard" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#fff1ce"/>
+    </linearGradient>
+    <filter id="shadow" x="-8%" y="-8%" width="116%" height="120%">
+      <feOffset dy="6" in="SourceAlpha" result="o"/>
+      <feGaussianBlur in="o" stdDeviation="10" result="b"/>
+      <feFlood flood-color="#080f15" flood-opacity="0.35" result="c"/>
+      <feComposite in="c" in2="b" operator="in" result="s"/>
+      <feMerge><feMergeNode in="s"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#585d5e"/>
+    </marker>
+  </defs>
+
+  <rect width="100%" height="100%" fill="#fffceb"/>
+
+  <text x="280" y="42" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#585d5e" letter-spacing="2">WAREHOUSE MEDALLION (DuckDB)</text>
+
+  <!-- Sources -->
+  <g transform="translate(80, 58)" filter="url(#shadow)">
+    <rect width="400" height="72" rx="6" fill="url(#sourceCard)" stroke="#49443b" stroke-width="2.5"/>
+    <circle cx="44" cy="36" r="18" fill="#395a8e" opacity="0.2"/>
+    <circle cx="44" cy="36" r="10" fill="#395a8e"/>
+    <path d="M40,36 h8 M44,32 v8" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+    <text x="76" y="32" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="bold" fill="#49443b">Fuentes de datos</text>
+    <text x="76" y="52" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#585d5e">Sitios web, planillas, datos oficiales...</text>
+  </g>
+
+  <line x1="280" y1="130" x2="280" y2="158" stroke="#49443b" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+  <!-- Bronze medal + card -->
+  <g transform="translate(280, 178)">
+    <circle r="26" fill="url(#bronzeMedal)" stroke="#9c2128" stroke-width="2"/>
+    <circle r="20" fill="none" stroke="#ffffff" stroke-width="2.5" opacity="0.35"/>
+    <text y="6" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="bold" fill="#49443b">3</text>
+    <path d="M-14,22 L-8,46 L0,36 L8,46 L14,22" fill="#d15c32" opacity="0.9"/>
+  </g>
+  <text x="280" y="228" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="bold" fill="#a33a29" letter-spacing="1">MEDALLA DE BRONCE</text>
+
+  <g transform="translate(50, 244)" filter="url(#shadow)">
+    <rect width="460" height="110" rx="6" fill="url(#bronzeCard)" stroke="#a33a29" stroke-width="2.5"/>
+    <rect x="0" y="0" width="8" height="110" rx="4" fill="#a33a29"/>
+    <text x="28" y="38" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="bold" fill="#49443b">Bronce</text>
+    <text x="28" y="62" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#49443b">Los datos tal como llegan</text>
+    <text x="28" y="84" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#585d5e">Archivos guardados + copia en tablas básicas</text>
+    <rect x="330" y="28" width="110" height="54" rx="4" fill="#ffffff" fill-opacity="0.22" stroke="#ffffff" stroke-opacity="0.3"/>
+    <text x="385" y="52" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#49443b">crudo</text>
+    <text x="385" y="68" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="10" fill="#585d5e">sin procesar</text>
+  </g>
+
+  <line x1="280" y1="354" x2="280" y2="382" stroke="#49443b" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+  <!-- Silver -->
+  <g transform="translate(280, 402)">
+    <circle r="26" fill="url(#silverMedal)" stroke="#585d5e" stroke-width="2"/>
+    <circle r="20" fill="none" stroke="#ffffff" stroke-width="2.5" opacity="0.5"/>
+    <text y="6" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="bold" fill="#49443b">2</text>
+    <path d="M-14,22 L-8,46 L0,36 L8,46 L14,22" fill="#585d5e" opacity="0.85"/>
+  </g>
+  <text x="280" y="452" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="bold" fill="#585d5e" letter-spacing="1">MEDALLA DE PLATA</text>
+
+  <g transform="translate(50, 468)" filter="url(#shadow)">
+    <rect width="460" height="110" rx="6" fill="url(#silverCard)" stroke="#7e7f7e" stroke-width="2.5"/>
+    <rect x="0" y="0" width="8" height="110" rx="4" fill="#585d5e"/>
+    <text x="28" y="38" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="bold" fill="#49443b">Plata</text>
+    <text x="28" y="62" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#49443b">Datos limpios y uniformes</text>
+    <text x="28" y="84" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#585d5e">Corregidos, validados, listos para cruzar</text>
+    <rect x="330" y="28" width="110" height="54" rx="4" fill="#ffffff" fill-opacity="0.45" stroke="#ffffff" stroke-opacity="0.6"/>
+    <text x="385" y="52" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#49443b">ordenado</text>
+    <text x="385" y="68" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="10" fill="#585d5e">confiable</text>
+  </g>
+
+  <line x1="280" y1="578" x2="280" y2="606" stroke="#49443b" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+  <!-- Gold -->
+  <g transform="translate(280, 626)">
+    <circle r="28" fill="url(#goldMedal)" stroke="#f4bd48" stroke-width="2"/>
+    <circle r="21" fill="none" stroke="#ffffff" stroke-width="2.5" opacity="0.4"/>
+    <text y="7" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="bold" fill="#5c4000">1</text>
+    <path d="M-15,24 L-9,50 L0,38 L9,50 L15,24" fill="#f4bd48" opacity="0.9"/>
+  </g>
+  <text x="280" y="678" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="bold" fill="#d15c32" letter-spacing="1">MEDALLA DE ORO</text>
+
+  <g transform="translate(50, 694)" filter="url(#shadow)">
+    <rect width="460" height="66" rx="6" fill="url(#goldCard)" stroke="#f4bd48" stroke-width="2.5"/>
+    <rect x="0" y="0" width="8" height="66" rx="4" fill="#d15c32"/>
+    <text x="28" y="30" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="bold" fill="#49443b">Oro</text>
+    <text x="28" y="52" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#585d5e">Insights, métricas e informes finales</text>
+    <rect x="330" y="12" width="110" height="42" rx="4" fill="#ffffff" fill-opacity="0.28" stroke="#ffffff" stroke-opacity="0.35"/>
+    <text x="385" y="38" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#49443b">analítico</text>
+  </g>
+</svg>

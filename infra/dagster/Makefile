@@ -10,14 +10,14 @@ DATA_DIR ?= /tmp/dagster_data
 DATASYN_IMAGE ?= dagster_user_code_image
 DATASYN_IMAGE_TAG ?= latest
 _DAGSTER_INFRA_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-DATASYN_DOCKER_CONTEXT ?= $(_DAGSTER_INFRA_DIR)/mcp/dagster-code/projects/datasyn
+DATASYN_DOCKER_CONTEXT ?= $(abspath $(_DAGSTER_INFRA_DIR)/user_code)
 PYTHON   ?= python3
 VENV     ?= .venv
 PIP      ?= $(VENV)/bin/pip
 PYTEST   ?= $(VENV)/bin/pytest
 RUFF     ?= $(VENV)/bin/ruff
 
-.PHONY: help up down restart logs logs-mcp ps build build-datasyn-image pull clean psql shell-webserver \
+.PHONY: help up down restart logs ps build build-datasyn-image pull clean psql shell-webserver \
         seed-data view-output clean-data \
         venv install test lint
 
@@ -27,7 +27,6 @@ help:
 	@echo "  down             Stop and remove containers and network (keeps DB volume)"
 	@echo "  restart          Restart all services"
 	@echo "  logs             Tail logs for all services"
-	@echo "  logs-mcp         Tail logs for dagster-mcp only (HTTP MCP on 8043)"
 	@echo "  ps               List services"
 	@echo "  build            Build code-location and Dagster runtime images (full compose)"
 	@echo "  build-datasyn-image  docker build only $(DATASYN_DOCKER_CONTEXT) → $(DATASYN_IMAGE):$(DATASYN_IMAGE_TAG)"
@@ -58,9 +57,6 @@ restart:
 
 logs:
 	$(COMPOSE) logs -f --tail=200
-
-logs-mcp:
-	$(COMPOSE) logs -f --tail=200 dagster-mcp
 
 ps:
 	$(COMPOSE) ps

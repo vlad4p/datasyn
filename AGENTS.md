@@ -247,12 +247,12 @@ Rules:
 
 When the user asks to scaffold or modify a Dagster code-location project:
 
-1. **`dagster_list_projects`** first (or immediately after create) to confirm existence under `/projects`.
+1. **`dagster_list_projects`** first (or immediately after create) to confirm existence under the **`datasyn-code`** repo (mounted at `/code` in dagster-mcp).
 2. If missing, run **`dagster_create_project(name=...)`**.
 3. Only after a successful create/list confirmation, run **`dagster_add_asset`** / **`dagster_add_job`** / **`dagster_add_schedule`** / **`dagster_add_sensor`**.
 4. If any `dagster_*` call returns `"ok": false`, report that failure verbatim and stop claiming success for later steps.
 
-**Do not use Deep Agents filesystem helpers for Dagster project source code** (no `write_file` / `edit_file` / `glob` under `/projects/...`). `/projects` belongs to the **dagster-mcp container mount**, while helper tools operate on the brain virtual filesystem; mixing them creates false "Updated file ..." messages that do not modify the real Dagster project.
+**Do not use Deep Agents filesystem helpers for Dagster project source code** (no `write_file` / `edit_file` / `glob` under sibling **`datasyn-code/`**). That tree is edited via **`dagster_*`** MCP tools or the host filesystem; brain virtual FS helpers do not modify the real Dagster project.
 
 ---
 
@@ -289,7 +289,7 @@ Use **`./skills/analyze-indec-eph-individual/SKILL.md`** when the user asks to a
 
 Use **`./skills/ingest-scrape-news-bronze/SKILL.md`** when the user asks to **scrape and ingest** a news site, add a **bronze** table for articles (Infobae / La Nación / Clarín style), create **Dagster assets** under `assets/bronze/<medio>/`, or land HTML in MinIO then DuckDB with columns **`tema`**, **`titulo`**, **`url`**, **`cuerpo_md`**, **`fecha_publicacion`**, **`scraped_at`**, **`landing_key`**.
 
-**Recognition to action:** **load** the skill with **`read_file(file_path="/skills/ingest-scrape-news-bronze/SKILL.md", limit=1000)`** (unless already in context). Follow scrape → MinIO → bronze; clone **`infobae`** or **`lanacion`** code paths. In Dagster **`assets.py`** with **`DuckDBResource`**, **never** use **`from __future__ import annotations`** (breaks resource binding). **`lib.py`** may use it. Prefer **`dagster_*`** tools for project code, not filesystem helpers on `/projects/...`.
+**Recognition to action:** **load** the skill with **`read_file(file_path="/skills/ingest-scrape-news-bronze/SKILL.md", limit=1000)`** (unless already in context). Follow scrape → MinIO → bronze; clone **`infobae`** or **`lanacion`** code paths. In Dagster **`assets.py`** with **`DuckDBResource`**, **never** use **`from __future__ import annotations`** (breaks resource binding). **`lib.py`** may use it. Prefer **`dagster_*`** tools for project code in **`../datasyn-code`**, not filesystem helpers on the virtual FS.
 
 ### Infobae política — análisis sentimental y resumen (`silver.noticias_politica`)
 

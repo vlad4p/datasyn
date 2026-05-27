@@ -1,164 +1,199 @@
-# DataSyn
+# 🧠 datasyn
 
-![status](https://img.shields.io/badge/status-active%20development-orange) ![license](https://img.shields.io/badge/license-TBD-lightgrey) ![stack](https://img.shields.io/badge/stack-DuckDB%20%C2%B7%20Dagster%20%C2%B7%20MinIO%20%C2%B7%20MCP%20%C2%B7%20FastAPI%20%C2%B7%20React-blue) ![locale](https://img.shields.io/badge/docs-en-informational)
+> [Español (canonical)](README.md)
 
-**Open-source AI system for analyzing public data. 100% on your own infrastructure.**
+> **⚠️ Active development**
+>
+> **AI-driven** platform for **public-data analytics** on your own infra: DuckDB warehouse, MinIO, Dagster runtime, operational agent via **MCP**.
+>
+---
 
-> Spanish version (canonical): [`README.md`](README.md)
+## Index
 
-DataSyn ingests, models and queries open datasets through a conversational agent. Every model answer is backed by SQL and auditable tool calls. No file leaves your host.
-
-[How to run it →](INSTALL.md) · [Agent rules →](AGENTS.md) · [Skills →](skills/) · [Dagster pipelines →](infra/dagster/mcp/dagster-code/projects/datasyn/src/datasyn/assets/) · [Diagrams →](docs/diagrams/)
+- [About](#about)
+- [Architecture](#architecture)
+- [Medallion](#medallion)
+- [Distributed layout](#distributed-layout)
+- [New ingest (gitflow)](#new-ingest)
+- [MCP servers](#mcp-servers)
+- [Query cycle](#query-cycle)
+- [AI development](#ai-development)
+- [Local run](#local-run)
+- [Datasets](#datasets)
+- [Makefile](#makefile)
+- [References](#references)
 
 ---
 
-## Why it exists
+<a id="about"></a>
 
-> Public policy doesn't need ungrouped information — it needs **understandable, reviewable** information.
+## About
 
-DataSyn separates three problems usually mixed together in any "AI + data" stack:
+**datasyn** is the **platform layer**: brain (FastAPI + Deep Agents), React UI, HTTP MCP servers, Docker stacks under `infra/`.
 
-| Problem | Bounded solution |
-|---|---|
-| Raw datasets (`;`-delimited TXTs, ZIP bundles, paginated PDFs, brittle scrapes) | Versioned Dagster pipelines (`bronze` → `silver` → `gold`) |
-| Your file gets uploaded to an opaque third party | 100% local stack: DuckDB + MinIO + brain on your host |
-| Operational know-how scattered across personal notebooks | Versioned `SKILL.md` playbooks the agent loads at startup |
+Dagster **pipelines** live in sibling [`datasyn-code`](../datasyn-code). **Dagster runtime** (webserver, daemon, gRPC user code) deploys from `infra/dagster/` in this repo.
 
----
+The agent **runs** SQL, lists MinIO objects, and triggers Dagster materializations — with audit trail (SQL, tool calls, versioned skills). Operational MCP servers today: **`duckdb-mcp`** and **`storage-mcp`**.
 
-## What's inside
+| Term | Meaning |
+|------|---------|
+| **Brain** | FastAPI graph + MCP clients |
+| **MCP** | HTTP tool contract (`duckdb_*`, `storage_*`) |
+| **Skill** | `SKILL.md` playbook (ingest, analysis, catalog) |
+| **Code location** | gRPC image with `datasyn` package |
 
-| Layer | Components |
-|---|---|
-| **Data** | MinIO (S3) · DuckDB (`bronze`/`silver`/`gold`) · Iceberg REST (optional) |
-| **Orchestration** | Dagster (webserver, daemon, Postgres) + `datasyn` code location |
-| **AI interface** | `duckdb-mcp` · `storage-mcp` · `dagster-mcp` (HTTP MCP) |
-| **Agent** | FastAPI + Deep Agents + LangChain · `SKILL.md` skills |
-| **UI** | React/Vite · Markdown · Plotly · Vega-Lite · Mermaid render |
-| **Models** | LiteLLM (local/remote) · OpenRouter · Gemini |
-| **Observability** | Langfuse (optional, self-hosted) |
-
-### Architecture
-
-![Architecture](docs/diagrams/architecture.svg)
-
-> Editable: [`docs/diagrams/architecture.drawio`](docs/diagrams/architecture.drawio)
+<p align="center"><img src="docs/diagrams/repo-layout.svg" alt="datasyn repo layout" width="560"/></p>
 
 ---
 
-## Bundled pipelines
+<a id="architecture"></a>
 
-Under `infra/dagster/.../assets/bronze/`:
+## Architecture
 
-| Dataset | Source | Granularity |
-|---|---|---|
-| INDEC EPH (microdata) | `usu_hogar_*.txt`, `usu_individual_*.txt` | Quarterly, append per quarter |
-| INDEC Censo 2022 | Census tracts + UCA indicators | Per tract / department / province |
-| Argentina 2023 General Election | argentina.gob.ar (official ZIP) | Per polling table / circuit |
-| Boletín Oficial — Section 3 | boletinoficial.gob.ar | Daily partition (PDF + HTML + manifest) |
-| Press | Infobae · Clarín · La Nación | Daily partition per section |
+<p align="center"><img src="docs/diagrams/architecture.svg" alt="Platform architecture" width="880"/></p>
 
-These are real flows the agent uses to feed its analyses, not toy examples. Add yours via a Dagster bronze asset and a SKILL.md.
+Each service runs in its **own Docker container** on **`infra-datasynk`**:
 
----
+| Route | Flow |
+|-------|------|
+| **A — agent / UI** | `ui` (:8003) → `brain` (:8002) → MCP servers → data plane |
+| **B — direct MCP** | IDE `mcp.json` → `duckdb-mcp` / `storage-mcp` (no brain) |
 
-## How it's used
+**Observability (optional):** **Langfuse** (`infra/langfuse/`) collects server-side traces from **brain** (LLM spans, MCP tool calls). See [`INSTALL.md`](INSTALL.md).
 
-![Question lifecycle](docs/diagrams/question-lifecycle.svg)
+| Container | Image | Port |
+|-----------|-------|------|
+| brain | `datasyn/brain` | `:8002` |
+| ui | `datasyn/ui` | `:8003` |
+| duckdb-mcp | `datasyn/duckdb-mcp` | `:8040` |
+| storage-mcp | `datasyn/storage-mcp` | `:8044` |
+| dagster_* | `datasyn/dagster-*` | UI `:3001` |
 
-```text
-User:    What share of households in NOA had IPCF below the poverty line
-         in Q3-2025? Show me the SQL.
-
-Agent →  dagster_catalog_execute_query  (descriptions for IPCF/REGION/PONDIH)
-      →  duckdb_get_schema              (types: IPCF VARCHAR → TRY_CAST)
-      →  duckdb_execute_query           (one SELECT, weighted by PONDIH)
-
-UI    ←  Markdown: table + SQL block + assumptions + coverage notes
-Traces ←  request_id stitched across brain ↔ MCP ↔ Langfuse
-```
-
-The agent **does not** open DB connections or browse the filesystem freely. Its full surface is the list in `mcp.json` plus Deep Agents helpers (`read_file`, `write_file`, `task`, ...). Hard rules in [`AGENTS.md`](AGENTS.md).
+Agent rules: [`AGENTS.md`](AGENTS.md).
 
 ---
 
-## Sovereignty
+<a id="medallion"></a>
 
-| Piece | Where it runs |
-|---|---|
-| Raw data (CSV/TXT/PDF/ZIP) | `data-local/` and MinIO on your host |
-| `warehouse.duckdb` | Docker volume `duckdb_data` on your host |
-| Pipelines, brain, UI | Containers on your `infra-datasynk` network |
-| LLM | Your call: local (Ollama/vLLM via LiteLLM), OpenRouter, or Gemini |
-| Traces | Self-hosted Langfuse (optional) |
+## Medallion
 
-Only possible egress: the model call. Pointed at an on-prem model via LiteLLM, the system is fully offline. What travels to the model is summaries / SQL / column names — not files.
+<p align="center"><img src="docs/diagrams/medallion.svg" alt="Medallion warehouse layers" width="420"/></p>
+
+`bronze` → `silver` → `gold` in DuckDB. Pipeline implementation: [`datasyn-code`](../datasyn-code).
 
 ---
 
-## Skills extend the system, written by analysts (not developers)
+<a id="distributed-layout"></a>
 
-A **skill** is a versioned `SKILL.md` playbook. The agent picks it up at startup and follows it whenever it recognizes the domain. **One well-written skill teaches the system to ingest a new dataset, build new tables, run a recurring analysis, or produce a report — without touching brain or UI code.**
+## Distributed layout
 
-Who writes them: data analysts, data journalists, academic researchers, government / civil-society teams. All you need is Markdown plus knowing the right `WHERE` / `GROUP BY` / weighting for your dataset.
+Two repos: platform in **datasyn**, user code in **datasyn-code**.
 
-See full sample anatomy and the four supported cases (ingest / derived table / recurring analysis / periodic report) in the Spanish [`README.md`](README.md#skills-el-sistema-lo-extienden-los-analistas-no-los-developers).
-
----
-
-## Quick start
-
-Full instructions: [`INSTALL.md`](INSTALL.md). Short version:
+<p align="center"><img src="docs/diagrams/distributed-layout.svg" alt="Two-repo distributed layout" width="720"/></p>
 
 ```bash
-make bootstrap        # network infra-datasynk + volumes duckdb_data, storage
-make images-prepare   # local registry + build all images
-make infra-up         # MinIO, DuckDB+MCP, Dagster+MCP
-make agent-up         # brain + UI
+git clone …/datasyn.git && git clone …/datasyn-code.git
+cd datasyn && make bootstrap && make infra-up
 ```
 
-Or `make stack-up` to chain the last two. Local dev with hot reload: `make mcp-up && make agent-dev`. All targets: `make help`.
-
-UI: `http://localhost:8003` · Dagster: `http://localhost:3001` · MinIO console: `http://localhost:9001`.
-
----
-
-## Status
-
-| Component | Status |
-|---|---|
-| Brain (FastAPI) + UI | Live |
-| `duckdb-mcp`, `storage-mcp`, `dagster-mcp` | Live |
-| Bronze pipelines (INDEC, BOA, elections, press) | Live |
-| `silver` / `gold` layers | Minimal (only `gold.indec_eph_*` so far) |
-| Metadata catalog | Optional, contract defined |
-| Iceberg REST | Implemented, opt-in |
-| Open-source license | TBD (MIT / Apache-2.0 suggested) |
+| Repo | Contents | Key commands |
+|------|----------|--------------|
+| datasyn | Brain, UI, skills, infra (duckdb, minio, Dagster runtime) | `make stack-up` · `make agent-dev` · [`INSTALL.md`](INSTALL.md) |
+| datasyn-code | Bronze assets, jobs, schedules, gRPC Dockerfile | `make dev` · `make push` |
 
 ---
 
-## Contributing
+<a id="new-ingest"></a>
 
-In order of increasing technical effort:
+## New ingest (gitflow)
 
-- Write a `SKILL.md` for a dataset already in the warehouse — pure Markdown.
-- Add a Dagster bronze asset + skill for a new public dataset (province, city, agency).
-- Report discrepancies between agent answers and manual analysis — most valuable bugs.
-- Reusable components (`utils/`, `components/`) when a transformation repeats across assets.
+Recommended flow to add a data source:
 
-Small PRs, one piece per PR. Issues welcome.
+1. **Clone** [`datasyn`](.) and [`datasyn-code`](../datasyn-code) side by side; start the platform (`make stack-up`).
+2. **Configure** the agent: [`mcp.json`](mcp.json), skills under [`skills/`](skills/) (e.g. [`ingest-scrape-news-bronze`](skills/ingest-scrape-news-bronze/SKILL.md)), [`AGENTS.md`](AGENTS.md).
+3. **Develop via gitflow** in **`datasyn-code`**: `feature/<source>` branch, assets under `src/datasyn/assets/bronze/<source>/`, job + schedule; PR → merge to `main`.
+4. **Publish** code location: `make -C ../datasyn-code push` and redeploy `dagster_user_code` (see [`INSTALL.md`](INSTALL.md)).
+5. **Validate** in Dagster UI (`:3001`).
+
+Pipeline code is **reviewed in git** in `datasyn-code`; the agent uses **`duckdb_*`** and **`storage_*`** for SQL, landing, and checks on `/data-local`.
 
 ---
+
+<a id="mcp-servers"></a>
+
+## MCP servers (datasyn)
+
+Two HTTP containers — `datasyn/duckdb-mcp` and `datasyn/storage-mcp`. See [`mcp.json`](mcp.json). Route B: IDE connects directly. Route A: brain proxies the same endpoints.
+
+| Prefix | Main tools |
+|--------|------------|
+| `duckdb_*` | `get_schema`, `execute_query`, `list_data_mount` |
+| `storage_*` | `list_buckets`, `list_objects`, `get_object_text`, `put_object_*` |
+
+---
+
+<a id="query-cycle"></a>
+
+## Query cycle
+
+<p align="center"><img src="docs/diagrams/query-flow.svg" alt="Analytical query cycle" width="520"/></p>
+
+Example (Route A, EPH households):
+
+<p align="center"><img src="docs/diagrams/query-example-chat.svg" alt="Chat-style query example EPH hogares" width="560"/></p>
+
+One SQL statement per `duckdb_execute_query`. Schema first — no invented columns.
+
+---
+
+<a id="ai-development"></a>
+
+## AI development
+
+Skills: [`skills/`](skills/). Pipeline ingest skills also in [`datasyn-code`](../datasyn-code). Operational contract: [`AGENTS.md`](AGENTS.md).
+
+---
+
+<a id="local-run"></a>
+
+## Local run
+
+Full guide: [`INSTALL.md`](INSTALL.md).
+
+```bash
+make bootstrap && make stack-up          # Docker stack
+cp .env.example .env && uv sync && make agent-dev   # Mac dev
+make -C ../datasyn-code push             # publish user code image
+```
+
+---
+
+<a id="datasets"></a>
+
+## Datasets
+
+INDEC EPH, Censo/UCA, elections 2023, Boletín Oficial, press (Infobae, Clarín, La Nación, TN), OECD AI incidents — see [`datasyn-code`](../datasyn-code/src/datasyn/assets/).
+
+---
+
+<a id="makefile"></a>
+
+## Makefile
+
+`make help` · `make bootstrap` · `make infra-up` · `make stack-up` · `make agent-dev` · `make uv-sync`.
+
+Sibling repo: `make -C ../datasyn-code help`.
+
+---
+
+<a id="references"></a>
 
 ## References
 
-- [`AGENTS.md`](AGENTS.md) — agent contract and operational rules
-- [`INSTALL.md`](INSTALL.md) — full deployment guide
-- [`docs/diagrams/`](docs/diagrams/) — editable `.drawio` (architecture, data flow, question lifecycle)
-- [`Makefile`](Makefile) — `make help`
-- [`skills/`](skills/) — runnable playbooks
-- [`mcp.json`](mcp.json) — MCP URLs
+- [`INSTALL.md`](INSTALL.md) · [`AGENTS.md`](AGENTS.md) · [`skills/`](skills/) · [`docs/diagrams/`](docs/diagrams/)
+- [`../datasyn-code`](../datasyn-code)
+- [MCP](https://modelcontextprotocol.io/) · [DuckDB](https://duckdb.org/)
 
 ---
 
-> If anything in this README doesn't match the code, open an issue. Documentation drift is as important as code bugs.
+> Documentation drift is a bug — open an issue if README and compose/MCP tools disagree.
