@@ -4,4 +4,4 @@ load_from:
   - grpc_server:
       host: dagster_user_code
       port: 4000
-      location_name: "indec_mercado_laboral"
+      location_name: "dev"

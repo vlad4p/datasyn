@@ -23,7 +23,6 @@ Puertos publicados por defecto:
 | MinIO (consola) | `9001` | — |
 | MinIO (S3 API) | interno | — |
 | `duckdb-mcp` | `8040` | `duckdb` |
-| `dagster-mcp` | `8043` | `dagster` |
 | `storage-mcp` | `8044` | `storage` |
 | Registry OCI (`registry:3`) | `5000` | — |
 
@@ -34,7 +33,7 @@ Puertos publicados por defecto:
 ```bash
 make bootstrap        # red infra-datasynk + volúmenes duckdb_data, storage
 make images-prepare   # registry local + build de todas las imágenes
-make infra-up         # MinIO, DuckDB+MCP, Dagster+MCP
+make infra-up         # MinIO, DuckDB+MCP, Dagster (empty user-code stub)
 make agent-up         # brain + UI
 ```
 
@@ -83,7 +82,7 @@ make mcp-up
 make agent-dev
 ```
 
-En modo host con MCP en Docker, las URLs de `mcp.json` (`duckdb-mcp`, …) se reescriben a `127.0.0.1:8040 / 8044 / 8043`. Para URLs externas (IP/hostname): `MCP_DISABLE_HOST_URL_REWRITE=1`.
+En modo host con MCP en Docker, las URLs de `mcp.json` (`duckdb-mcp`, …) se reescriben a `127.0.0.1:8040 / 8044`. Para URLs externas (IP/hostname): `MCP_DISABLE_HOST_URL_REWRITE=1`.
 
 ---
 
@@ -132,7 +131,7 @@ make infra-duckdb-ui-down
 
 ## Catálogo de metadatos (opcional)
 
-Si tu organización tiene un catálogo (Postgres con descripciones de columnas, lineage, tags), exportá `DATABASE_URL` o `CATALOG_DATABASE_URL` en `infra/dagster/.env`. `dagster-mcp` expone `dagster_catalog_get_schema` y `dagster_catalog_execute_query`. El agente prioriza catálogo antes de tocar archivos. Patrones de SQL en `skills/catalog-sql/SKILL.md` (cuando se incorpore).
+Si tu organización tiene un catálogo (Postgres con descripciones de columnas, lineage, tags), apuntá un servidor MCP **dagster** en `mcp.json` (puede vivir en otro repo/despliegue) con `dagster_catalog_get_schema` y `dagster_catalog_execute_query`. El agente prioriza catálogo antes de tocar archivos. Patrones de SQL en `skills/catalog-sql/SKILL.md`.
 
 ---
 

@@ -1,6 +1,6 @@
 """Load MCP HTTP endpoints from ``mcp.json`` with host-friendly URL rewriting.
 
-Docker Compose uses internal DNS (``duckdb-mcp``, ``dagster-mcp``, ``storage-mcp``, …). Those names only
+Docker Compose uses internal DNS (``duckdb-mcp``, ``storage-mcp``, …). Those names only
 resolve **inside** the ``infra-datasynk`` network. When the brain runs on the host
 (``make agent-dev``), rewrite those URLs to ``127.0.0.1:<published-port>`` so the same
 ``mcp.json`` works for containerized and local uvicorn processes.
@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 _DOCKER_ONLY_MCP_HOSTS = frozenset(
     {
         "duckdb-mcp",
-        "dagster-mcp",
         "storage-mcp",
     }
 )
