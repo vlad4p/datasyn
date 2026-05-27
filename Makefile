@@ -9,6 +9,9 @@ export API_PORT
 VITE_PROXY_TARGET ?= http://127.0.0.1:$(API_PORT)
 export VITE_PROXY_TARGET
 
+# Local Python/brain: always via uv (https://docs.astral.sh/uv/).
+UV ?= uv
+
 # OCI Distribution (``infra/distribution``): host:port for ``docker push`` / ``docker pull`` from this machine.
 # Must match ``REGISTRY_PUBLISH_PORT`` on the distribution compose file. Add to Docker ``insecure-registries`` for HTTP.
 REGISTRY_PUBLISH_PORT ?= 5000
@@ -19,6 +22,9 @@ DATASYN_IMAGE_NAMESPACE ?= datasyn
 export DATASYN_IMAGE_NAMESPACE
 DATASYN_IMAGE_TAG ?= latest
 export DATASYN_IMAGE_TAG
+# Sibling repo for Dagster user code (distributed deploy — see README.md).
+DATASYN_CODE_DIR ?= $(abspath $(MAKEFILE_DIR)/../datasyn-code)
+export DATASYN_CODE_DIR
 # Dagster MCP ``build_image`` mirror prefix (same as ``<registry>/<namespace>`` in image refs).
 DOCKER_REGISTRY ?= $(DATASYN_IMAGE_REGISTRY)/$(DATASYN_IMAGE_NAMESPACE)
 export DOCKER_REGISTRY
@@ -38,11 +44,11 @@ SHARED_VOLUMES := duckdb_data storage
 	publish publish-remote \
 	infra-build infra-up infra-down infra-ps infra-logs \
 	infra-duckdb-ui-up infra-duckdb-ui-down \
-	dagster-user-code-image dagster-user-code-build-push-remote \
 	mcp-build mcp-up mcp-down mcp-ps mcp-logs \
 	storage-mcp-buildx-ensure storage-mcp-build-push-remote \
+	uv-sync \
 	agent-build agent-up agent-down agent-ps agent-logs \
-	agent-dev agent-dev-brain agent-dev-ui \
+	agent-brain agent-dev agent-dev-brain agent-dev-ui \
 	stack-up stack-down stack-ps
 
 help:
@@ -63,11 +69,15 @@ help:
 	@echo "  make infra-down | infra-ps | infra-logs"
 	@echo "  make agent-up               # root compose (brain, ui)"
 	@echo "  make stack-up               # infra-up then agent-up"
-	@echo "  make mcp-up                 # minio + MCPs + duckdb + dagster-mcp (uses same image env vars)"
+	@echo "  make mcp-up                 # minio + duckdb MCPs (duckdb-mcp, storage-mcp)"
 	@echo "  make registry-api-v2        # GET /v2/ on REGISTRY_HTTP_URL (Distribution spec)"
-	@echo "  make storage-mcp-build-push-remote  # buildx linux/amd64 + push storage-mcp (uses REGISTRY_HTTP_URL if registry is local)"
-	@echo "  make dagster-user-code-build-push-remote  # buildx linux/amd64 + push dagster_user_code_image (same)"
-	@echo "  make agent-dev              # brain + Vite on host (see compose.env)"
+	@echo "  make storage-mcp-build-push-remote  # buildx linux/amd64 + push storage-mcp"
+	@echo "      # Dagster user code: make -C ../datasyn-code help"
+	@echo "      # Dagster MCP: infra/dagster/mcp (started with make infra-up)"
+	@echo "  make uv-sync                # uv sync (Python from .python-version)"
+	@echo "  make agent-dev              # uv-sync + uv run brain-dev + Vite"
+	@echo "  make agent-brain            # uv-sync + uv run brain-dev (brain only)"
+	@echo "      # Manual: uv sync && uv run brain-dev   (or uv run datacyber-api without reload)"
 	@echo ""
 	@echo "Legacy alias: bootstrap-infra-primitives → bootstrap ; infra-build → images-build"
 
@@ -90,9 +100,8 @@ registry-down:
 REGISTRY_HTTP_URL ?= http://10.13.10.119:5000
 DOCKER_PLATFORM_REMOTE ?= linux/amd64
 
-# ``storage-mcp-build-push-remote`` / ``dagster-user-code-build-push-remote``: if
-# ``DATASYN_IMAGE_REGISTRY`` is still ``localhost:…`` or ``127.0.0.1:…``, use host:port
-# from ``REGISTRY_HTTP_URL`` so ``make …-build-push-remote`` works without repeating the host.
+# ``storage-mcp-build-push-remote``: if ``DATASYN_IMAGE_REGISTRY`` is still ``localhost:…`` or ``127.0.0.1:…``, use host:port
+# from ``REGISTRY_HTTP_URL``. Dagster user code: ``make -C ../datasyn-code help``.
 DATASYN_IMAGE_REGISTRY_REMOTE_FALLBACK ?= $(shell printf '%s' "$(REGISTRY_HTTP_URL)" | sed -E 's|^https?://||; s|/.*||')
 _DATASYN_REG_IS_LOCAL := $(shell echo "$(DATASYN_IMAGE_REGISTRY)" | grep -Eq '^(localhost|127\.0\.0\.1)(:|$$)' && echo yes || echo no)
 ifeq ($(_DATASYN_REG_IS_LOCAL),yes)
@@ -181,9 +190,6 @@ publish: images-prepare images-push
 # One-shot: cross-build (default linux/amd64) + push to an external registry.
 publish-remote: images-build-remote images-push-remote
 
-dagster-user-code-image:
-	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" build dagster_user_code
-
 infra-build: images-build
 
 infra-up: bootstrap registry-up
@@ -218,15 +224,12 @@ infra-duckdb-ui-down:
 mcp-build: bootstrap
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" build storage-mcp
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" build duckdb-mcp
-	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" build dagster-mcp
 
 mcp-up: bootstrap registry-up
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" up -d minio storage-mcp
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" up -d duckdb duckdb-mcp
-	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" up -d dagster-mcp
 
 mcp-down:
-	-docker compose -f "$(INFRA_DAGSTER_COMPOSE)" stop dagster-mcp
 	-docker compose -f "$(INFRA_DUCKDB_COMPOSE)" stop duckdb-mcp
 	-docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" stop storage-mcp
 
@@ -235,13 +238,10 @@ mcp-ps:
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" ps minio storage-mcp
 	@echo "=== duckdb (duckdb, duckdb-mcp) ==="
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" ps duckdb duckdb-mcp
-	@echo "=== dagster (dagster-mcp) ==="
-	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" ps dagster-mcp
 
 mcp-logs:
 	docker compose -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" logs --tail=100 storage-mcp
 	docker compose -f "$(INFRA_DUCKDB_COMPOSE)" logs --tail=100 duckdb-mcp
-	docker compose -f "$(INFRA_DAGSTER_COMPOSE)" logs --tail=100 dagster-mcp
 
 # Apple Silicon (and other hosts): build ``storage-mcp`` for linux/amd64 and push to REGISTRY.
 # Pushes use BuildKit registry config (``infra/distribution/buildkit-registry-insecure.toml``)
@@ -267,19 +267,6 @@ storage-mcp-build-push-remote: storage-mcp-buildx-ensure
 	  -t "$(EFFECTIVE_REMOTE_REGISTRY)/$(DATASYN_IMAGE_NAMESPACE)/storage-mcp:$(DATASYN_IMAGE_TAG)" \
 	  "$(MAKEFILE_DIR)/infra/object-storage/mcp" --push
 
-# Same buildx builder/config as ``storage-mcp-build-push-remote`` (HTTP registry without Engine insecure-registries).
-dagster-user-code-build-push-remote: storage-mcp-buildx-ensure
-	@if echo "$(EFFECTIVE_REMOTE_REGISTRY)" | grep -Eq '^(localhost|127\.0\.0\.1)(:|$$)' || [ -z "$(EFFECTIVE_REMOTE_REGISTRY)" ]; then \
-	  echo "Remote registry unresolved: set DATASYN_IMAGE_REGISTRY to host:port or set REGISTRY_HTTP_URL (e.g. http://10.13.10.119:5000)."; \
-	  echo "  DATASYN_IMAGE_REGISTRY=$(DATASYN_IMAGE_REGISTRY)  REGISTRY_HTTP_URL=$(REGISTRY_HTTP_URL)  fallback=$(DATASYN_IMAGE_REGISTRY_REMOTE_FALLBACK)"; \
-	  exit 1; \
-	fi
-	@echo "Pushing to $(EFFECTIVE_REMOTE_REGISTRY)/$(DATASYN_IMAGE_NAMESPACE) (buildx $(DOCKER_PLATFORM_REMOTE))"
-	docker buildx build --builder "$(STORAGE_MCP_BUILDX_BUILDER)" --platform "$(DOCKER_PLATFORM_REMOTE)" --provenance=false \
-	  -f "$(MAKEFILE_DIR)/infra/dagster/mcp/dagster-code/projects/datasyn/Dockerfile" \
-	  -t "$(EFFECTIVE_REMOTE_REGISTRY)/$(DATASYN_IMAGE_NAMESPACE)/dagster_user_code_image:$(DATASYN_IMAGE_TAG)" \
-	  "$(MAKEFILE_DIR)/infra/dagster/mcp/dagster-code/projects/datasyn" --push
-
 agent-build: bootstrap
 	docker compose -f "$(ROOT_COMPOSE)" build
 
@@ -295,13 +282,27 @@ agent-ps:
 agent-logs:
 	docker compose -f "$(ROOT_COMPOSE)" logs --tail=100
 
+uv-check:
+	@command -v $(UV) >/dev/null 2>&1 || { \
+	  echo "uv not found. Install: https://docs.astral.sh/uv/getting-started/installation/"; \
+	  exit 1; \
+	}
+
+uv-sync: uv-check
+	cd "$(MAKEFILE_DIR)" && $(UV) sync
+
+agent-brain: uv-sync
+	@echo "[brain] uv run brain-dev → http://127.0.0.1:$(API_PORT)"
+	@echo "       MCP URLs from mcp.json (external: MCP_DISABLE_HOST_URL_REWRITE=1 in .env)"
+	cd "$(MAKEFILE_DIR)" && $(UV) run brain-dev
+
 agent-dev:
 	@$(MAKE) -j2 agent-dev-brain agent-dev-ui
 
-agent-dev-brain:
-	@echo "[brain] uv run uvicorn … --port $(API_PORT) (sync deps once: uv sync)"
-	@echo "       MCP on host: duckdb :8040  storage :8044  dagster :8043 (after mcp-up or infra-up)"
-	cd "$(MAKEFILE_DIR)" && uv run uvicorn agent.main:app --host 127.0.0.1 --port $(API_PORT) --reload
+agent-dev-brain: uv-sync
+	@echo "[brain] uv run brain-dev → http://127.0.0.1:$(API_PORT)"
+	@echo "       MCP URLs from mcp.json (external: MCP_DISABLE_HOST_URL_REWRITE=1 in .env)"
+	cd "$(MAKEFILE_DIR)" && $(UV) run brain-dev
 
 agent-dev-ui:
 	@echo "[ui] npm run dev → http://127.0.0.1:5173  proxy /api → $(VITE_PROXY_TARGET)"

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg style="background-color:#fffceb" xmlns="http://www.w3.org/2000/svg" width="920" height="300" viewBox="0 0 920 300" role="img" aria-label="datasyn core accent palette">
+  <rect width="100%" height="100%" fill="#fffceb"/>
+  <rect x="16" y="16" width="888" height="268" fill="none" stroke="#49443b" stroke-width="4"/>
+  <text x="460" y="44" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="15" font-weight="bold" fill="#49443b">DATASYN CORE PALETTE</text>
+  <text x="460" y="62" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="10" fill="#585d5e">Five accent colors plus three structural neutrals</text>
+
+  <g transform="translate(40,90)">
+    <rect width="120" height="80" fill="#a33a29" stroke="#49443b" stroke-width="2"/>
+    <text x="60" y="100" text-anchor="middle" font-family="monospace" font-size="11" fill="#fffceb">#a33a29</text>
+    <text x="60" y="116" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10" font-weight="bold" fill="#fffceb">Red</text>
+    <text x="60" y="130" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#f9dac1">error / vermillion</text>
+  </g>
+  <g transform="translate(180,90)">
+    <rect width="120" height="80" fill="#f4bd48" stroke="#49443b" stroke-width="2"/>
+    <text x="60" y="100" text-anchor="middle" font-family="monospace" font-size="11" fill="#49443b">#f4bd48</text>
+    <text x="60" y="116" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10" font-weight="bold" fill="#49443b">Yellow</text>
+    <text x="60" y="130" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#7e7f7e">warning / gold</text>
+  </g>
+  <g transform="translate(320,90)">
+    <rect width="120" height="80" fill="#395a8e" stroke="#49443b" stroke-width="2"/>
+    <text x="60" y="100" text-anchor="middle" font-family="monospace" font-size="11" fill="#fffceb">#395a8e</text>
+    <text x="60" y="116" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10" font-weight="bold" fill="#fffceb">Blue</text>
+    <text x="60" y="130" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#b3c8cd">UI / brain</text>
+  </g>
+  <g transform="translate(460,90)">
+    <rect width="120" height="80" fill="#559778" stroke="#49443b" stroke-width="2"/>
+    <text x="60" y="100" text-anchor="middle" font-family="monospace" font-size="11" fill="#fffceb">#559778</text>
+    <text x="60" y="116" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10" font-weight="bold" fill="#fffceb">Green</text>
+    <text x="60" y="130" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#cede9f">SQL / success</text>
+  </g>
+  <g transform="translate(600,90)">
+    <rect width="120" height="80" fill="#de6433" stroke="#49443b" stroke-width="2"/>
+    <text x="60" y="100" text-anchor="middle" font-family="monospace" font-size="11" fill="#fffceb">#de6433</text>
+    <text x="60" y="116" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10" font-weight="bold" fill="#fffceb">Orange</text>
+    <text x="60" y="130" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#f9dac1">storage</text>
+  </g>
+  <g transform="translate(740,90)">
+    <rect width="120" height="80" fill="#0e2d58" stroke="#49443b" stroke-width="2"/>
+    <text x="60" y="100" text-anchor="middle" font-family="monospace" font-size="11" fill="#fffceb">#0e2d58</text>
+    <text x="60" y="116" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10" font-weight="bold" fill="#fffceb">Navy</text>
+    <text x="60" y="130" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#b3c8cd">AI / agent</text>
+  </g>
+
+  <g transform="translate(180,210)">
+    <rect width="160" height="60" fill="#fffceb" stroke="#49443b" stroke-width="2"/>
+    <text x="80" y="232" text-anchor="middle" font-family="monospace" font-size="11" fill="#49443b">#fffceb</text>
+    <text x="80" y="248" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10" font-weight="bold" fill="#49443b">Ivory - background</text>
+  </g>
+  <g transform="translate(380,210)">
+    <rect width="160" height="60" fill="#7e7f7e" stroke="#49443b" stroke-width="2"/>
+    <text x="80" y="232" text-anchor="middle" font-family="monospace" font-size="11" fill="#fffceb">#7e7f7e</text>
+    <text x="80" y="248" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10" font-weight="bold" fill="#fffceb">Grey - muted text</text>
+  </g>
+  <g transform="translate(580,210)">
+    <rect width="160" height="60" fill="#49443b"/>
+    <text x="80" y="232" text-anchor="middle" font-family="monospace" font-size="11" fill="#fffceb">#49443b</text>
+    <text x="80" y="248" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10" font-weight="bold" fill="#fffceb">Ink - borders</text>
+  </g>
+</svg>

@@ -10,7 +10,8 @@ Para qué hace cada componente y cómo se usa, ver [`README.md`](README.md). Par
 
 - Docker + Docker Compose v2
 - Make (recomendado)
-- Para desarrollo del brain en host con hot reload: Python 3.11+ y Node.js (UI con `npm run dev`)
+- **[uv](https://docs.astral.sh/uv/getting-started/installation/)** — gestor de Python del brain (local: siempre `uv sync` / `uv run`, no `pip` ni `python` sueltos)
+- Node.js — solo para la UI en host (`npm run dev`)
 
 Puertos publicados por defecto:
 
@@ -61,12 +62,28 @@ docker compose up -d
 
 ## Desarrollo del brain en host
 
+Requisito: [uv](https://docs.astral.sh/uv/getting-started/installation/) instalado. Python lo fija `.python-version` (3.12); `uv sync` crea `.venv`.
+
 ```bash
-make mcp-up      # solo MinIO + duckdb + servidores MCP
-make agent-dev   # uvicorn :8002 + Vite :5173 (proxy /api)
+cp .env.example .env          # LLM + MCP (editar OPENROUTER_API_KEY u otro provider)
+uv sync                       # instala deps en .venv
+make agent-dev                # uv run brain-dev :8002 + Vite :5173
 ```
 
-En modo host, las URLs de `mcp.json` (`duckdb-mcp`, `storage-mcp`, `dagster-mcp`) se reescriben a `127.0.0.1:8040 / 8044 / 8043`. Para deshabilitar: `MCP_DISABLE_HOST_URL_REWRITE=1`.
+Solo brain (sin UI):
+
+```bash
+make agent-brain              # equivalente a: uv run brain-dev
+```
+
+MCP local en Docker (opcional; si usás un servidor remoto, configurá `mcp.json` y `MCP_DISABLE_HOST_URL_REWRITE=1` en `.env`):
+
+```bash
+make mcp-up
+make agent-dev
+```
+
+En modo host con MCP en Docker, las URLs de `mcp.json` (`duckdb-mcp`, …) se reescriben a `127.0.0.1:8040 / 8044 / 8043`. Para URLs externas (IP/hostname): `MCP_DISABLE_HOST_URL_REWRITE=1`.
 
 ---
 

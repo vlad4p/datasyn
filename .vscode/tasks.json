@@ -1,0 +1,47 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "uv sync",
+      "type": "shell",
+      "command": "uv sync",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "build"
+    },
+    {
+      "label": "agent-dev (uv + Vite)",
+      "type": "shell",
+      "command": "make agent-dev",
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": ["uv sync"],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": { "regexp": "^$" },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "uv run brain-dev",
+          "endsPattern": "Application startup complete|VITE.*ready"
+        }
+      },
+      "group": { "kind": "test", "isDefault": true }
+    },
+    {
+      "label": "brain-dev (uv only)",
+      "type": "shell",
+      "command": "uv run brain-dev",
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": ["uv sync"],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": { "regexp": "^$" },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "uv run brain-dev",
+          "endsPattern": "Application startup complete"
+        }
+      }
+    }
+  ]
+}

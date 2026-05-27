@@ -39,3 +39,15 @@ include = ["agent*"]
 [project.scripts]
 datacyber-agent = "agent.runner:main"
 datacyber-api = "agent.main:run"
+brain-dev = "agent.main:dev"
+
+[tool.uv]
+managed = true
+package = true
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+# After dependency changes, refresh Docker requirements:
+#   uv export --no-dev --frozen -o requirements.txt --no-emit-project --no-hashes --no-annotate

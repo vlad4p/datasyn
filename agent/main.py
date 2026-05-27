@@ -617,5 +617,22 @@ def run() -> None:
     )
 
 
+def dev() -> None:
+    """Hot-reload dev server (``uv run brain-dev`` or ``make agent-dev-brain``)."""
+    import os
+
+    import uvicorn
+
+    port = int(os.environ.get("API_PORT", str(settings.api_port)))
+    uvicorn.run(
+        "agent.main:app",
+        host="127.0.0.1",
+        port=port,
+        reload=True,
+        log_level="info",
+        access_log=True,
+    )
+
+
 if __name__ == "__main__":
     run()

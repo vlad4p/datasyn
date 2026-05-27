@@ -40,7 +40,7 @@ services:
   # ports and entries in workspace.yaml for additional code locations.
   dagster_user_code:
     build:
-      context: ./mcp/dagster-code/projects/datasyn
+      context: ../../../datasyn-code
       dockerfile: Dockerfile
     container_name: dagster_user_code
     labels:
@@ -242,8 +242,8 @@ services:
       dagster_user_code:
         condition: service_healthy
 
-  # Dagster MCP: code locations under ``mcp/dagster-code/projects/``, drives host Docker (socket).
-  # See ``infra/dagster/mcp/README.md``.
+  # Dagster MCP: ``infra/dagster/mcp``; sibling ``../datasyn-code`` mounted at ``/code``.
+  # See ``../datasyn-code/README.md`` (checkout beside ``datasyn/``).
   dagster-mcp:
     build:
       context: ./mcp
@@ -263,7 +263,7 @@ services:
       MCP_HTTP_PATH: /mcp
       DATABASE_URL: "${DATABASE_URL:-}"
       CATALOG_DATABASE_URL: "${CATALOG_DATABASE_URL:-}"
-      DAGSTER_PROJECTS_ROOT: /projects
+      DAGSTER_PROJECTS_ROOT: /code
       DAGSTER_PROJECT_NETWORK: infra-datasynk
       DAGSTER_IMAGE_PREFIX: dagster
       DAGSTER_CONTAINER_PREFIX: dagster
@@ -278,7 +278,7 @@ services:
       DOCKER_REGISTRY: "${DOCKER_REGISTRY:-${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}}"
       DOCKER_PUSH_AFTER_BUILD: "${DOCKER_PUSH_AFTER_BUILD:-0}"
     volumes:
-      - ./mcp/dagster-code/projects:/projects
+      - ../../../datasyn-code:/code
       - .:/dagster-compose:ro
       - ${DATACYBER_DATA_LOCAL_HOST:-/Users/vlad/project/datacyber/data-local}:/data-local:ro
       - /var/run/docker.sock:/var/run/docker.sock
