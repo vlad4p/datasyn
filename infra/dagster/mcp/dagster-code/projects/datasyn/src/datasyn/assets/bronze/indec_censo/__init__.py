@@ -1,1 +1,0 @@
-"""INDEC census bronze assets."""

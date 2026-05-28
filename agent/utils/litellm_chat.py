@@ -14,6 +14,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 
 from agent.config import OPENROUTER_DEFAULT_API_BASE, settings
+from agent.utils.chat_model_state import effective_chat_model
 
 _GEMINI_DEFAULT_MODEL = "gemini-2.0-flash"
 
@@ -203,7 +204,7 @@ async def probe_litellm_proxy() -> dict[str, Any]:
             "ok": True,
             "model_provider": "gemini",
             "note": "MODEL_PROVIDER=gemini — brain calls Google AI directly; LiteLLM probe skipped.",
-            "chat_model": settings.chat_model or _GEMINI_DEFAULT_MODEL,
+            "chat_model": effective_chat_model() or _GEMINI_DEFAULT_MODEL,
         }
     if settings.model_provider == "openrouter":
         base = (settings.openrouter_api_base or OPENROUTER_DEFAULT_API_BASE).strip().rstrip("/")
@@ -214,7 +215,7 @@ async def probe_litellm_proxy() -> dict[str, Any]:
             "openrouter_base": base,
             "has_key": bool(key),
             "in_docker": running_in_docker(),
-            "chat_model": settings.chat_model,
+            "chat_model": effective_chat_model(),
         }
         if not key:
             out["ok"] = False
@@ -316,7 +317,7 @@ def _build_litellm_chat_model() -> BaseChatModel:
             "e.g. http://127.0.0.1:4000/v1",
             base,
         )
-    model_name = (settings.chat_model or "").strip()
+    model_name = (effective_chat_model() or "").strip()
     if not model_name:
         raise RuntimeError(
             "Set CHAT_MODEL in the environment to a model id your LiteLLM proxy serves (see GET /v1/models)."
@@ -367,7 +368,7 @@ def _build_openrouter_chat_model() -> BaseChatModel:
             "e.g. https://openrouter.ai/api/v1",
             base,
         )
-    model_name = (settings.chat_model or "").strip()
+    model_name = (effective_chat_model() or "").strip()
     if not model_name:
         raise RuntimeError(
             "Set CHAT_MODEL to an OpenRouter model id (see https://openrouter.ai/models)."
@@ -409,7 +410,7 @@ def _build_gemini_chat_model() -> BaseChatModel:
         raise RuntimeError(
             "MODEL_PROVIDER=gemini requires GEMINI_API_KEY (or GOOGLE_API_KEY)."
         )
-    model_name = (settings.chat_model or "").strip() or _GEMINI_DEFAULT_MODEL
+    model_name = (effective_chat_model() or "").strip() or _GEMINI_DEFAULT_MODEL
     _validate_chat_model_id(model_name, via="Gemini")
     timeout = _request_timeout()
     from langchain_google_genai import ChatGoogleGenerativeAI

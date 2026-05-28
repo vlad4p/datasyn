@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg style="background-color:#fffceb" xmlns="http://www.w3.org/2000/svg" width="520" height="580" viewBox="0 0 520 580" role="img" aria-label="Flujo de consulta dos rutas">
+  <defs>
+    <linearGradient id="ai" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#b3c8cd"/><stop offset="100%" stop-color="#395a8e"/></linearGradient>
+    <linearGradient id="done" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#cede9f"/><stop offset="100%" stop-color="#559778"/></linearGradient>
+    <linearGradient id="sql" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#cede9f"/><stop offset="100%" stop-color="#559778"/></linearGradient>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#395a8e"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#fffceb"/>
+  <text x="260" y="34" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#585d5e" letter-spacing="2">CICLO DE UNA CONSULTA</text>
+
+  <g transform="translate(60,48)">
+    <rect width="400" height="56" rx="4" fill="#ffffff" stroke="#395a8e" stroke-width="2.5"/>
+    <text x="200" y="24" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="#49443b">IDE / Cliente</text>
+    <text x="200" y="42" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" fill="#585d5e">UI web (:8003) o cliente MCP nativo</text>
+  </g>
+
+  <line x1="180" y1="104" x2="130" y2="128" stroke="#395a8e" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="340" y1="104" x2="390" y2="128" stroke="#559778" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="130" y="120" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#395a8e">Ruta A</text>
+  <text x="390" y="120" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#559778">Ruta B</text>
+
+  <g transform="translate(20,128)">
+    <rect width="220" height="64" rx="4" fill="#ffffff" stroke="#0e2d58" stroke-width="2.5"/>
+    <text x="110" y="26" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" font-weight="bold" fill="#49443b">brain + ui</text>
+    <text x="110" y="44" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" fill="#585d5e">AGENTS.md &#183; skills</text>
+    <text x="110" y="58" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#585d5e">contenedores datasyn/</text>
+  </g>
+  <g transform="translate(280,128)">
+    <rect width="220" height="64" rx="4" fill="#ffffff" stroke="#559778" stroke-width="2.5"/>
+    <text x="110" y="26" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" font-weight="bold" fill="#49443b">MCP directo</text>
+    <text x="110" y="44" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" fill="#585d5e">duckdb / storage</text>
+    <text x="110" y="58" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#585d5e">:8040 / :8044</text>
+  </g>
+
+  <line x1="260" y1="192" x2="260" y2="216" stroke="#395a8e" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+  <g transform="translate(60,216)">
+    <rect width="400" height="72" rx="6" fill="#ffffff" stroke="#49443b" stroke-width="2.5"/>
+    <circle cx="44" cy="36" r="22" fill="url(#ai)"/>
+    <text x="44" y="42" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="#0e2d58">1</text>
+    <text x="80" y="32" font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="#49443b">Contexto + tools MCP</text>
+    <text x="80" y="52" font-family="Arial,sans-serif" font-size="11" fill="#585d5e">duckdb_get_schema &#183; duckdb_execute_query &#183; storage_*</text>
+  </g>
+  <line x1="260" y1="288" x2="260" y2="308" stroke="#395a8e" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+  <g transform="translate(60,308)">
+    <rect width="400" height="72" rx="6" fill="#fff1ce" stroke="#2c695a" stroke-width="2.5"/>
+    <rect x="300" y="20" width="84" height="32" rx="3" fill="url(#sql)" stroke="#2c695a"/>
+    <text x="342" y="40" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" font-weight="bold" fill="#2c695a">SQL</text>
+    <text x="80" y="32" font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="#49443b">duckdb-mcp &#8594; DuckDB</text>
+    <text x="80" y="52" font-family="Arial,sans-serif" font-size="11" fill="#585d5e">Un statement por llamada &#183; contenedor a contenedor</text>
+  </g>
+  <line x1="260" y1="380" x2="260" y2="400" stroke="#559778" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+  <g transform="translate(60,400)">
+    <rect width="400" height="56" rx="4" fill="#ffffff" stroke="#f4bd48" stroke-width="2" stroke-dasharray="4 3"/>
+    <text x="200" y="24" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" font-weight="bold" fill="#d15c32">Langfuse (opcional)</text>
+    <text x="200" y="42" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" fill="#585d5e">Trazas server-side en Ruta A (brain &#8594; Langfuse)</text>
+  </g>
+  <line x1="260" y1="456" x2="260" y2="476" stroke="#559778" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+  <g transform="translate(60,476)">
+    <rect width="400" height="72" rx="6" fill="url(#done)" stroke="#559778" stroke-width="2.5"/>
+    <circle cx="44" cy="36" r="22" fill="#2c695a"/>
+    <path d="M36,36 L42,42 L54,28" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="80" y="32" font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="#fffceb">Respuesta auditable</text>
+    <text x="80" y="52" font-family="Arial,sans-serif" font-size="11" fill="#559778">Tabla Markdown &#183; SQL fenced &#183; supuestos</text>
+  </g>
+</svg>

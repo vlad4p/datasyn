@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg style="background-color:#fffceb" xmlns="http://www.w3.org/2000/svg" width="560" height="520" viewBox="0 0 560 520" role="img" aria-label="Ejemplo de consulta estilo chat EPH hogares">
+  <defs>
+    <linearGradient id="userBubble" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0e2d58"/><stop offset="100%" stop-color="#0e2d58"/>
+    </linearGradient>
+    <linearGradient id="agentBubble" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#fff1ce"/>
+    </linearGradient>
+    <linearGradient id="agentAvatar" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#b3c8cd"/><stop offset="100%" stop-color="#395a8e"/>
+    </linearGradient>
+    <linearGradient id="toolChip" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#cede9f"/><stop offset="100%" stop-color="#559778"/>
+    </linearGradient>
+    <linearGradient id="skillChip" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f4bd48"/><stop offset="100%" stop-color="#f2b573"/>
+    </linearGradient>
+    <linearGradient id="resultBubble" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#cede9f"/><stop offset="100%" stop-color="#559778"/>
+    </linearGradient>
+  </defs>
+  <rect width="100%" height="100%" fill="#fffceb"/>
+
+  <!-- Chat chrome -->
+  <rect x="24" y="24" width="512" height="472" rx="6" fill="#fff1ce" stroke="#49443b" stroke-width="2.5"/>
+  <rect x="24" y="24" width="512" height="44" rx="6" fill="#ffffff"/>
+  <rect x="24" y="52" width="512" height="16" fill="#ffffff"/>
+  <circle cx="48" cy="46" r="5" fill="#9c2128" opacity="0.85"/>
+  <circle cx="64" cy="46" r="5" fill="#f4bd48" opacity="0.85"/>
+  <circle cx="80" cy="46" r="5" fill="#559778" opacity="0.85"/>
+  <text x="280" y="50" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" font-weight="bold" fill="#49443b">datasyn UI / brain</text>
+  <text x="280" y="62" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#585d5e">Ruta A &#183; EPH hogares &#183; T3-2025</text>
+
+  <!-- User message (right) -->
+  <g transform="translate(120, 88)">
+    <rect width="392" height="52" rx="4" fill="url(#userBubble)" stroke="#0e2d58" stroke-width="2"/>
+    <text x="16" y="22" font-family="Arial,sans-serif" font-size="10" fill="#b3c8cd">Usuario</text>
+    <text x="16" y="40" font-family="Arial,sans-serif" font-size="12" fill="#49443b">&#191;IPCF bajo l&#237;nea de pobreza en NOA, T3-2025? Inclu&#237; SQL.</text>
+  </g>
+
+  <!-- Agent avatar -->
+  <circle cx="52" cy="168" r="18" fill="url(#agentAvatar)" stroke="#395a8e" stroke-width="2.5"/>
+  <text x="52" y="173" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" font-weight="bold" fill="#0e2d58">AI</text>
+
+  <!-- Agent step 1: schema -->
+  <g transform="translate(80, 148)">
+    <rect width="432" height="44" rx="4" fill="url(#agentBubble)" stroke="#49443b" stroke-width="2"/>
+    <rect x="12" y="11" width="148" height="22" rx="3" fill="url(#toolChip)" stroke="#2c695a"/>
+    <text x="86" y="26" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="bold" fill="#2c695a">duckdb_get_schema</text>
+    <text x="172" y="26" font-family="Arial,sans-serif" font-size="10" fill="#585d5e">&#8594; information_schema si hace falta</text>
+  </g>
+
+  <!-- Agent step 2: skill -->
+  <g transform="translate(80, 200)">
+    <rect width="432" height="44" rx="4" fill="url(#agentBubble)" stroke="#49443b" stroke-width="2"/>
+    <rect x="12" y="11" width="168" height="22" rx="3" fill="url(#skillChip)" stroke="#de6433"/>
+    <text x="96" y="26" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="bold" fill="#49443b">skill: analyze-indec-eph-hogar</text>
+    <text x="192" y="26" font-family="Arial,sans-serif" font-size="10" fill="#585d5e">ANO4 &#183; TRIMESTRE &#183; TRY_CAST(IPCF)</text>
+  </g>
+
+  <!-- Agent step 3: query -->
+  <g transform="translate(80, 252)">
+    <rect width="432" height="44" rx="4" fill="url(#agentBubble)" stroke="#49443b" stroke-width="2"/>
+    <rect x="12" y="11" width="158" height="22" rx="3" fill="url(#toolChip)" stroke="#2c695a"/>
+    <text x="91" y="26" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="bold" fill="#2c695a">duckdb_execute_query</text>
+    <text x="182" y="26" font-family="Arial,sans-serif" font-size="10" fill="#585d5e">1 statement &#183; ponderaci&#243;n PONDIH</text>
+  </g>
+
+  <!-- Agent result -->
+  <g transform="translate(80, 312)">
+    <rect width="432" height="168" rx="4" fill="url(#resultBubble)" stroke="#559778" stroke-width="2.5"/>
+    <text x="16" y="24" font-family="Arial,sans-serif" font-size="11" font-weight="bold" fill="#2c695a">Agente</text>
+    <text x="16" y="42" font-family="Arial,sans-serif" font-size="10" fill="#559778">Tabla Markdown (NOA, T3-2025)</text>
+
+    <!-- mini table -->
+    <rect x="16" y="52" width="400" height="56" rx="3" fill="#fffceb" stroke="#559778"/>
+    <text x="28" y="70" font-family="Arial,sans-serif" font-size="9" font-weight="bold" fill="#2c695a">region</text>
+    <text x="120" y="70" font-family="Arial,sans-serif" font-size="9" font-weight="bold" fill="#2c695a">hogares</text>
+    <text x="220" y="70" font-family="Arial,sans-serif" font-size="9" font-weight="bold" fill="#2c695a">pct_ipcf_pobre</text>
+    <line x1="28" y1="76" x2="404" y2="76" stroke="#559778"/>
+    <text x="28" y="92" font-family="Arial,sans-serif" font-size="9" fill="#2c695a">NOA</text>
+    <text x="120" y="92" font-family="Arial,sans-serif" font-size="9" fill="#2c695a">12 847</text>
+    <text x="220" y="92" font-family="Arial,sans-serif" font-size="9" fill="#2c695a">18,4%</text>
+
+    <!-- sql block -->
+    <rect x="16" y="116" width="400" height="40" rx="3" fill="#fff1ce" stroke="#49443b"/>
+    <text x="28" y="132" font-family="monospace" font-size="8" fill="#585d5e">SELECT region, SUM(PONDIH), ... TRY_CAST(IPCF AS DOUBLE)</text>
+    <text x="28" y="146" font-family="monospace" font-size="8" fill="#585d5e">WHERE ANO4=2025 AND TRIMESTRE=3 ...</text>
+  </g>
+
+  <text x="280" y="502" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#585d5e">Respuesta auditable: tabla + SQL + supuestos de cobertura</text>
+</svg>

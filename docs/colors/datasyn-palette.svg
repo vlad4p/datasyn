@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg style="background-color:#fffceb" xmlns="http://www.w3.org/2000/svg" width="920" height="380" viewBox="0 0 920 380" role="img" aria-label="datasyn UI palette">
+  <rect width="100%" height="100%" fill="#fffceb"/>
+  <rect x="16" y="16" width="888" height="348" fill="none" stroke="#49443b" stroke-width="4"/>
+  <text x="460" y="44" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="15" font-weight="bold" fill="#49443b">DATASYN UI PALETTE</text>
+  <text x="460" y="62" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="10" fill="#585d5e">Platform roles mapped to core accent colors</text>
+
+  <g transform="translate(40,90)">
+    <rect width="100" height="80" fill="#fffceb" stroke="#49443b" stroke-width="2"/>
+    <text x="50" y="100" text-anchor="middle" font-family="monospace" font-size="10" fill="#49443b">#fffceb</text>
+    <text x="50" y="116" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="bold" fill="#49443b">Background</text>
+    <text x="50" y="130" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#7e7f7e">ivory</text>
+  </g>
+  <g transform="translate(160,90)">
+    <rect width="100" height="80" fill="#ffffff" stroke="#49443b" stroke-width="2"/>
+    <text x="50" y="100" text-anchor="middle" font-family="monospace" font-size="10" fill="#49443b">#ffffff</text>
+    <text x="50" y="116" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="bold" fill="#49443b">Surface</text>
+    <text x="50" y="130" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#7e7f7e">card / panel</text>
+  </g>
+  <g transform="translate(280,90)">
+    <rect width="100" height="80" fill="#49443b"/>
+    <text x="50" y="100" text-anchor="middle" font-family="monospace" font-size="10" fill="#fffceb">#49443b</text>
+    <text x="50" y="116" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="bold" fill="#fffceb">Ink</text>
+    <text x="50" y="130" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#b5b5af">borders</text>
+  </g>
+  <g transform="translate(400,90)">
+    <rect width="100" height="80" fill="#7e7f7e"/>
+    <text x="50" y="100" text-anchor="middle" font-family="monospace" font-size="10" fill="#fffceb">#7e7f7e</text>
+    <text x="50" y="116" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="bold" fill="#fffceb">Muted</text>
+    <text x="50" y="130" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#fffceb">secondary text</text>
+  </g>
+  <g transform="translate(520,90)">
+    <rect width="100" height="80" fill="#b5b5af" stroke="#49443b" stroke-width="2"/>
+    <text x="50" y="100" text-anchor="middle" font-family="monospace" font-size="10" fill="#49443b">#b5b5af</text>
+    <text x="50" y="116" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="bold" fill="#49443b">Silver</text>
+    <text x="50" y="130" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#585d5e">medallion layer</text>
+  </g>
+  <g transform="translate(640,90)">
+    <rect width="100" height="80" fill="#e8c29e" stroke="#49443b" stroke-width="2"/>
+    <text x="50" y="100" text-anchor="middle" font-family="monospace" font-size="10" fill="#49443b">#e8c29e</text>
+    <text x="50" y="116" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="bold" fill="#49443b">Bronze</text>
+    <text x="50" y="130" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#7e7f7e">medallion layer</text>
+  </g>
+  <g transform="translate(760,90)">
+    <rect width="100" height="80" fill="#b3c8cd" stroke="#49443b" stroke-width="2"/>
+    <text x="50" y="100" text-anchor="middle" font-family="monospace" font-size="10" fill="#49443b">#b3c8cd</text>
+    <text x="50" y="116" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="bold" fill="#49443b">Pipeline</text>
+    <text x="50" y="130" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#585d5e">secondary tint</text>
+  </g>
+
+  <g transform="translate(40,210)">
+    <rect width="100" height="80" fill="#0e2d58" stroke="#49443b" stroke-width="2"/>
+    <text x="50" y="220" text-anchor="middle" font-family="monospace" font-size="10" fill="#fffceb">#0e2d58</text>
+    <text x="50" y="236" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="bold" fill="#fffceb">AI / agent</text>
+    <text x="50" y="250" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#b3c8cd">navy</text>
+  </g>
+  <g transform="translate(160,210)">
+    <rect width="100" height="80" fill="#395a8e" stroke="#49443b" stroke-width="2"/>
+    <text x="50" y="220" text-anchor="middle" font-family="monospace" font-size="10" fill="#fffceb">#395a8e</text>
+    <text x="50" y="236" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="bold" fill="#fffceb">UI / brain</text>
+    <text x="50" y="250" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#b3c8cd">blue</text>
+  </g>
+  <g transform="translate(280,210)">
+    <rect width="100" height="80" fill="#559778" stroke="#49443b" stroke-width="2"/>
+    <text x="50" y="220" text-anchor="middle" font-family="monospace" font-size="10" fill="#fffceb">#559778</text>
+    <text x="50" y="236" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="bold" fill="#fffceb">SQL / success</text>
+    <text x="50" y="250" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#cede9f">green</text>
+  </g>
+  <g transform="translate(400,210)">
+    <rect width="100" height="80" fill="#f4bd48" stroke="#49443b" stroke-width="2"/>
+    <text x="50" y="220" text-anchor="middle" font-family="monospace" font-size="10" fill="#49443b">#f4bd48</text>
+    <text x="50" y="236" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="bold" fill="#49443b">Warning / Gold</text>
+    <text x="50" y="250" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#7e7f7e">yellow</text>
+  </g>
+  <g transform="translate(520,210)">
+    <rect width="100" height="80" fill="#de6433" stroke="#49443b" stroke-width="2"/>
+    <text x="50" y="220" text-anchor="middle" font-family="monospace" font-size="10" fill="#fffceb">#de6433</text>
+    <text x="50" y="236" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="bold" fill="#fffceb">Storage</text>
+    <text x="50" y="250" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#f9dac1">orange</text>
+  </g>
+  <g transform="translate(640,210)">
+    <rect width="100" height="80" fill="#a33a29" stroke="#49443b" stroke-width="2"/>
+    <text x="50" y="220" text-anchor="middle" font-family="monospace" font-size="10" fill="#fffceb">#a33a29</text>
+    <text x="50" y="236" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="bold" fill="#fffceb">Error</text>
+    <text x="50" y="250" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#f9dac1">red</text>
+  </g>
+  <g transform="translate(760,210)">
+    <rect width="100" height="80" fill="#6c2b3b" stroke="#49443b" stroke-width="2"/>
+    <text x="50" y="220" text-anchor="middle" font-family="monospace" font-size="10" fill="#fffceb">#6c2b3b</text>
+    <text x="50" y="236" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="9" font-weight="bold" fill="#fffceb">Dagster</text>
+    <text x="50" y="250" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#f9dac1">deep red</text>
+  </g>
+
+  <text x="460" y="332" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="11" font-weight="bold" fill="#49443b">Ivory background - Ink borders - Five accent hues for platform roles</text>
+  <text x="460" y="350" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" fill="#7e7f7e">See docs/colors/README.md</text>
+</svg>

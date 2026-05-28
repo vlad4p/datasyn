@@ -3,7 +3,7 @@ description: >-
   Web scrape → MinIO landing → bronze DuckDB for news/opinion pipelines. Load
   skill ingest-scrape-news-bronze when editing Dagster bronze scrape assets.
 globs: >-
-  infra/dagster/mcp/dagster-code/projects/datasyn/src/datasyn/assets/bronze/**/*
+  ../datasyn-code/src/datasyn/assets/bronze/**/*
 alwaysApply: false
 ---
 

@@ -1,0 +1,46 @@
+/**
+ * Official Datacyber palette — docs/colors/README.md
+ */
+:root {
+  --color-bg: #fffceb;
+  --color-surface: #ffffff;
+  --color-ink: #49443b;
+  --color-muted: #7e7f7e;
+  --color-divider: #b5b5af;
+  --color-agent: #0e2d58;
+  --color-brain: #395a8e;
+  --color-sql: #559778;
+  --color-dagster: #6c2b3b;
+  --color-warning: #f4bd48;
+  --color-storage: #de6433;
+  --color-error: #a33a29;
+  --color-bronze: #e8c29e;
+  --color-silver: #b5b5af;
+  --color-gold: #f4bd48;
+  --color-pipeline: #b3c8cd;
+
+  /* Semantic aliases (used across App.css) */
+  --bg: var(--color-bg);
+  --bg-elevated: var(--color-surface);
+  --border: var(--color-ink);
+  --border-light: var(--color-divider);
+  --text: var(--color-ink);
+  --muted: var(--color-muted);
+  --accent: var(--color-brain);
+  --accent-agent: var(--color-agent);
+  --accent-dim: #2d4670;
+  --user-bubble: #e8eef8;
+  --assistant-bubble: var(--color-surface);
+  --danger: var(--color-error);
+  --ok: var(--color-sql);
+
+  --shadow-card: 0 1px 3px rgba(73, 68, 59, 0.12);
+  --radius-card: 12px;
+  --stroke-width: 2px;
+
+  /* Responsive layout */
+  --space-page: clamp(0.75rem, 2.5vw, 1.25rem);
+  --content-max: min(44rem, 100%);
+  --card-col-min: min(100%, 17.5rem);
+  --touch-target: 2.75rem;
+}

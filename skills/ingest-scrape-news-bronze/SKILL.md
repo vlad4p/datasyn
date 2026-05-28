@@ -24,7 +24,7 @@ Referencias canónicas en el repo:
 ## Cuándo usar esta skill
 
 - El usuario pide **ingerir noticias**, **scrapear un medio**, **nueva fuente de prensa**, o **tabla bronze** desde páginas HTML.
-- Vas a crear o modificar assets bajo `infra/dagster/mcp/dagster-code/projects/datasyn/src/datasyn/assets/bronze/<fuente>/`.
+- Vas a crear o modificar assets bajo `src/datasyn/assets/bronze/<fuente>/` en el repo hermano **`datasyn-code`** (junto a `datasyn/`).
 - Necesitás validar filas en DuckDB (`duckdb_execute_query`) después de un backfill.
 
 **No** uses este playbook para INDEC EPH (`gold.indec_eph_*`) ni para cargas CSV bajo `/data-local` sin scrape — ver `ingest-indec-mercadolaboral` y reglas genéricas en `AGENTS.md`.

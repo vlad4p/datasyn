@@ -10,7 +10,8 @@ Para qué hace cada componente y cómo se usa, ver [`README.md`](README.md). Par
 
 - Docker + Docker Compose v2
 - Make (recomendado)
-- Para desarrollo del brain en host con hot reload: Python 3.11+ y Node.js (UI con `npm run dev`)
+- **[uv](https://docs.astral.sh/uv/getting-started/installation/)** — gestor de Python del brain (local: siempre `uv sync` / `uv run`, no `pip` ni `python` sueltos)
+- Node.js — solo para la UI en host (`npm run dev`)
 
 Puertos publicados por defecto:
 
@@ -22,7 +23,6 @@ Puertos publicados por defecto:
 | MinIO (consola) | `9001` | — |
 | MinIO (S3 API) | interno | — |
 | `duckdb-mcp` | `8040` | `duckdb` |
-| `dagster-mcp` | `8043` | `dagster` |
 | `storage-mcp` | `8044` | `storage` |
 | Registry OCI (`registry:3`) | `5000` | — |
 
@@ -33,7 +33,7 @@ Puertos publicados por defecto:
 ```bash
 make bootstrap        # red infra-datasynk + volúmenes duckdb_data, storage
 make images-prepare   # registry local + build de todas las imágenes
-make infra-up         # MinIO, DuckDB+MCP, Dagster+MCP
+make infra-up         # MinIO, DuckDB+MCP, Dagster (empty user-code stub)
 make agent-up         # brain + UI
 ```
 
@@ -61,12 +61,28 @@ docker compose up -d
 
 ## Desarrollo del brain en host
 
+Requisito: [uv](https://docs.astral.sh/uv/getting-started/installation/) instalado. Python lo fija `.python-version` (3.12); `uv sync` crea `.venv`.
+
 ```bash
-make mcp-up      # solo MinIO + duckdb + servidores MCP
-make agent-dev   # uvicorn :8002 + Vite :5173 (proxy /api)
+cp .env.example .env          # LLM + MCP (editar OPENROUTER_API_KEY u otro provider)
+uv sync                       # instala deps en .venv
+make agent-dev                # uv run brain-dev :8002 + Vite :5173
 ```
 
-En modo host, las URLs de `mcp.json` (`duckdb-mcp`, `storage-mcp`, `dagster-mcp`) se reescriben a `127.0.0.1:8040 / 8044 / 8043`. Para deshabilitar: `MCP_DISABLE_HOST_URL_REWRITE=1`.
+Solo brain (sin UI):
+
+```bash
+make agent-brain              # equivalente a: uv run brain-dev
+```
+
+MCP local en Docker (opcional; si usás un servidor remoto, configurá `mcp.json` y `MCP_DISABLE_HOST_URL_REWRITE=1` en `.env`):
+
+```bash
+make mcp-up
+make agent-dev
+```
+
+En modo host con MCP en Docker, las URLs de `mcp.json` (`duckdb-mcp`, …) se reescriben a `127.0.0.1:8040 / 8044`. Para URLs externas (IP/hostname): `MCP_DISABLE_HOST_URL_REWRITE=1`.
 
 ---
 
@@ -115,7 +131,11 @@ make infra-duckdb-ui-down
 
 ## Catálogo de metadatos (opcional)
 
-Si tu organización tiene un catálogo (Postgres con descripciones de columnas, lineage, tags), exportá `DATABASE_URL` o `CATALOG_DATABASE_URL` en `infra/dagster/.env`. `dagster-mcp` expone `dagster_catalog_get_schema` y `dagster_catalog_execute_query`. El agente prioriza catálogo antes de tocar archivos. Patrones de SQL en `skills/catalog-sql/SKILL.md` (cuando se incorpore).
+Si tu organización tiene un catálogo (Postgres con descripciones de columnas, lineage, tags), apuntá un servidor MCP **dagster** en `mcp.json` (puede vivir en otro repo/despliegue) con `dagster_catalog_get_schema` y `dagster_catalog_execute_query`. El agente prioriza catálogo antes de tocar archivos. La UI (**pestaña Datasets**) consume `GET /api/catalog/datasets` y fusiona tablas DuckDB con `dataset_entity`; sin dagster en `mcp.json` verás solo el almacén. Patrones de SQL en `skills/catalog-sql/SKILL.md` cuando exista en el repo.
+
+Los análisis exportados desde la UI se guardan en `./reports/analyses/` (montado en el contenedor `brain` como `/project/reports`).
+
+**Datasets tab:** el brain consulta el [GraphQL API de Dagster](https://docs.dagster.io/api/graphql) (`DAGSTER_URL` + `/graphql` en código; default `http://127.0.0.1:3001`) para assets, jobs y linaje; lo fusiona con tablas DuckDB vía MCP.
 
 ---
 
@@ -127,6 +147,8 @@ make agent-ps              # estado de brain + UI
 make registry-api-v2       # GET /v2/ del registry
 curl -s http://localhost:8002/api/health        | jq .       # brain
 curl -s http://localhost:8002/api/health/tools  | jq '.tools | length'   # tools MCP cargadas
+curl -s http://localhost:8002/api/catalog/datasets | jq '.count'
+uv run pytest tests/test_analysis_export.py -q   # export de análisis (sin MCP)
 ```
 
 UI: `http://localhost:8003` · Dagster: `http://localhost:3001` · MinIO console: `http://localhost:9001`.
