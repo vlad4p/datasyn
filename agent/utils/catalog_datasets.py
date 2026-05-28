@@ -11,6 +11,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient as MultiServerToo
 from agent.utils.dagster_graphql import (
     dagster_assets_by_fqn,
     dagster_graphql_url,
+    dagster_server_url,
     fetch_dagster_asset_catalog,
     fetch_dagster_asset_detail,
 )
@@ -410,6 +411,7 @@ async def catalog_dataset_detail_payload(fqn: str) -> dict[str, Any]:
         "catalog_columns": catalog_cols,
         "warehouse_columns": wh_cols,
         "dagster": dagster_detail,
+        "dagster_url": dagster_server_url(),
         "dagster_graphql_url": dagster_graphql_url(),
         "lineage": lineage,
     }

@@ -1,9 +1,9 @@
-"""Dagster GraphQL catalog client (webserver /graphql).
+"""Dagster GraphQL catalog client (webserver ``/graphql``).
 
 See https://docs.dagster.io/api/graphql
 
-The endpoint comes from ``DAGSTER_GRAPHQL_URL`` in the repo ``.env`` (loaded via
-``agent.config.settings``). Do not assume localhost when that variable is set.
+Set ``DAGSTER_URL`` in repo ``.env`` to the webserver host + port only (e.g.
+``http://10.13.10.119:3001``). The GraphQL path is appended in code.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 
-from agent.config import settings
+from agent.config import dagster_graphql_url, settings
 
 logger = logging.getLogger(__name__)
 
@@ -95,9 +95,9 @@ query DatacyberAssetDetail($path: [String!]!) {{
 """
 
 
-def dagster_graphql_url() -> str:
-    """Effective Dagster GraphQL URL (from ``settings.dagster_graphql_url`` / ``.env``)."""
-    return settings.dagster_graphql_url
+def dagster_server_url() -> str:
+    """Dagster webserver base URL from ``DAGSTER_URL`` (no path)."""
+    return settings.dagster_url
 
 
 def _key_path_to_str(path: list[str] | None) -> str:

@@ -1,10 +1,15 @@
 """Tests for Dagster GraphQL helpers."""
 
+from agent.config import dagster_graphql_url
 from agent.utils.dagster_graphql import (
     infer_duckdb_fqn,
     metadata_lookup,
     parse_metadata_entries,
 )
+
+
+def test_dagster_graphql_url_from_base() -> None:
+    assert dagster_graphql_url(base_url="http://10.13.10.119:3001") == "http://10.13.10.119:3001/graphql"
 
 
 def test_infer_fqn_from_tags() -> None:

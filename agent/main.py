@@ -35,7 +35,7 @@ from agent.utils.langfuse_tracing import (
 from agent.utils.mcp_connections import load_mcp_tool_connections
 from agent.utils.otel_tracing import init_otel_tracing
 from agent.utils.analysis_export import export_analysis, get_analysis, list_analyses
-from agent.utils.dagster_graphql import dagster_graphql_url
+from agent.utils.dagster_graphql import dagster_graphql_url, dagster_server_url
 from agent.utils.catalog_datasets import catalog_dataset_detail_payload, catalog_datasets_payload
 from agent.utils.warehouse_schema import warehouse_tables_payload
 from agent.utils.litellm_chat import (
@@ -144,7 +144,11 @@ def _log_effective_llm_env() -> None:
 
 
 _log_effective_llm_env()
-logger.info("Effective Dagster GraphQL: DAGSTER_GRAPHQL_URL=%r", settings.dagster_graphql_url)
+logger.info(
+    "Effective Dagster: DAGSTER_URL=%r graphql=%r",
+    settings.dagster_url,
+    dagster_graphql_url(),
+)
 log_langfuse_docker_loopback_hint()
 
 
@@ -364,7 +368,8 @@ def _llm_config_snapshot() -> dict[str, Any]:
         "chat_model_env": settings.chat_model or "",
         "chat_model_source": chat_model_source(),
         "langfuse_tracing_enabled": langfuse_tracing_enabled(),
-        "dagster_graphql_url": settings.dagster_graphql_url,
+        "dagster_url": settings.dagster_url,
+        "dagster_graphql_url": dagster_graphql_url(),
     }
 
 
@@ -499,6 +504,7 @@ async def catalog_datasets(
     """Merged DuckDB tables + Dagster GraphQL catalog + optional Postgres dataset_entity."""
     try:
         payload = await catalog_datasets_payload(duckdb_table=duckdb_table)
+        payload["dagster_url"] = dagster_server_url()
         payload["dagster_graphql_url"] = dagster_graphql_url()
         return payload
     except Exception as exc:

@@ -148,9 +148,10 @@ export function DatasetCatalog({ className, id, locale, onAnalyzeDataset }: Prop
     <section id={id} className={`workspace-panel workspace-panel--scroll ${className ?? ""}`}>
       <h2 className="section-title">{c.title}</h2>
       <p className="small muted">{c.hint}</p>
-      {payload?.dagster_graphql_url && (
+      {payload?.dagster_url && (
         <p className="tiny muted">
-          Dagster GraphQL ({c.dagsterOk}): {payload.dagster_graphql_url}
+          Dagster ({c.dagsterOk}): {payload.dagster_url}
+          {payload.dagster_graphql_url ? ` · GraphQL ${payload.dagster_graphql_url}` : ""}
         </p>
       )}
       {statusHints.map((h) => (

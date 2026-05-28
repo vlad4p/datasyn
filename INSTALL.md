@@ -135,7 +135,7 @@ Si tu organización tiene un catálogo (Postgres con descripciones de columnas, 
 
 Los análisis exportados desde la UI se guardan en `./reports/analyses/` (montado en el contenedor `brain` como `/project/reports`).
 
-**Datasets tab:** el brain consulta el [GraphQL API de Dagster](https://docs.dagster.io/api/graphql) (`DAGSTER_GRAPHQL_URL`, default `http://127.0.0.1:3001/graphql`) para assets, jobs y linaje; lo fusiona con tablas DuckDB vía MCP.
+**Datasets tab:** el brain consulta el [GraphQL API de Dagster](https://docs.dagster.io/api/graphql) (`DAGSTER_URL` + `/graphql` en código; default `http://127.0.0.1:3001`) para assets, jobs y linaje; lo fusiona con tablas DuckDB vía MCP.
 
 ---
 

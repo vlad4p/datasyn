@@ -513,6 +513,7 @@ export type CatalogDatasetsResponse = {
   catalog_status?: string;
   dagster_status?: string;
   dagster_error?: string | null;
+  dagster_url?: string | null;
   dagster_graphql_url?: string | null;
   warehouse_tables?: string[];
   datasets: CatalogDatasetCard[];
@@ -532,6 +533,7 @@ export type CatalogDatasetDetailResponse = {
   catalog_columns?: CatalogColumnRow[];
   warehouse_columns?: CatalogColumnRow[];
   dagster?: Record<string, unknown> | null;
+  dagster_url?: string | null;
   dagster_graphql_url?: string | null;
   lineage?: { upstream?: string[]; downstream?: string[] };
   error?: string | null;

@@ -117,15 +117,35 @@ def _litellm_base_from_env() -> str | None:
 
 
 OPENROUTER_DEFAULT_API_BASE = "https://openrouter.ai/api/v1"
-DAGSTER_DEFAULT_GRAPHQL_URL = "http://127.0.0.1:3001/graphql"
+
+# Dagster webserver base URL in ``.env`` (host + port only). API paths are appended in code.
+DAGSTER_DEFAULT_URL = "http://127.0.0.1:3001"
+DAGSTER_GRAPHQL_PATH = "/graphql"
 
 
-def _dagster_graphql_url_from_env() -> str:
-    """Dagster webserver GraphQL endpoint (``DAGSTER_GRAPHQL_URL`` in repo ``.env``)."""
-    raw = _env_first("DAGSTER_GRAPHQL_URL")
+def _normalize_dagster_base_url(raw: str) -> str:
+    """Strip trailing slashes and legacy ``/graphql`` suffix from env values."""
+    base = raw.strip().rstrip("/")
+    if base.endswith("/graphql"):
+        return base[: -len("/graphql")]
+    return base
+
+
+def _dagster_url_from_env() -> str:
+    """Dagster webserver root (``DAGSTER_URL`` in repo ``.env`` — no path suffix)."""
+    raw = _env_first("DAGSTER_URL")
     if raw:
-        return raw.strip().rstrip("/")
-    return DAGSTER_DEFAULT_GRAPHQL_URL.rstrip("/")
+        return _normalize_dagster_base_url(raw)
+    legacy = _env_first("DAGSTER_GRAPHQL_URL")
+    if legacy:
+        return _normalize_dagster_base_url(legacy)
+    return DAGSTER_DEFAULT_URL
+
+
+def dagster_graphql_url(*, base_url: str | None = None) -> str:
+    """Full GraphQL endpoint: ``{DAGSTER_URL}{DAGSTER_GRAPHQL_PATH}``."""
+    root = (base_url or _dagster_url_from_env()).rstrip("/")
+    return f"{root}{DAGSTER_GRAPHQL_PATH}"
 
 
 def _openrouter_base_from_env() -> str | None:
@@ -151,7 +171,7 @@ class Settings:
     openrouter_api_key: str | None
     openrouter_api_base: str | None
     gemini_api_key: str | None
-    dagster_graphql_url: str
+    dagster_url: str
     duckdb_path_in_process: str
     sql_row_cap: int
     warehouse_api_url: str
@@ -175,7 +195,7 @@ class Settings:
             openrouter_api_key=_env_first("OPENROUTER_API_KEY", "OPENROUTER_KEY"),
             openrouter_api_base=_openrouter_base_from_env(),
             gemini_api_key=_gemini_api_key(),
-            dagster_graphql_url=_dagster_graphql_url_from_env(),
+            dagster_url=_dagster_url_from_env(),
             duckdb_path_in_process=os.environ.get("DUCKDB_PATH", "/data/warehouse.duckdb"),
             sql_row_cap=int(os.environ.get("SQL_ROW_CAP", "500")),
             warehouse_api_url=os.environ.get("WAREHOUSE_API_URL", "http://127.0.0.1:8080"),
