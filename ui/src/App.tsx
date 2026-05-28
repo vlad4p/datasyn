@@ -8,6 +8,7 @@ import { AppHeader } from "./components/AppHeader";
 import { DatasetCatalog } from "./components/DatasetCatalog";
 import { loadChatSession, saveChatSession } from "./chatSessionStorage";
 import { readStoredLocale, persistLocale, uiStrings, type UiLocale } from "./locale";
+import { newId } from "./newId";
 import { formatStreamStep, formatStreamToolDelta } from "./streamActivityFormat";
 
 const AGENT_PANEL_ID = "agent-workspace";
@@ -131,8 +132,8 @@ export default function App() {
     }));
     setInput("");
     setError(null);
-    const userMsg: Msg = { id: crypto.randomUUID(), role: "user", content: text };
-    const assistantId = crypto.randomUUID();
+    const userMsg: Msg = { id: newId(), role: "user", content: text };
+    const assistantId = newId();
     const assistantPlaceholder: Msg = {
       id: assistantId,
       role: "assistant",
