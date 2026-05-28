@@ -160,7 +160,7 @@ UI: `http://localhost:8003` · Dagster: `http://localhost:3001` · MinIO console
 | Síntoma | Causa | Mitigación |
 |---|---|---|
 | `Could not set lock` / IO error de DuckDB | DuckDB Local UI mantiene la DB abierta | `make infra-duckdb-ui-down` o evitar `--profile ui` durante ingest |
-| `InvalidAccessKeyId` desde `storage-mcp` | Endpoint o credenciales MinIO incorrectos | Usar alias `http://datacyber-object-minio:9000`; alinear `MINIO_ROOT_*` con `infra/object-storage/.env` |
+| `InvalidAccessKeyId` desde `storage-mcp` | Endpoint o credenciales MinIO incorrectos | Usar alias `http://datasyn-object-minio:9000`; alinear `MINIO_ROOT_*` con `infra/object-storage/.env` |
 | Brain no alcanza MCP en `make agent-dev` | URL de `mcp.json` apunta a hostname Docker | El brain reescribe a `127.0.0.1:8040/43/44`; verificar `make mcp-up` |
 | `dagster_user_code` no levanta | Imagen stale tras cambio de assets | `make dagster-user-code-image` y recrear el servicio |
 | `ConnectError` desde brain a LiteLLM (Docker) | `LITELLM_PROXY_BASE` apunta a loopback | Usar `http://host.docker.internal:4000` o `LITELLM_DOCKER_HOST_REWRITE=1` |

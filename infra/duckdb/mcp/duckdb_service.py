@@ -1,4 +1,4 @@
-"""DuckDB connection and query helpers (Datacyber warehouse MCP).
+"""DuckDB connection and query helpers (Datasyn warehouse MCP).
 
 Pattern inspired by ktanaka101/mcp-server-duckdb (single DB handle, execute path);
 this service adds schema introspection and a confined data-mount listing.

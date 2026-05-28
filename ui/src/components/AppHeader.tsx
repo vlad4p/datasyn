@@ -1,3 +1,4 @@
+import logoUrl from "../../images/image.png";
 import type { UiLocale } from "../locale";
 import { uiStrings } from "../locale";
 
@@ -11,9 +12,9 @@ export function AppHeader({ locale, onLocaleChange }: Props) {
   return (
     <header className="app-header">
       <div className="brand">
-        <span className="logo" aria-hidden />
+        <img className="logo" src={logoUrl} alt="" width={36} height={36} />
         <div>
-          <h1>Datacyber</h1>
+          <h1>Datasyn</h1>
           <p className="tagline">{s.tagline}</p>
         </div>
       </div>

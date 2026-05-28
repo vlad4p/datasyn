@@ -4,7 +4,7 @@
  */
 import type { ChatMsg } from "./types/chat";
 
-const KEY = "datacyber-chat-session-v1";
+const KEY = "datasyn-chat-session-v1";
 
 type StoredMsg = Pick<
   ChatMsg,

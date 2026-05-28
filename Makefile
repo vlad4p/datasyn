@@ -52,7 +52,7 @@ SHARED_VOLUMES := duckdb_data storage
 	stack-up stack-down stack-ps
 
 help:
-	@echo "Datacyber — common targets"
+	@echo "Datasyn — common targets"
 	@echo ""
 	@echo "  make bootstrap              # network infra-datasynk + volumes duckdb_data, storage"
 	@echo "  make registry-up            # OCI Distribution registry (infra/distribution)"
@@ -79,7 +79,7 @@ help:
 	@echo "  make brain-restart          # free :8002, uv run brain-dev"
 	@echo "  make agent-dev              # uv-sync + uv run brain-dev + Vite"
 	@echo "  make agent-brain            # uv-sync + uv run brain-dev (brain only)"
-	@echo "      # Manual: uv sync && uv run brain-dev   (or uv run datacyber-api without reload)"
+	@echo "      # Manual: uv sync && uv run brain-dev   (or uv run datasyn-api without reload)"
 	@echo ""
 	@echo "Legacy alias: bootstrap-infra-primitives → bootstrap ; infra-build → images-build"
 

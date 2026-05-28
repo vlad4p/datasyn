@@ -9,4 +9,4 @@
 # Backend: CompositeBackend — host project root + ephemeral `/sandbox/` (StateBackend). Subagent `data-analyst`: DuckDB+Dagster MCP tools only (`agent/utils/subagents_spec.py`).
 
 [agent]
-name = "datacyber-brain"
+name = "datasyn-brain"

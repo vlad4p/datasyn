@@ -1,5 +1,5 @@
 [project]
-name = "datacyber"
+name = "datasyn"
 version = "0.1.0"
 description = "Deep Agent API: FastAPI brain, LangChain remote tools, OpenAI-compatible chat"
 requires-python = ">=3.11"
@@ -37,8 +37,8 @@ where = ["."]
 include = ["agent*"]
 
 [project.scripts]
-datacyber-agent = "agent.runner:main"
-datacyber-api = "agent.main:run"
+datasyn-agent = "agent.runner:main"
+datasyn-api = "agent.main:run"
 brain-dev = "agent.main:dev"
 
 [tool.uv]

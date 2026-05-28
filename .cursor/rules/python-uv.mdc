@@ -24,7 +24,7 @@ After editing **`.env`**, restart brain: `make brain-restart` (kills :8002, then
 | Command | Role |
 |---------|------|
 | `uv run brain-dev` | FastAPI brain with reload |
-| `uv run datacyber-api` | Brain without reload |
+| `uv run datasyn-api` | Brain without reload |
 | `uv run pytest tests/ -q` | Unit tests |
 
 Prefer **`make agent-dev`**, **`make agent-brain`**, **`make test-agent`**, **`make brain-restart`**.

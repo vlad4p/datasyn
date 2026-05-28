@@ -10,7 +10,7 @@ COPY server.py .
 ENV HOST=0.0.0.0 \
     PORT=8044 \
     MCP_HTTP_PATH=/mcp \
-    MINIO_ENDPOINT=http://datacyber-object-minio:9000 \
+    MINIO_ENDPOINT=http://datasyn-object-minio:9000 \
     MINIO_ACCESS_KEY=minioadmin \
     MINIO_SECRET_KEY=minioadmin123 \
     MINIO_SECURE=false \

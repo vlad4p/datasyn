@@ -22,7 +22,7 @@ services:
     networks:
       infra:
         aliases:
-          - datacyber-object-minio
+          - datasyn-object-minio
 
   # MinIO browser/list MCP (``mcp.json`` → ``http://storage-mcp:8044/mcp``).
   storage-mcp:
@@ -39,7 +39,7 @@ services:
     ports:
       - "8044:8044"
     environment:
-      MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://datacyber-object-minio:9000}"
+      MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://datasyn-object-minio:9000}"
       MINIO_ACCESS_KEY: "${MINIO_ROOT_USER:-minioadmin}"
       MINIO_SECRET_KEY: "${MINIO_ROOT_PASSWORD:-minioadmin123}"
       MINIO_DEFAULT_BUCKET: "${MINIO_BUCKET:-data-local}"

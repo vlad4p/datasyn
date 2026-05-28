@@ -148,7 +148,7 @@ def _normalize_release_tag(release: str | None) -> str | None:
 
 def _resolve_runtime_release() -> str | None:
     candidates = (
-        os.environ.get("DATACYBER_RELEASE"),
+        os.environ.get("DATASYN_RELEASE"),
         os.environ.get("APP_VERSION"),
         os.environ.get("GIT_SHA"),
     )
@@ -166,7 +166,7 @@ def _build_default_tags(
     runtime_env: str | None,
 ) -> list[str]:
     tags = [
-        "datacyber-brain",
+        "datasyn-brain",
         "agent-chat",
         _normalize_feature_tag(feature),
         _normalize_endpoint_tag(endpoint),
@@ -196,7 +196,7 @@ def root_chat_observation(
     trace_id = Langfuse.create_trace_id(seed=request_id)
     with lf.start_as_current_observation(
         as_type="span",
-        name="datacyber-agent-chat",
+        name="datasyn-agent-chat",
         trace_context={"trace_id": trace_id},
     ) as obs:
         obs.set_trace_io(
@@ -243,5 +243,5 @@ def build_langfuse_run_metadata(
     if user_id:
         meta["langfuse_user_id"] = user_id
     # Helpful join key for external logs while avoiding sensitive payload fields.
-    meta["datacyber_request_id"] = request_id
+    meta["datasyn_request_id"] = request_id
     return meta

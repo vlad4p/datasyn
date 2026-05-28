@@ -1,4 +1,4 @@
-# Datacyber brain: FastAPI + Deep Agents (FilesystemBackend, remote tools via mcp.json).
+# Datasyn brain: FastAPI + Deep Agents (FilesystemBackend, remote tools via mcp.json).
 FROM python:3.12-slim-bookworm
 
 # Install dependencies with uv (requirements.txt is generated via `uv export`, see header in that file).

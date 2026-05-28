@@ -162,18 +162,20 @@ export function SystemToolsPanel({ locale }: Props) {
   };
 
   return (
-    <div className="system-tools-body">
-      <dl className="dash-dl compact-status">
-        <dt>{d.status}</dt>
-        <dd>
-          <span className={`pill ${health === "ok" ? "ok" : "bad"}`}>{loading ? "…" : health}</span>
-        </dd>
-      </dl>
+    <div className="skills-tools-panel">
+      <div className="skills-tools-panel__status-row">
+        <dl className="dash-dl compact-status">
+          <dt>{d.status}</dt>
+          <dd>
+            <span className={`pill ${health === "ok" ? "ok" : "bad"}`}>{loading ? "…" : health}</span>
+          </dd>
+        </dl>
+        <button type="button" className="btn ghost" onClick={() => void refresh()} disabled={loading}>
+          {d.refresh}
+        </button>
+      </div>
       {inventoryError && <p className="error small">{inventoryError}</p>}
       <p className="small muted">{d.mcpSectionBlurb}</p>
-      <button type="button" className="btn ghost" onClick={() => void refresh()} disabled={loading}>
-        {d.refresh}
-      </button>
       <div className="mcp-pick-row" style={{ marginTop: "0.75rem" }}>
         <div className="mcp-server-chips" role="tablist">
           {serverGroups.map((key) => (
