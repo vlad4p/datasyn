@@ -34,12 +34,21 @@ from agent.utils.langfuse_tracing import (
 )
 from agent.utils.mcp_connections import load_mcp_tool_connections
 from agent.utils.otel_tracing import init_otel_tracing
+from agent.utils.analysis_export import export_analysis, get_analysis, list_analyses
+from agent.utils.dagster_graphql import dagster_graphql_url, dagster_server_url
+from agent.utils.catalog_datasets import catalog_dataset_detail_payload, catalog_datasets_payload
 from agent.utils.warehouse_schema import warehouse_tables_payload
 from agent.utils.litellm_chat import (
     explain_litellm_http_exception,
     probe_litellm_proxy,
     running_in_docker,
 )
+from agent.utils.chat_model_state import (
+    chat_model_source,
+    effective_chat_model,
+    set_runtime_chat_model,
+)
+from agent.utils.openrouter_models import list_openrouter_models
 from agent.config import (
     ENV_DOTENV_LOADED_AT_IMPORT,
     ENV_DOTENV_RESOLVED_PATH,
@@ -135,6 +144,11 @@ def _log_effective_llm_env() -> None:
 
 
 _log_effective_llm_env()
+logger.info(
+    "Effective Dagster: DAGSTER_URL=%r graphql=%r",
+    settings.dagster_url,
+    dagster_graphql_url(),
+)
 log_langfuse_docker_loopback_hint()
 
 
@@ -285,6 +299,48 @@ class ChatResponse(BaseModel):
     )
 
 
+class AnalysisExportMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = ""
+
+
+class AnalysisExportRequest(BaseModel):
+    messages: list[AnalysisExportMessage] = Field(default_factory=list)
+    locale: Literal["en", "es"] = "en"
+    title: str | None = None
+    dataset_fqn: str | None = None
+    request_ids: list[str] = Field(default_factory=list)
+
+
+class ChatModelUpdateRequest(BaseModel):
+    chat_model: str = Field(..., min_length=1, max_length=256)
+
+
+@app.get("/health/llm/models")
+async def health_llm_models(
+    free_only: bool = Query(False, description="When true, return only free OpenRouter models."),
+    refresh: bool = Query(False, description="Bypass the in-process models cache."),
+) -> dict[str, Any]:
+    """OpenRouter model catalog for the UI model switch (requires MODEL_PROVIDER=openrouter)."""
+    return await list_openrouter_models(free_only=free_only, force_refresh=refresh)
+
+
+@app.put("/health/llm/model")
+def health_llm_model_update(body: ChatModelUpdateRequest) -> dict[str, Any]:
+    """Set the runtime chat model (session override; does not write ``.env``)."""
+    model_id = body.chat_model.strip()
+    if "*" in model_id:
+        raise HTTPException(status_code=400, detail="Model id must not contain '*'")
+    effective = set_runtime_chat_model(model_id)
+    if not effective:
+        raise HTTPException(status_code=400, detail="chat_model must be non-empty")
+    logger.info("Runtime chat model set to %r (source=runtime)", effective)
+    return {
+        "status": "ok",
+        **_llm_config_snapshot(),
+    }
+
+
 def _llm_config_snapshot() -> dict[str, Any]:
     """Static LLM settings (no network)."""
     key = settings.litellm_key or ""
@@ -308,8 +364,12 @@ def _llm_config_snapshot() -> dict[str, Any]:
         "openai_api_key_env_set": bool(oai),
         "openai_api_key_env_suffix": oai_suffix,
         "in_docker": running_in_docker(),
-        "chat_model": settings.chat_model,
+        "chat_model": effective_chat_model() or "",
+        "chat_model_env": settings.chat_model or "",
+        "chat_model_source": chat_model_source(),
         "langfuse_tracing_enabled": langfuse_tracing_enabled(),
+        "dagster_url": settings.dagster_url,
+        "dagster_graphql_url": dagster_graphql_url(),
     }
 
 
@@ -435,6 +495,69 @@ async def health_warehouse_tables() -> dict[str, Any]:
             "raw_line_count": 0,
             "error": str(exc)[:500],
         }
+
+
+@app.get("/catalog/datasets")
+async def catalog_datasets(
+    duckdb_table: str | None = Query(None, description="Filter to one DuckDB schema.table FQN"),
+) -> dict[str, Any]:
+    """Merged DuckDB tables + Dagster GraphQL catalog + optional Postgres dataset_entity."""
+    try:
+        payload = await catalog_datasets_payload(duckdb_table=duckdb_table)
+        payload["dagster_url"] = dagster_server_url()
+        payload["dagster_graphql_url"] = dagster_graphql_url()
+        return payload
+    except Exception as exc:
+        logger.warning("GET /catalog/datasets failed: %s", exc)
+        return {
+            "status": "error",
+            "catalog_status": "error",
+            "datasets": [],
+            "count": 0,
+            "error": str(exc)[:500],
+        }
+
+
+@app.get("/catalog/datasets/{fqn:path}")
+async def catalog_dataset_detail(fqn: str) -> dict[str, Any]:
+    """Dataset detail: catalog columns + warehouse information_schema."""
+    try:
+        return await catalog_dataset_detail_payload(fqn)
+    except Exception as exc:
+        logger.warning("GET /catalog/datasets/%s failed: %s", fqn, exc)
+        return {"status": "error", "error": str(exc)[:500]}
+
+
+@app.get("/analyses")
+def analyses_list(limit: int = Query(50, ge=1, le=100)) -> dict[str, Any]:
+    """List exported analysis manifests (newest first)."""
+    items = list_analyses(limit=limit)
+    return {"status": "ok", "analyses": items, "count": len(items)}
+
+
+@app.get("/analyses/{analysis_id}")
+def analyses_detail(analysis_id: str) -> dict[str, Any]:
+    """Full analysis: manifest + report markdown."""
+    data = get_analysis(analysis_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    return {"status": "ok", **data}
+
+
+@app.post("/analyses/export")
+def analyses_export(body: AnalysisExportRequest) -> dict[str, Any]:
+    """Export chat messages as a report-style analysis under reports/analyses/."""
+    msgs = [m.model_dump() for m in body.messages if (m.content or "").strip()]
+    if not msgs:
+        raise HTTPException(status_code=400, detail="No messages to export")
+    manifest = export_analysis(
+        messages=msgs,
+        locale=body.locale,
+        title=body.title,
+        dataset_fqn=body.dataset_fqn,
+        request_ids=body.request_ids,
+    )
+    return {"status": "ok", "analysis": manifest}
 
 
 @app.get("/health/tools")

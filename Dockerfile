@@ -7,8 +7,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /project
 
 COPY requirements.txt .
-RUN uv pip install --system --no-cache -r requirements.txt \
-    && rm -f /usr/local/bin/uv
+RUN uv pip install --system --no-cache -r requirements.txt
 
 # Baked image layout (dev Compose still bind-mounts the repo over /project).
 COPY deepagents.toml mcp.json AGENTS.md /project/
@@ -23,4 +22,5 @@ ENV PYTHONUNBUFFERED=1 \
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "agent.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# uvicorn on PATH after `uv pip install --system` (see requirements.txt / uv export)
+CMD ["uvicorn", "agent.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { ChatResponsePayload } from "./api";
-import { postChatStream } from "./api";
+import { exportAnalysis, postChatStream } from "./api";
 import type { ChatHistoryTurn, ChatStreamEvent } from "./api";
+import { AgentChatPanel, type ChatMsg } from "./components/AgentChatPanel";
+import { AnalysisGallery } from "./components/AnalysisGallery";
 import { AppHeader } from "./components/AppHeader";
-import { ChatPanel, type ChatMsg } from "./components/ChatPanel";
-import { Dashboard } from "./components/Dashboard";
+import { DatasetCatalog } from "./components/DatasetCatalog";
 import { loadChatSession, saveChatSession } from "./chatSessionStorage";
 import { readStoredLocale, persistLocale, uiStrings, type UiLocale } from "./locale";
 import { formatStreamStep, formatStreamToolDelta } from "./streamActivityFormat";
 
-const CHAT_PANEL_ID = "chat-workspace";
-const DASH_PANEL_ID = "dashboard-panel";
+const AGENT_PANEL_ID = "agent-workspace";
+const DATASETS_PANEL_ID = "datasets-panel";
+const ANALYSES_PANEL_ID = "analyses-panel";
 
-type WorkspaceTab = "chat" | "dashboard";
+type WorkspaceTab = "agent" | "datasets" | "analyses";
 
 function useNarrowLayout(): boolean {
   return useSyncExternalStore(
@@ -36,10 +38,13 @@ export default function App() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [analysisRefresh, setAnalysisRefresh] = useState(0);
+  const [pendingDatasetFqn, setPendingDatasetFqn] = useState<string | null>(null);
   const narrow = useNarrowLayout();
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("chat");
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("agent");
   const s = uiStrings(locale);
-  const d = s.dashboard;
 
   const onLocaleChange = useCallback((l: UiLocale) => {
     persistLocale(l);
@@ -52,15 +57,13 @@ export default function App() {
     });
   }, []);
 
-  const onSelectChatTab = useCallback(() => {
-    setWorkspaceTab("chat");
-    if (!narrow) focusPanel(CHAT_PANEL_ID);
-  }, [narrow, focusPanel]);
-
-  const onSelectDashboardTab = useCallback(() => {
-    setWorkspaceTab("dashboard");
-    if (!narrow) focusPanel(DASH_PANEL_ID);
-  }, [narrow, focusPanel]);
+  const selectTab = useCallback(
+    (tab: WorkspaceTab, panelId: string) => {
+      setWorkspaceTab(tab);
+      if (!narrow) focusPanel(panelId);
+    },
+    [narrow, focusPanel],
+  );
 
   const handleNewChat = useCallback(() => {
     if (busy) return;
@@ -68,14 +71,56 @@ export default function App() {
     setError(null);
     setInput("");
     saveChatSession([]);
-    setWorkspaceTab("chat");
-    if (!narrow) focusPanel(CHAT_PANEL_ID);
+    setWorkspaceTab("agent");
+    if (!narrow) focusPanel(AGENT_PANEL_ID);
   }, [busy, narrow, focusPanel]);
 
   useEffect(() => {
     if (busy) return;
     saveChatSession(messages);
   }, [messages, busy]);
+
+  const handleAnalyzeDataset = useCallback(
+    (fqn: string) => {
+      setPendingDatasetFqn(fqn);
+      const prompt =
+        locale === "es"
+          ? `Analiza el dataset \`${fqn}\`: resume columnas, calidad y 3 preguntas de negocio.`
+          : `Analyze dataset \`${fqn}\`: summarize columns, quality, and 3 business questions.`;
+      setInput(prompt);
+      selectTab("agent", AGENT_PANEL_ID);
+    },
+    [locale, selectTab],
+  );
+
+  const handleExportAnalysis = useCallback(async () => {
+    const ready = messages.filter((m) => !(m.role === "assistant" && m.streaming));
+    const exportMsgs = ready
+      .filter((m) => (m.content || "").trim())
+      .map((m) => ({ role: m.role, content: m.content }));
+    if (exportMsgs.length === 0) return;
+    setExporting(true);
+    setError(null);
+    try {
+      const requestIds = ready
+        .map((m) => m.requestId)
+        .filter((id): id is string => Boolean(id));
+      await exportAnalysis({
+        messages: exportMsgs,
+        locale,
+        dataset_fqn: pendingDatasetFqn,
+        request_ids: requestIds,
+      });
+      setAnalysisRefresh((n) => n + 1);
+      setError(null);
+      setExportNotice(s.exportSuccess);
+      window.setTimeout(() => setExportNotice(null), 4000);
+    } catch (e) {
+      setError(`${s.exportFailed}: ${String(e)}`);
+    } finally {
+      setExporting(false);
+    }
+  }, [locale, messages, pendingDatasetFqn, s.exportFailed, s.exportSuccess]);
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -84,13 +129,6 @@ export default function App() {
       role: m.role === "user" ? "user" : "assistant",
       content: m.content,
     }));
-    if (import.meta.env.DEV) {
-      console.info(
-        "[datacyber] stream request history turns:",
-        history.length,
-        "(expected >0 after prior turns; 0 after fresh load until persistence fills)",
-      );
-    }
     setInput("");
     setError(null);
     const userMsg: Msg = { id: crypto.randomUUID(), role: "user", content: text };
@@ -107,9 +145,7 @@ export default function App() {
     setBusy(true);
     let terminal = false;
     const patchAssistant = (fn: (row: Msg) => Msg) => {
-      setMessages((m) =>
-        m.map((msg) => (msg.id === assistantId ? fn(msg as Msg) : msg)),
-      );
+      setMessages((m) => m.map((msg) => (msg.id === assistantId ? fn(msg as Msg) : msg)));
     };
     try {
       await postChatStream(text, {
@@ -117,10 +153,7 @@ export default function App() {
         history,
         onEvent: (ev: ChatStreamEvent) => {
           if (ev.event === "start") {
-            patchAssistant((row) => ({
-              ...row,
-              requestId: ev.request_id,
-            }));
+            patchAssistant((row) => ({ ...row, requestId: ev.request_id }));
             return;
           }
           if (ev.event === "token") {
@@ -129,10 +162,7 @@ export default function App() {
             patchAssistant((row) => {
               if (row.role !== "assistant") return row;
               if (ev.source === "subagent") {
-                return {
-                  ...row,
-                  subagentContent: (row.subagentContent ?? "") + t,
-                };
+                return { ...row, subagentContent: (row.subagentContent ?? "") + t };
               }
               return { ...row, content: row.content + t };
             });
@@ -148,12 +178,7 @@ export default function App() {
           if (ev.event === "tool_delta") {
             patchAssistant((row) => ({
               ...row,
-              activity: formatStreamToolDelta(
-                ev.tool_name,
-                ev.args_fragment,
-                ev.source,
-                locale,
-              ),
+              activity: formatStreamToolDelta(ev.tool_name, ev.args_fragment, ev.source, locale),
             }));
             return;
           }
@@ -176,9 +201,7 @@ export default function App() {
             patchAssistant((row) => ({
               ...row,
               streaming: false,
-              content: row.content.trim()
-                ? row.content
-                : `Error: ${ev.message}`,
+              content: row.content.trim() ? row.content : `Error: ${ev.message}`,
               activity: null,
             }));
           }
@@ -196,9 +219,7 @@ export default function App() {
             ? {
                 ...msg,
                 streaming: false,
-                content: msg.content.trim()
-                  ? msg.content
-                  : `Error: ${String(e)}`,
+                content: msg.content.trim() ? msg.content : `Error: ${String(e)}`,
                 activity: null,
               }
             : msg,
@@ -211,8 +232,9 @@ export default function App() {
 
   const panelsClass =
     "layout-panels" +
-    (narrow && workspaceTab === "chat" ? " layout-panels--mobile-chat" : "") +
-    (narrow && workspaceTab === "dashboard" ? " layout-panels--mobile-dash" : "");
+    (narrow && workspaceTab === "agent" ? " layout-panels--mobile-chat" : "") +
+    (narrow && workspaceTab === "datasets" ? " layout-panels--mobile-dash" : "") +
+    (narrow && workspaceTab === "analyses" ? " layout-panels--mobile-analyses" : "");
 
   return (
     <div className="app-shell">
@@ -224,24 +246,29 @@ export default function App() {
             <button
               type="button"
               role="tab"
-              aria-selected={workspaceTab === "chat"}
-              id="workspace-tab-chat"
-              aria-controls={CHAT_PANEL_ID}
-              className={`workspace-nav__tab${workspaceTab === "chat" ? " is-active" : ""}`}
-              onClick={onSelectChatTab}
+              aria-selected={workspaceTab === "agent"}
+              className={`workspace-nav__tab${workspaceTab === "agent" ? " is-active" : ""}`}
+              onClick={() => selectTab("agent", AGENT_PANEL_ID)}
             >
-              {s.navChat}
+              {s.navAgent}
             </button>
             <button
               type="button"
               role="tab"
-              aria-selected={workspaceTab === "dashboard"}
-              id="workspace-tab-dashboard"
-              aria-controls={DASH_PANEL_ID}
-              className={`workspace-nav__tab${workspaceTab === "dashboard" ? " is-active" : ""}`}
-              onClick={onSelectDashboardTab}
+              aria-selected={workspaceTab === "datasets"}
+              className={`workspace-nav__tab${workspaceTab === "datasets" ? " is-active" : ""}`}
+              onClick={() => selectTab("datasets", DATASETS_PANEL_ID)}
             >
-              {d.title}
+              {s.navDatasets}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={workspaceTab === "analyses"}
+              className={`workspace-nav__tab${workspaceTab === "analyses" ? " is-active" : ""}`}
+              onClick={() => selectTab("analyses", ANALYSES_PANEL_ID)}
+            >
+              {s.navAnalyses}
             </button>
           </div>
           <button
@@ -256,19 +283,34 @@ export default function App() {
         </nav>
 
         <div className={panelsClass}>
-          <ChatPanel
-            id={CHAT_PANEL_ID}
-            className="panel-chat"
+          <AgentChatPanel
+            id={AGENT_PANEL_ID}
+            className={workspaceTab === "agent" ? "panel-chat" : "panel-chat panel-hidden"}
             locale={locale}
             messages={messages}
             input={input}
             setInput={setInput}
             busy={busy}
             error={error}
+            notice={exportNotice}
             onSend={send}
+            onExportAnalysis={() => void handleExportAnalysis()}
+            exporting={exporting}
           />
 
-          <Dashboard id={DASH_PANEL_ID} className="panel-dash" locale={locale} />
+          <DatasetCatalog
+            id={DATASETS_PANEL_ID}
+            className={workspaceTab === "datasets" ? "panel-dash" : "panel-dash panel-hidden"}
+            locale={locale}
+            onAnalyzeDataset={handleAnalyzeDataset}
+          />
+
+          <AnalysisGallery
+            id={ANALYSES_PANEL_ID}
+            className={workspaceTab === "analyses" ? "panel-analyses" : "panel-analyses panel-hidden"}
+            locale={locale}
+            refreshToken={analysisRefresh}
+          />
         </div>
       </div>
     </div>

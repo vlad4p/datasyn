@@ -252,8 +252,35 @@ export type BrainHealth = {
   openai_api_key_env_suffix?: string | null;
   in_docker?: boolean;
   chat_model?: string;
+  chat_model_env?: string;
+  chat_model_source?: "env" | "runtime";
   /** Same object as ``GET /health/pipeline``; embedded so the UI needs only one request. */
   pipeline?: Record<string, unknown>;
+};
+
+export type OpenRouterModelItem = {
+  id: string;
+  name: string;
+  description?: string;
+  context_length?: number | null;
+  is_free?: boolean;
+};
+
+export type OpenRouterModelsResponse = {
+  status: string;
+  model_provider?: string;
+  models: OpenRouterModelItem[];
+  count?: number;
+  free_only?: boolean;
+  error?: string | null;
+};
+
+export type ChatModelUpdateResponse = {
+  status: string;
+  chat_model: string;
+  chat_model_env?: string;
+  chat_model_source?: "env" | "runtime";
+  model_provider?: string;
 };
 
 export type ToolInventoryItem = {
@@ -366,6 +393,29 @@ export async function probeLlm(): Promise<unknown> {
   return res.json();
 }
 
+export async function getOpenRouterModels(options?: {
+  freeOnly?: boolean;
+  refresh?: boolean;
+}): Promise<OpenRouterModelsResponse> {
+  const params = new URLSearchParams();
+  if (options?.freeOnly) params.set("free_only", "true");
+  if (options?.refresh) params.set("refresh", "true");
+  const qs = params.toString();
+  const res = await fetch(brainApiUrl(`/health/llm/models${qs ? `?${qs}` : ""}`));
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<OpenRouterModelsResponse>;
+}
+
+export async function setChatModel(chatModel: string): Promise<ChatModelUpdateResponse> {
+  const res = await fetch(brainApiUrl("/health/llm/model"), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_model: chatModel }),
+  });
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<ChatModelUpdateResponse>;
+}
+
 /**
  * Optional alias: same JSON as ``GET /health`` → ``pipeline`` (older brains may 404 — prefer ``pipeline`` on health).
  */
@@ -411,5 +461,160 @@ export async function getWarehouseTables(): Promise<WarehouseTablesResponse> {
   const res = await fetch(brainApiUrl("/health/warehouse/tables"));
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json() as Promise<WarehouseTablesResponse>;
+}
+
+export type DagsterMetadataEntry = {
+  label: string;
+  type?: string;
+  value: string | number | boolean;
+};
+
+export type DagsterLatestMaterialization = {
+  run_id?: string | null;
+  timestamp?: string | null;
+  partition?: string | null;
+  metadata?: DagsterMetadataEntry[];
+};
+
+export type CatalogDatasetCard = {
+  fqn: string;
+  schema: string;
+  name: string;
+  layer: string;
+  table_type?: string | null;
+  description?: string | null;
+  column_count?: number | null;
+  tags?: string[];
+  owners?: string[];
+  lineage?: string[];
+  lineage_upstream?: string[];
+  lineage_downstream?: string[];
+  dagster_job?: string | null;
+  dagster_jobs?: string[];
+  dagster_group?: string | null;
+  dagster_asset_key?: string | null;
+  dagster_asset_path?: string[];
+  dagster_table_fqn?: string | null;
+  dagster_compute_kind?: string | null;
+  dagster_kinds?: string[];
+  dagster_owners?: string[];
+  dagster_is_partitioned?: boolean;
+  dagster_latest_materialization?: DagsterLatestMaterialization | null;
+  dagster_definition_metadata?: DagsterMetadataEntry[];
+  dagster_only?: boolean;
+  last_updated?: string | null;
+  in_warehouse: boolean;
+  in_catalog: boolean;
+  in_dagster?: boolean;
+};
+
+export type CatalogDatasetsResponse = {
+  status: string;
+  catalog_status?: string;
+  dagster_status?: string;
+  dagster_error?: string | null;
+  dagster_url?: string | null;
+  dagster_graphql_url?: string | null;
+  warehouse_tables?: string[];
+  datasets: CatalogDatasetCard[];
+  count?: number;
+  error?: string | null;
+};
+
+export type CatalogColumnRow = {
+  name: string;
+  type: string;
+  description?: string;
+};
+
+export type CatalogDatasetDetailResponse = {
+  status: string;
+  dataset?: CatalogDatasetCard | null;
+  catalog_columns?: CatalogColumnRow[];
+  warehouse_columns?: CatalogColumnRow[];
+  dagster?: Record<string, unknown> | null;
+  dagster_url?: string | null;
+  dagster_graphql_url?: string | null;
+  lineage?: { upstream?: string[]; downstream?: string[] };
+  error?: string | null;
+};
+
+export async function getCatalogDatasets(options?: {
+  duckdbTable?: string | null;
+}): Promise<CatalogDatasetsResponse> {
+  const params = new URLSearchParams();
+  if (options?.duckdbTable) {
+    params.set("duckdb_table", options.duckdbTable);
+  }
+  const qs = params.toString();
+  const res = await fetch(brainApiUrl(`/catalog/datasets${qs ? `?${qs}` : ""}`));
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<CatalogDatasetsResponse>;
+}
+
+export async function getCatalogDatasetDetail(fqn: string): Promise<CatalogDatasetDetailResponse> {
+  const enc = encodeURIComponent(fqn);
+  const res = await fetch(brainApiUrl(`/catalog/datasets/${enc}`));
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<CatalogDatasetDetailResponse>;
+}
+
+export type AnalysisManifest = {
+  id: string;
+  title: string;
+  created_at: string;
+  dataset_fqn?: string | null;
+  preview: string;
+  message_count: number;
+  report_path: string;
+  locale?: string;
+};
+
+export type AnalysesListResponse = {
+  status: string;
+  analyses: AnalysisManifest[];
+  count: number;
+};
+
+export type AnalysisDetailResponse = {
+  status: string;
+  manifest: AnalysisManifest;
+  report_md: string;
+};
+
+export type AnalysisExportRequest = {
+  messages: { role: "user" | "assistant"; content: string }[];
+  locale?: ChatLocale;
+  title?: string | null;
+  dataset_fqn?: string | null;
+  request_ids?: string[];
+};
+
+export async function listAnalyses(): Promise<AnalysesListResponse> {
+  const res = await fetch(brainApiUrl("/analyses"));
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<AnalysesListResponse>;
+}
+
+export async function getAnalysis(id: string): Promise<AnalysisDetailResponse> {
+  const res = await fetch(brainApiUrl(`/analyses/${encodeURIComponent(id)}`));
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<AnalysisDetailResponse>;
+}
+
+export async function exportAnalysis(body: AnalysisExportRequest): Promise<{ status: string; analysis: AnalysisManifest }> {
+  const res = await fetch(brainApiUrl("/analyses/export"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messages: body.messages,
+      locale: body.locale ?? "en",
+      title: body.title ?? null,
+      dataset_fqn: body.dataset_fqn ?? null,
+      request_ids: body.request_ids ?? [],
+    }),
+  });
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<{ status: string; analysis: AnalysisManifest }>;
 }
 

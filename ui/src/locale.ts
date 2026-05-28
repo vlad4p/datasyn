@@ -23,23 +23,85 @@ export function persistLocale(locale: UiLocale): void {
 
 type Strings = {
   tagline: string;
-  /** Workspace tab: primary assistant view */
+  navAgent: string;
+  navDatasets: string;
+  navAnalyses: string;
+  /** @deprecated use navAgent */
   navChat: string;
-  /** Reset conversation and stored history */
   newChat: string;
-  /** `aria-label` for Chat / Dashboard tab bar */
   workspaceNavAria: string;
+  agentTitle: string;
+  agentOnline: string;
+  agentOffline: string;
+  agentPlaceholder: string;
+  exportAnalysis: string;
+  exporting: string;
+  exportSuccess: string;
+  exportFailed: string;
   chatEmpty: string;
   placeholder: string;
   send: string;
   loading: string;
   chatAria: string;
-  /** Section label for streamed subagent (task) output */
   subagentLabel: string;
-  /** Small header above live graph/tool status while streaming */
   streamThinkingTitle: string;
-  /** Quick prompts when locale matches */
+  modelSwitch: {
+    switchTitle: string;
+    searchPlaceholder: string;
+    freeOnly: string;
+    freeBadge: string;
+    currentBadge: string;
+    loading: string;
+    empty: string;
+    loadFailed: string;
+  };
   suggestions: string[];
+  catalog: {
+    title: string;
+    hint: string;
+    refresh: string;
+    loading: string;
+    empty: string;
+    searchPlaceholder: string;
+    filterLabel: string;
+    filterAll: string;
+    filterBronze: string;
+    filterSilver: string;
+    filterGold: string;
+    noDescription: string;
+    columns: string;
+    catalogUnavailable: string;
+    catalogOk: string;
+    dagsterUnavailable: string;
+    dagsterOk: string;
+    filterDuckdbTable: string;
+    filterDuckdbAll: string;
+    dagsterAsset: string;
+    lineageTitle: string;
+    lineageUpstream: string;
+    lineageDownstream: string;
+    lineageEmpty: string;
+    detailTitle: string;
+    close: string;
+    analyzeInAgent: string;
+    dagsterJob: string;
+    dagsterMetadata: string;
+    dagsterLatestMaterialization: string;
+    dagsterTableFqn: string;
+    dagsterOwners: string;
+    dagsterComputeKind: string;
+    columnsCatalog: string;
+    columnsWarehouse: string;
+    systemTools: string;
+  };
+  analyses: {
+    title: string;
+    hint: string;
+    loading: string;
+    empty: string;
+    back: string;
+    messageCount: (n: number) => string;
+  };
   dashboard: {
     title: string;
     refresh: string;
@@ -73,10 +135,21 @@ type Strings = {
 };
 
 const EN: Strings = {
-  tagline: "Warehouse agent · health",
-  navChat: "Chat",
+  tagline: "Warehouse agent · datasets · analyses",
+  navAgent: "Agent",
+  navDatasets: "Datasets",
+  navAnalyses: "Analyses",
+  navChat: "Agent",
   newChat: "New chat",
   workspaceNavAria: "Main workspace",
+  agentTitle: "Warehouse agent",
+  agentOnline: "Online",
+  agentOffline: "Offline",
+  agentPlaceholder: "Ask the warehouse agent…",
+  exportAnalysis: "Export analysis",
+  exporting: "Exporting…",
+  exportSuccess: "Analysis exported.",
+  exportFailed: "Export failed",
   chatEmpty: `Ask anything. Replies can include **Markdown tables**, **Mermaid** diagrams (fenced \`mermaid\`), **Vega-Lite** charts (fenced \`vega-lite\` JSON), **Plotly** interactive charts (fenced \`plotly\` JSON with \`data\` array), and images (\`https://\`, \`data:image/…\`, or files under \`/project/reports/…\` served by the API).`,
   placeholder: "Message…",
   send: "Send",
@@ -84,12 +157,68 @@ const EN: Strings = {
   chatAria: "Agent chat",
   subagentLabel: "Specialist",
   streamThinkingTitle: "Thinking",
+  modelSwitch: {
+    switchTitle: "Switch model",
+    searchPlaceholder: "Search models…",
+    freeOnly: "Free only",
+    freeBadge: "Free",
+    currentBadge: "Active",
+    loading: "Loading models…",
+    empty: "No models match.",
+    loadFailed: "Could not load models from OpenRouter.",
+  },
   suggestions: [
     "List all files under /data-local (including subfolders) using duckdb tools.",
     "What models does the brain use? Summarize litellm_base and CHAT_MODEL from your tools.",
     "Run SELECT * FROM example_sales LIMIT 10 and format results as a markdown table.",
     "Reply with a Mermaid flowchart in a fenced mermaid code block (ingest → warehouse → report).",
   ],
+  catalog: {
+    title: "Dataset catalog",
+    hint: "DuckDB tables merged with the Dagster GraphQL catalog (assets, jobs, lineage).",
+    refresh: "Refresh",
+    loading: "Loading…",
+    empty: "No datasets match your filters.",
+    searchPlaceholder: "Search name, FQN, tags…",
+    filterLabel: "Medallion layer",
+    filterAll: "All",
+    filterBronze: "Bronze",
+    filterSilver: "Silver",
+    filterGold: "Gold",
+    noDescription: "No catalog description",
+    columns: "Columns",
+    catalogUnavailable: "Postgres catalog MCP not configured.",
+    catalogOk: "Postgres catalog metadata merged.",
+    dagsterUnavailable: "Dagster unreachable — set DAGSTER_URL in .env (host:port only, e.g. http://10.0.0.1:3001).",
+    dagsterOk: "Dagster asset catalog loaded via GraphQL.",
+    filterDuckdbTable: "DuckDB table",
+    filterDuckdbAll: "All warehouse tables",
+    dagsterAsset: "Dagster asset",
+    lineageTitle: "Lineage",
+    lineageUpstream: "Upstream (dependencies)",
+    lineageDownstream: "Downstream (dependents)",
+    lineageEmpty: "No lineage edges in Dagster for this asset.",
+    detailTitle: "Dataset detail",
+    close: "Close",
+    analyzeInAgent: "Analyze in Agent",
+    dagsterJob: "Dagster job",
+    dagsterMetadata: "Asset metadata (latest materialization)",
+    dagsterLatestMaterialization: "Latest materialization",
+    dagsterTableFqn: "Warehouse table",
+    dagsterOwners: "Owners",
+    dagsterComputeKind: "Compute kind",
+    columnsCatalog: "Catalog columns",
+    columnsWarehouse: "Warehouse columns",
+    systemTools: "System & tools",
+  },
+  analyses: {
+    title: "Last analyses",
+    hint: "Exported report-style summaries from agent conversations.",
+    loading: "Loading…",
+    empty: "No exported analyses yet. Use Export analysis in the Agent tab.",
+    back: "Back to list",
+    messageCount: (n) => `${n} message${n === 1 ? "" : "s"}`,
+  },
   dashboard: {
     title: "Dashboard",
     refresh: "Refresh",
@@ -123,10 +252,21 @@ const EN: Strings = {
 };
 
 const ES: Strings = {
-  tagline: "Agente de almacén · estado",
-  navChat: "Chat",
+  tagline: "Agente · datasets · análisis",
+  navAgent: "Agente",
+  navDatasets: "Datasets",
+  navAnalyses: "Análisis",
+  navChat: "Agente",
   newChat: "Nuevo chat",
   workspaceNavAria: "Área principal",
+  agentTitle: "Agente de almacén",
+  agentOnline: "En línea",
+  agentOffline: "Sin conexión",
+  agentPlaceholder: "Pregunta al agente de almacén…",
+  exportAnalysis: "Exportar análisis",
+  exporting: "Exportando…",
+  exportSuccess: "Análisis exportado.",
+  exportFailed: "Error al exportar",
   chatEmpty: `Pregunta lo que quieras. Las respuestas pueden incluir **tablas Markdown**, diagramas **Mermaid** (bloque \`mermaid\`), gráficos **Vega-Lite** (JSON en bloque \`vega-lite\`), gráficos interactivos **Plotly** (JSON en bloque \`plotly\` con arreglo \`data\`) e imágenes (\`https://\`, \`data:image/…\` o archivos bajo \`/project/reports/…\` servidos por la API).`,
   placeholder: "Mensaje…",
   send: "Enviar",
@@ -134,12 +274,68 @@ const ES: Strings = {
   chatAria: "Chat con el agente",
   subagentLabel: "Especialista",
   streamThinkingTitle: "Pensando",
+  modelSwitch: {
+    switchTitle: "Cambiar modelo",
+    searchPlaceholder: "Buscar modelos…",
+    freeOnly: "Solo gratis",
+    freeBadge: "Gratis",
+    currentBadge: "Activo",
+    loading: "Cargando modelos…",
+    empty: "Ningún modelo coincide.",
+    loadFailed: "No se pudieron cargar modelos desde OpenRouter.",
+  },
   suggestions: [
     "Lista todos los archivos bajo /data-local (incl. subcarpetas) con las herramientas duckdb.",
     "¿Qué modelos usa el brain? Resume litellm_base y CHAT_MODEL a partir de tus herramientas.",
     "Ejecuta SELECT * FROM example_sales LIMIT 10 y formatea el resultado como tabla Markdown.",
     "Responde con un diagrama Mermaid en un bloque de código mermaid (ingest → almacén → reporte).",
   ],
+  catalog: {
+    title: "Catálogo de datasets",
+    hint: "Tablas DuckDB fusionadas con el catálogo Dagster GraphQL (assets, jobs, lineage).",
+    refresh: "Actualizar",
+    loading: "Cargando…",
+    empty: "Ningún dataset coincide con los filtros.",
+    searchPlaceholder: "Buscar nombre, FQN, tags…",
+    filterLabel: "Capa medallion",
+    filterAll: "Todos",
+    filterBronze: "Bronze",
+    filterSilver: "Silver",
+    filterGold: "Gold",
+    noDescription: "Sin descripción en catálogo",
+    columns: "Columnas",
+    catalogUnavailable: "Catálogo Postgres MCP no configurado.",
+    catalogOk: "Metadatos del catálogo Postgres fusionados.",
+    dagsterUnavailable: "Dagster no disponible — configurá DAGSTER_URL en .env (solo host:puerto, ej. http://10.0.0.1:3001).",
+    dagsterOk: "Catálogo de assets Dagster cargado vía GraphQL.",
+    filterDuckdbTable: "Tabla DuckDB",
+    filterDuckdbAll: "Todas las tablas",
+    dagsterAsset: "Asset Dagster",
+    lineageTitle: "Linaje",
+    lineageUpstream: "Upstream (dependencias)",
+    lineageDownstream: "Downstream (dependientes)",
+    lineageEmpty: "Sin aristas de linaje en Dagster para este asset.",
+    detailTitle: "Detalle del dataset",
+    close: "Cerrar",
+    analyzeInAgent: "Analizar en Agente",
+    dagsterJob: "Job Dagster",
+    dagsterMetadata: "Metadatos del asset (última materialización)",
+    dagsterLatestMaterialization: "Última materialización",
+    dagsterTableFqn: "Tabla en almacén",
+    dagsterOwners: "Owners",
+    dagsterComputeKind: "Compute kind",
+    columnsCatalog: "Columnas (catálogo)",
+    columnsWarehouse: "Columnas (almacén)",
+    systemTools: "Sistema y herramientas",
+  },
+  analyses: {
+    title: "Últimos análisis",
+    hint: "Resúmenes exportados en estilo informe desde conversaciones con el agente.",
+    loading: "Cargando…",
+    empty: "Aún no hay análisis exportados. Usa Exportar análisis en la pestaña Agente.",
+    back: "Volver al listado",
+    messageCount: (n) => (n === 1 ? "1 mensaje" : `${n} mensajes`),
+  },
   dashboard: {
     title: "Panel",
     refresh: "Actualizar",

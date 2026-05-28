@@ -2,7 +2,7 @@
  * Persist conversation turns in the browser so POST /agent/chat/stream still sends
  * `history` after refresh (the brain is stateless per request).
  */
-import type { ChatMsg } from "./components/ChatPanel";
+import type { ChatMsg } from "./types/chat";
 
 const KEY = "datacyber-chat-session-v1";
 

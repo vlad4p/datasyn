@@ -1,0 +1,43 @@
+---
+description: >-
+  Run ALL Python in this repo via uv (sync, scripts, tests, brain). Agents and
+  humans must never invoke bare python/python3/pip or .venv/bin/* on the host.
+alwaysApply: true
+---
+
+# Python: always use uv
+
+This repo is a **uv-managed** project ([`pyproject.toml`](pyproject.toml), [`.python-version`](.python-version)).
+
+## Required (agents + humans)
+
+- Install deps: **`uv sync`** (or `make uv-sync`) — never `pip install`.
+- Run anything Python: **`uv run …`** — never `python`, `python3`, `python -m`, or `.venv/bin/…`.
+- Tests: **`uv run pytest …`** or **`make test-agent`**.
+- Brain (local): **`uv run brain-dev`** or **`make agent-brain`** (port **8002** default).
+- One-liners: **`uv run python -c "…"`** — not `python3 -c`.
+
+After editing **`.env`**, restart brain: `make brain-restart` (kills :8002, then `uv run brain-dev`).
+
+## Project entry points (console scripts)
+
+| Command | Role |
+|---------|------|
+| `uv run brain-dev` | FastAPI brain with reload |
+| `uv run datacyber-api` | Brain without reload |
+| `uv run pytest tests/ -q` | Unit tests |
+
+Prefer **`make agent-dev`**, **`make agent-brain`**, **`make test-agent`**, **`make brain-restart`**.
+
+## Forbidden on the host
+
+- `python -m uvicorn …`
+- `pip install …`
+- `python3 agent/…`
+- `.venv/bin/brain-dev` (even if `.venv` exists — use `uv run brain-dev`)
+
+Docker **build** uses `uv pip install --system` ([`Dockerfile`](Dockerfile)); runtime in the image uses the `uvicorn` entrypoint on PATH. Local dev always uses **`uv run`**.
+
+## VS Code / Cursor tasks
+
+Use [`.vscode/tasks.json`](.vscode/tasks.json): **uv sync**, **brain-dev (uv only)**, **agent-dev (uv + Vite)**.

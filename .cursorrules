@@ -1,0 +1,16 @@
+# datasyn — Cursor rules (summary)
+
+Full rules live under `.cursor/rules/`. This file is a short index for Cursor.
+
+## Python: always uv
+
+- **Never** use bare `python`, `python3`, `pip`, or `.venv/bin/*` on the host.
+- **Always** `uv sync` then `uv run …` (see `.cursor/rules/python-uv.mdc`).
+- Brain dev: `uv run brain-dev` or `make agent-brain` / `make brain-restart` (http://127.0.0.1:8002).
+- UI dev: `cd ui && npm run dev` (http://127.0.0.1:5173, proxies `/api` to brain).
+- Tests: `uv run pytest` or `make test-agent`.
+- Shell one-liners: `uv run python -c "…"` only.
+
+## Warehouse agent
+
+Follow root `AGENTS.md` for DuckDB MCP, catalog, skills, and ingest constraints.

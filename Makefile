@@ -75,6 +75,8 @@ help:
 	@echo "      # Dagster user code (production): make -C ../datasyn-code help"
 	@echo "      # Dagster infra stub: infra/dagster/user_code (default compose image)"
 	@echo "  make uv-sync                # uv sync (Python from .python-version)"
+	@echo "  make test-agent             # uv run pytest tests/"
+	@echo "  make brain-restart          # free :8002, uv run brain-dev"
 	@echo "  make agent-dev              # uv-sync + uv run brain-dev + Vite"
 	@echo "  make agent-brain            # uv-sync + uv run brain-dev (brain only)"
 	@echo "      # Manual: uv sync && uv run brain-dev   (or uv run datacyber-api without reload)"
@@ -290,6 +292,15 @@ uv-check:
 
 uv-sync: uv-check
 	cd "$(MAKEFILE_DIR)" && $(UV) sync
+
+test-agent: uv-sync
+	cd "$(MAKEFILE_DIR)" && $(UV) run pytest tests/ -q
+
+brain-restart: uv-check
+	@echo "[brain] stopping listeners on :$(API_PORT) (if any)…"
+	-@lsof -ti tcp:$(API_PORT) | xargs kill 2>/dev/null || true
+	@sleep 1
+	@$(MAKE) agent-brain
 
 agent-brain: uv-sync
 	@echo "[brain] uv run brain-dev → http://127.0.0.1:$(API_PORT)"
