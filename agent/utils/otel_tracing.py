@@ -42,12 +42,12 @@ def init_otel_tracing() -> None:
     if not otel_tracing_enabled():
         return
 
-    service_name = (os.environ.get("OTEL_SERVICE_NAME") or "datacyber-brain").strip()
+    service_name = (os.environ.get("OTEL_SERVICE_NAME") or "datasyn-brain").strip()
     environment = (os.environ.get("DEPLOYMENT_ENV") or "production").strip()
     resource = Resource.create(
         {
             "service.name": service_name,
-            "service.namespace": "datacyber",
+            "service.namespace": "datasyn",
             "deployment.environment": environment,
         }
     )

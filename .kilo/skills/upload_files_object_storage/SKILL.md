@@ -1,6 +1,6 @@
 ---
 name: upload-files-object-storage
-description: Upload local text files to Datacyber object storage through the Kilo Code `storage` MCP server. Use when the user asks to upload, copy, put, or publish files into MinIO/S3 object storage with storage-mcp.
+description: Upload local text files to Datasyn object storage through the Kilo Code `storage` MCP server. Use when the user asks to upload, copy, put, or publish files into MinIO/S3 object storage with storage-mcp.
 ---
 
 # Upload Files To Object Storage

@@ -4,7 +4,6 @@ import { getCatalogDatasetDetail, getCatalogDatasets } from "../api";
 import type { UiLocale } from "../locale";
 import { uiStrings } from "../locale";
 import { LayerBadge } from "./ui/LayerBadge";
-import { SystemToolsPanel } from "./SystemToolsPanel";
 
 type LayerFilter = "all" | "bronze" | "silver" | "gold";
 
@@ -162,51 +161,62 @@ export function DatasetCatalog({ className, id, locale, onAnalyzeDataset }: Prop
       {error && <p className="error small">{error}</p>}
 
       <div className="catalog-toolbar">
-        <input
-          type="search"
-          className="catalog-search"
-          placeholder={c.searchPlaceholder}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          aria-label={c.searchPlaceholder}
-        />
-        <label className="catalog-select-wrap">
-          <span className="tiny muted">{c.filterDuckdbTable}</span>
-          <select
-            className="catalog-select"
-            value={duckdbTable}
-            onChange={(e) => setDuckdbTable(e.target.value)}
-            aria-label={c.filterDuckdbTable}
-          >
-            <option value="">{c.filterDuckdbAll}</option>
-            {warehouseTables.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="schema-chips" role="group" aria-label={c.filterLabel}>
-          {(["all", "bronze", "silver", "gold"] as const).map((l) => (
-            <button
-              key={l}
-              type="button"
-              className={`schema-chip layer-${l} ${layer === l ? "is-active" : ""}`}
-              onClick={() => setLayer(l)}
+        <div className="catalog-toolbar__primary">
+          <label className="catalog-toolbar__field catalog-toolbar__field--grow">
+            <span className="catalog-toolbar__label">{c.searchPlaceholder}</span>
+            <input
+              type="search"
+              className="catalog-search"
+              placeholder={c.searchPlaceholder}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </label>
+          <label className="catalog-toolbar__field">
+            <span className="catalog-toolbar__label">{c.filterDuckdbTable}</span>
+            <select
+              className="catalog-select"
+              value={duckdbTable}
+              onChange={(e) => setDuckdbTable(e.target.value)}
             >
-              {l === "all"
-                ? c.filterAll
-                : l === "bronze"
-                  ? c.filterBronze
-                  : l === "silver"
-                    ? c.filterSilver
-                    : c.filterGold}
-            </button>
-          ))}
+              <option value="">{c.filterDuckdbAll}</option>
+              {warehouseTables.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="btn ghost catalog-toolbar__refresh"
+            onClick={() => void refresh()}
+            disabled={loading}
+          >
+            {c.refresh}
+          </button>
         </div>
-        <button type="button" className="btn ghost" onClick={() => void refresh()} disabled={loading}>
-          {c.refresh}
-        </button>
+        <div className="catalog-toolbar__filters">
+          <span className="catalog-toolbar__label catalog-toolbar__label--inline">{c.filterLabel}</span>
+          <div className="schema-chips" role="group" aria-label={c.filterLabel}>
+            {(["all", "bronze", "silver", "gold"] as const).map((l) => (
+              <button
+                key={l}
+                type="button"
+                className={`schema-chip layer-${l} ${layer === l ? "is-active" : ""}`}
+                onClick={() => setLayer(l)}
+              >
+                {l === "all"
+                  ? c.filterAll
+                  : l === "bronze"
+                    ? c.filterBronze
+                    : l === "silver"
+                      ? c.filterSilver
+                      : c.filterGold}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {loading && <p className="muted">{c.loading}</p>}
@@ -365,10 +375,6 @@ export function DatasetCatalog({ className, id, locale, onAnalyzeDataset }: Prop
         </>
       )}
 
-      <details className="system-tools-panel">
-        <summary>{c.systemTools}</summary>
-        <SystemToolsPanel locale={locale} />
-      </details>
     </section>
   );
 }

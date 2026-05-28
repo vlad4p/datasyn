@@ -25,7 +25,7 @@ def _path(name: str, default: str) -> Path:
 
 
 def _env_first(*names: str) -> str | None:
-    """First non-empty env value (Datacyber-style aliases for LiteLLM key/base)."""
+    """First non-empty env value (Datasyn-style aliases for LiteLLM key/base)."""
     for n in names:
         v = os.environ.get(n)
         if v is not None and str(v).strip():
@@ -202,7 +202,7 @@ class Settings:
             api_host=os.environ.get("API_HOST", "0.0.0.0"),
             api_port=int(os.environ.get("API_PORT", "8000")),
             cors_extra_origins=_cors_extra_origins(),
-            pipeline_debug=os.environ.get("DATACYBER_PIPELINE_DEBUG", "")
+            pipeline_debug=os.environ.get("DATASYN_PIPELINE_DEBUG", "")
             .strip()
             .lower()
             in ("1", "true", "yes"),

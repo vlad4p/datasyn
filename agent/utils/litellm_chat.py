@@ -1,4 +1,4 @@
-"""LiteLLM proxy chat - OpenAI-compatible client (same pattern as Datacyber-core ``litellm_client.get_chat_model``).
+"""LiteLLM proxy chat - OpenAI-compatible client (same pattern as Datasyn-core ``litellm_client.get_chat_model``).
 """
 
 from __future__ import annotations
@@ -189,7 +189,7 @@ def _openrouter_optional_headers() -> dict[str, str]:
     """OpenRouter rankings / attribution (optional)."""
     out: dict[str, str] = {}
     ref = (os.getenv("OPENROUTER_HTTP_REFERER") or "").strip()
-    title = (os.getenv("OPENROUTER_APP_TITLE") or "Datacyber").strip()
+    title = (os.getenv("OPENROUTER_APP_TITLE") or "Datasyn").strip()
     if ref:
         out["HTTP-Referer"] = ref
     if title:

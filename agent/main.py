@@ -1,4 +1,4 @@
-"""HTTP control plane for the Datacyber Deep Agent (leader).
+"""HTTP control plane for the Datasyn Deep Agent (leader).
 
 The leader loads MCP HTTP tool servers from ``mcp.json`` at the project root
 (warehouse ``duckdb-mcp``, ``storage-mcp``, ``dagster-mcp``, etc.).
@@ -199,7 +199,7 @@ def _format_agent_error(exc: BaseException) -> str:
 
 
 app = FastAPI(
-    title="Datacyber",
+    title="Datasyn",
     description=(
         "Leader agent API. Remote tools use HTTP endpoints listed in mcp.json "
         "(mcpServers block)."
@@ -295,7 +295,7 @@ class ChatResponse(BaseModel):
     )
     debug: dict[str, Any] | None = Field(
         None,
-        description="Structured pipeline trace when brain has DATACYBER_PIPELINE_DEBUG=1.",
+        description="Structured pipeline trace when brain has DATASYN_PIPELINE_DEBUG=1.",
     )
 
 
@@ -423,7 +423,7 @@ def _pipeline_snapshot() -> dict[str, Any]:
                 "file_existed_when_process_started": ENV_DOTENV_LOADED_AT_IMPORT,
                 "load_dotenv_override_prior_env": True,
                 "expected_location": "Repository root: same directory that contains the `agent/` folder "
-                "(e.g. `datacyber/.env`). In Docker, `brain` uses `env_file`: `compose.env` plus optional `.env` "
+                "(e.g. `datasyn/.env`). In Docker, `brain` uses `env_file`: `compose.env` plus optional `.env` "
                 "(``path: .env`` with ``required: false``); variables are injected into the process environment.",
                 "compose_also_injects": "docker-compose `brain.env_file`: compose.env then optional .env (omit .env on "
                 "servers that only use compose.env / orchestrator secrets). If `/project/.env` exists in the "
