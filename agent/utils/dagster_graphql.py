@@ -73,7 +73,7 @@ _ASSET_NODE_FIELDS = f"""
 """
 
 _ASSET_NODES_QUERY = f"""
-query DatacyberAssetCatalog {{
+query DatasynAssetCatalog {{
   assetNodes {{
 {_ASSET_NODE_FIELDS}
   }}
@@ -81,7 +81,7 @@ query DatacyberAssetCatalog {{
 """
 
 _ASSET_NODE_DETAIL_QUERY = f"""
-query DatacyberAssetDetail($path: [String!]!) {{
+query DatasynAssetDetail($path: [String!]!) {{
   assetNodeOrError(assetKey: {{ path: $path }}) {{
     __typename
     ... on AssetNode {{

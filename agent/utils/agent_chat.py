@@ -121,10 +121,10 @@ async def run_agent_chat_turn(
         logger.info("[%s] pipeline %s %s", rid, step, extra)
 
     with tracer.start_as_current_span("brain.run_agent_chat_turn") as span:
-        span.set_attribute("datacyber.request_id", rid)
-        span.set_attribute("datacyber.message_chars", len(message))
-        span.set_attribute("datacyber.history_turns", len(history or []))
-        span.set_attribute("datacyber.response_locale", response_locale or "en")
+        span.set_attribute("datasyn.request_id", rid)
+        span.set_attribute("datasyn.message_chars", len(message))
+        span.set_attribute("datasyn.history_turns", len(history or []))
+        span.set_attribute("datasyn.response_locale", response_locale or "en")
 
         invoke_messages = build_agent_invoke_messages(history, message)
         logger.info(
@@ -155,7 +155,7 @@ async def run_agent_chat_turn(
             tool_names,
         )
         record("mcp_get_tools", tool_count=len(tools), tool_names=tool_names, ms=tools_ms)
-        span.set_attribute("datacyber.mcp_tool_count", len(tool_names))
+        span.set_attribute("datasyn.mcp_tool_count", len(tool_names))
 
         loc = "es" if (response_locale or "en").strip().lower() == "es" else "en"
         record("response_locale", locale=loc)
@@ -175,7 +175,7 @@ async def run_agent_chat_turn(
                 feature="agent-chat",
                 endpoint="api-agent-chat",
             )
-            invoke_config["run_name"] = "datacyber-agent-chat"
+            invoke_config["run_name"] = "datasyn-agent-chat"
             record("langfuse_callbacks_attached", tags=invoke_config["metadata"].get("langfuse_tags"))
 
         t_invoke = time.perf_counter()
@@ -211,7 +211,7 @@ async def run_agent_chat_turn(
         invoke_ms = round((time.perf_counter() - t_invoke) * 1000, 2)
         logger.info("[%s] agent.ainvoke finished ms=%s state_keys=%s", rid, invoke_ms, list(state.keys()))
         record("agent_ainvoke", ms=invoke_ms)
-        span.set_attribute("datacyber.invoke_ms", invoke_ms)
+        span.set_attribute("datasyn.invoke_ms", invoke_ms)
 
         msg_summary = summarize_messages_for_debug(state)
         logger.info("[%s] message_count=%s", rid, msg_summary.get("message_count"))
@@ -232,8 +232,8 @@ async def run_agent_chat_turn(
             total_ms,
             settings.pipeline_debug,
         )
-        span.set_attribute("datacyber.total_ms", total_ms)
-        span.set_attribute("datacyber.reply_chars", len(reply))
+        span.set_attribute("datasyn.total_ms", total_ms)
+        span.set_attribute("datasyn.reply_chars", len(reply))
 
         debug: dict[str, Any] | None = None
         if settings.pipeline_debug:
@@ -285,9 +285,9 @@ async def stream_agent_chat_sse_events(
         logger.info("[%s] stream %s %s", rid, step, extra)
 
     with tracer.start_as_current_span("brain.stream_agent_chat_sse_events") as span:
-        span.set_attribute("datacyber.request_id", rid)
-        span.set_attribute("datacyber.message_chars", len(message))
-        span.set_attribute("datacyber.history_turns", len(history or []))
+        span.set_attribute("datasyn.request_id", rid)
+        span.set_attribute("datasyn.message_chars", len(message))
+        span.set_attribute("datasyn.history_turns", len(history or []))
 
         invoke_messages = build_agent_invoke_messages(history, message)
 
@@ -318,7 +318,7 @@ async def stream_agent_chat_sse_events(
                 feature="agent-chat-stream",
                 endpoint="api-agent-chat-stream",
             )
-            invoke_config["run_name"] = "datacyber-agent-chat-stream"
+            invoke_config["run_name"] = "datasyn-agent-chat-stream"
 
         payload = {"messages": invoke_messages}
         last_root_state: dict[str, Any] | None = None

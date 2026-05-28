@@ -39,7 +39,7 @@ _db = DuckDBWarehouse(DUCKDB_PATH, sql_row_cap=SQL_ROW_CAP, data_local_root=DATA
 mcp = FastMCP(
     name="duckdb-mcp",
     instructions=(
-        "Datacyber DuckDB warehouse. Generic tools: **get_schema** (tables/views), **execute_query** (any DuckDB SQL: "
+        "Datasyn DuckDB warehouse. Generic tools: **get_schema** (tables/views), **execute_query** (any DuckDB SQL: "
         "DDL/DML/SELECT, ingest via read_csv_auto/read_csv/COPY, CREATE TABLE … AS), **list_data_mount** (read-only "
         f"`ls` under {DATA_LOCAL_ROOT}). "
         "There is NO database_ingest_csv or ingest_csv tool. "

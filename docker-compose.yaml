@@ -1,4 +1,4 @@
-# Datacyber aggregator compose (agent + ui).
+# Datasyn aggregator compose (agent + ui).
 #
 # Start order:
 #   1. docker compose -f infra/distribution/docker-compose.yaml up -d   # local OCI registry
@@ -13,7 +13,7 @@
 #   cp infra/object-storage/.env.example infra/object-storage/.env
 #   docker compose -f infra/object-storage/docker-compose.yaml up -d
 
-name: datacyber
+name: datasyn
 
 networks:
   infra:

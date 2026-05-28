@@ -35,7 +35,7 @@ log = logging.getLogger("storage-mcp")
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8044"))
 MCP_HTTP_PATH = os.environ.get("MCP_HTTP_PATH", "/mcp")
-MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://datacyber-object-minio:9000")
+MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://datasyn-object-minio:9000")
 MINIO_ACCESS_KEY = os.environ.get("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "minioadmin123")
 MINIO_SECURE = os.environ.get("MINIO_SECURE", "false").lower() in {"1", "true", "yes", "on"}
@@ -50,7 +50,7 @@ MAX_PUT_B64_DECODED_BYTES = max(1, int(os.environ.get("STORAGE_MCP_MAX_PUT_B64_B
 mcp = FastMCP(
     name="storage-mcp",
     instructions=(
-        "Datacyber object storage MCP for MinIO/S3. Tools: `list_buckets`, "
+        "Datasyn object storage MCP for MinIO/S3. Tools: `list_buckets`, "
         "`list_objects`, `get_object_text`, `put_object_text`, `put_object_base64`, "
         "`put_object_from_path`, and `delete_object`. Default bucket is `data-local` "
         "unless another bucket is provided. Use `put_object_base64` for binary uploads "

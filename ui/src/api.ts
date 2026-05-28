@@ -48,7 +48,7 @@ export type ChatResponsePayload = {
   debug?: Record<string, unknown> | null;
 };
 
-/** Latest chat correlation + optional server debug (DATACYBER_PIPELINE_DEBUG=1 on brain). */
+/** Latest chat correlation + optional server debug (DATASYN_PIPELINE_DEBUG=1 on brain). */
 export type PipelineTrace = {
   requestId: string;
   debug: ChatResponsePayload["debug"];
@@ -131,7 +131,7 @@ export async function postChatStream(
     const t0 = performance.now();
     if (import.meta.env.DEV) {
       console.info(
-        "[datacyber] POST /agent/chat/stream",
+        "[datasyn] POST /agent/chat/stream",
         res.status,
         res.headers.get("X-Request-ID"),
         `${Math.round(performance.now() - t0)}ms (headers)`,
@@ -195,7 +195,7 @@ export async function postChat(
     });
     if (import.meta.env.DEV) {
       console.info(
-        "[datacyber] POST /agent/chat",
+        "[datasyn] POST /agent/chat",
         res.status,
         res.headers.get("X-Request-ID"),
         `${Math.round(performance.now() - t0)}ms`,

@@ -30,7 +30,7 @@ con = duckdb.connect(path)
 try:
     for name in _MEDALLION_SCHEMAS:
         con.execute(f"CREATE SCHEMA IF NOT EXISTS {name}")
-    con.execute("CREATE TABLE IF NOT EXISTS _datacyber_init (ready INTEGER DEFAULT 1)")
+    con.execute("CREATE TABLE IF NOT EXISTS _datasyn_init (ready INTEGER DEFAULT 1)")
 finally:
     con.close()
 

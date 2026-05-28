@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ChatResponsePayload } from "./api";
 import { exportAnalysis, postChatStream } from "./api";
 import type { ChatHistoryTurn, ChatStreamEvent } from "./api";
@@ -6,28 +6,16 @@ import { AgentChatPanel, type ChatMsg } from "./components/AgentChatPanel";
 import { AnalysisGallery } from "./components/AnalysisGallery";
 import { AppHeader } from "./components/AppHeader";
 import { DatasetCatalog } from "./components/DatasetCatalog";
+import { WorkspaceSidebar, type WorkspaceView } from "./components/WorkspaceSidebar";
 import { loadChatSession, saveChatSession } from "./chatSessionStorage";
 import { readStoredLocale, persistLocale, uiStrings, type UiLocale } from "./locale";
 import { newId } from "./newId";
 import { formatStreamStep, formatStreamToolDelta } from "./streamActivityFormat";
+import { persistSidebarCollapsed, readSidebarCollapsed } from "./workspaceSidebarStorage";
 
 const AGENT_PANEL_ID = "agent-workspace";
 const DATASETS_PANEL_ID = "datasets-panel";
 const ANALYSES_PANEL_ID = "analyses-panel";
-
-type WorkspaceTab = "agent" | "datasets" | "analyses";
-
-function useNarrowLayout(): boolean {
-  return useSyncExternalStore(
-    (onChange) => {
-      const mq = window.matchMedia("(max-width: 900px)");
-      mq.addEventListener("change", onChange);
-      return () => mq.removeEventListener("change", onChange);
-    },
-    () => window.matchMedia("(max-width: 900px)").matches,
-    () => false,
-  );
-}
 
 type Msg = ChatMsg & {
   pipelineDebug?: ChatResponsePayload["debug"];
@@ -43,8 +31,8 @@ export default function App() {
   const [exporting, setExporting] = useState(false);
   const [analysisRefresh, setAnalysisRefresh] = useState(0);
   const [pendingDatasetFqn, setPendingDatasetFqn] = useState<string | null>(null);
-  const narrow = useNarrowLayout();
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("agent");
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("agent");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readSidebarCollapsed());
   const s = uiStrings(locale);
 
   const onLocaleChange = useCallback((l: UiLocale) => {
@@ -52,19 +40,17 @@ export default function App() {
     setLocale(l);
   }, []);
 
-  const focusPanel = useCallback((id: string) => {
-    requestAnimationFrame(() => {
-      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    });
+  const selectView = useCallback((view: WorkspaceView) => {
+    setWorkspaceView(view);
   }, []);
 
-  const selectTab = useCallback(
-    (tab: WorkspaceTab, panelId: string) => {
-      setWorkspaceTab(tab);
-      if (!narrow) focusPanel(panelId);
-    },
-    [narrow, focusPanel],
-  );
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      persistSidebarCollapsed(next);
+      return next;
+    });
+  }, []);
 
   const handleNewChat = useCallback(() => {
     if (busy) return;
@@ -72,9 +58,8 @@ export default function App() {
     setError(null);
     setInput("");
     saveChatSession([]);
-    setWorkspaceTab("agent");
-    if (!narrow) focusPanel(AGENT_PANEL_ID);
-  }, [busy, narrow, focusPanel]);
+    setWorkspaceView("agent");
+  }, [busy]);
 
   useEffect(() => {
     if (busy) return;
@@ -89,9 +74,9 @@ export default function App() {
           ? `Analiza el dataset \`${fqn}\`: resume columnas, calidad y 3 preguntas de negocio.`
           : `Analyze dataset \`${fqn}\`: summarize columns, quality, and 3 business questions.`;
       setInput(prompt);
-      selectTab("agent", AGENT_PANEL_ID);
+      setWorkspaceView("agent");
     },
-    [locale, selectTab],
+    [locale],
   );
 
   const handleExportAnalysis = useCallback(async () => {
@@ -231,88 +216,71 @@ export default function App() {
     }
   }, [input, busy, locale, messages]);
 
-  const panelsClass =
-    "layout-panels" +
-    (narrow && workspaceTab === "agent" ? " layout-panels--mobile-chat" : "") +
-    (narrow && workspaceTab === "datasets" ? " layout-panels--mobile-dash" : "") +
-    (narrow && workspaceTab === "analyses" ? " layout-panels--mobile-analyses" : "");
+  const layoutClass =
+    "layout-workspace" +
+    (sidebarCollapsed ? " layout-workspace--sidebar-collapsed" : "");
 
   return (
     <div className="app-shell">
       <AppHeader locale={locale} onLocaleChange={onLocaleChange} />
 
-      <div className="layout-main">
-        <nav className="workspace-nav" aria-label={s.workspaceNavAria}>
-          <div className="workspace-nav__tabs" role="tablist">
+      <div className={layoutClass}>
+        <WorkspaceSidebar
+          locale={locale}
+          active={workspaceView}
+          collapsed={sidebarCollapsed}
+          busy={busy}
+          onSelect={selectView}
+          onNewChat={handleNewChat}
+          onToggleCollapse={toggleSidebar}
+        />
+
+        <main className="workspace-main" id="workspace-main">
+          {sidebarCollapsed && (
             <button
               type="button"
-              role="tab"
-              aria-selected={workspaceTab === "agent"}
-              className={`workspace-nav__tab${workspaceTab === "agent" ? " is-active" : ""}`}
-              onClick={() => selectTab("agent", AGENT_PANEL_ID)}
+              className="workspace-main__expand-rail"
+              onClick={toggleSidebar}
+              aria-label={s.sidebarExpand}
+              title={s.sidebarExpand}
             >
-              {s.navAgent}
+              <span aria-hidden>›</span>
             </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={workspaceTab === "datasets"}
-              className={`workspace-nav__tab${workspaceTab === "datasets" ? " is-active" : ""}`}
-              onClick={() => selectTab("datasets", DATASETS_PANEL_ID)}
-            >
-              {s.navDatasets}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={workspaceTab === "analyses"}
-              className={`workspace-nav__tab${workspaceTab === "analyses" ? " is-active" : ""}`}
-              onClick={() => selectTab("analyses", ANALYSES_PANEL_ID)}
-            >
-              {s.navAnalyses}
-            </button>
+          )}
+
+          <div className="workspace-main__content">
+            <AgentChatPanel
+              id={AGENT_PANEL_ID}
+              className={workspaceView === "agent" ? "panel-chat" : "panel-chat panel-hidden"}
+              locale={locale}
+              messages={messages}
+              input={input}
+              setInput={setInput}
+              busy={busy}
+              error={error}
+              notice={exportNotice}
+              onSend={send}
+              onExportAnalysis={() => void handleExportAnalysis()}
+              exporting={exporting}
+            />
+
+            <DatasetCatalog
+              id={DATASETS_PANEL_ID}
+              className={workspaceView === "datasets" ? "panel-dash" : "panel-dash panel-hidden"}
+              locale={locale}
+              onAnalyzeDataset={handleAnalyzeDataset}
+            />
+
+            <AnalysisGallery
+              id={ANALYSES_PANEL_ID}
+              className={
+                workspaceView === "analyses" ? "panel-analyses" : "panel-analyses panel-hidden"
+              }
+              locale={locale}
+              refreshToken={analysisRefresh}
+            />
           </div>
-          <button
-            type="button"
-            className="btn ghost workspace-nav__new"
-            onClick={handleNewChat}
-            disabled={busy}
-            title={busy ? s.loading : undefined}
-          >
-            {s.newChat}
-          </button>
-        </nav>
-
-        <div className={panelsClass}>
-          <AgentChatPanel
-            id={AGENT_PANEL_ID}
-            className={workspaceTab === "agent" ? "panel-chat" : "panel-chat panel-hidden"}
-            locale={locale}
-            messages={messages}
-            input={input}
-            setInput={setInput}
-            busy={busy}
-            error={error}
-            notice={exportNotice}
-            onSend={send}
-            onExportAnalysis={() => void handleExportAnalysis()}
-            exporting={exporting}
-          />
-
-          <DatasetCatalog
-            id={DATASETS_PANEL_ID}
-            className={workspaceTab === "datasets" ? "panel-dash" : "panel-dash panel-hidden"}
-            locale={locale}
-            onAnalyzeDataset={handleAnalyzeDataset}
-          />
-
-          <AnalysisGallery
-            id={ANALYSES_PANEL_ID}
-            className={workspaceTab === "analyses" ? "panel-analyses" : "panel-analyses panel-hidden"}
-            locale={locale}
-            refreshToken={analysisRefresh}
-          />
-        </div>
+        </main>
       </div>
     </div>
   );

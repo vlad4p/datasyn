@@ -38,6 +38,6 @@ def build_agent(tools: list[BaseTool], *, response_locale: str = "en"):
         system_prompt=supervisor_system_prompt(mcp_tool_names=tool_names, response_locale=response_locale),
         backend=backend,
         subagents=[data_analyst_subagent(tools=tools)],
-        name="datacyber-brain",
+        name="datasyn-brain",
         skills=["/skills/"],
     )

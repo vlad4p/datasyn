@@ -80,11 +80,11 @@ run_launcher:
         - /tmp/dagster_data:/opt/dagster/data
         # Same warehouse and ``/data-local`` host tree as ``dagster_user_code``.
         # ``container_kwargs.volumes`` does not support env interpolation, so the
-        # ``data-local`` host path is hard-coded; align with the Datacyber repo or
+        # ``data-local`` host path is hard-coded; align with the Datasyn repo or
         # use a symlink if your tree differs.
         - duckdb_data:/data
         # RW under ``/data-local`` (e.g. ``landing/...``) for assets that sync to MinIO.
-        - /Users/vlad/project/datacyber/data-local:/data-local
+        - /Users/vlad/project/datasyn/data-local:/data-local
 
 run_storage:
   module: dagster_postgres.run_storage

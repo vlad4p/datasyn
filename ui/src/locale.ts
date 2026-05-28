@@ -1,7 +1,7 @@
 /** UI + API locale: matches `POST /agent/chat` body `locale`. */
 export type UiLocale = "en" | "es";
 
-const STORAGE_KEY = "datacyber-ui-locale";
+const STORAGE_KEY = "datasyn-ui-locale";
 
 export function readStoredLocale(): UiLocale {
   try {
@@ -29,6 +29,8 @@ type Strings = {
   /** @deprecated use navAgent */
   navChat: string;
   newChat: string;
+  sidebarCollapse: string;
+  sidebarExpand: string;
   workspaceNavAria: string;
   agentTitle: string;
   agentOnline: string;
@@ -141,6 +143,8 @@ const EN: Strings = {
   navAnalyses: "Analyses",
   navChat: "Agent",
   newChat: "New chat",
+  sidebarCollapse: "Hide sidebar",
+  sidebarExpand: "Show sidebar",
   workspaceNavAria: "Main workspace",
   agentTitle: "Warehouse agent",
   agentOnline: "Online",
@@ -258,6 +262,8 @@ const ES: Strings = {
   navAnalyses: "Análisis",
   navChat: "Agente",
   newChat: "Nuevo chat",
+  sidebarCollapse: "Ocultar panel",
+  sidebarExpand: "Mostrar panel",
   workspaceNavAria: "Área principal",
   agentTitle: "Agente de almacén",
   agentOnline: "En línea",

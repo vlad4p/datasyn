@@ -4,7 +4,7 @@ import { getOpenRouterModels, setChatModel } from "../api";
 import type { UiLocale } from "../locale";
 import { uiStrings } from "../locale";
 
-const STORAGE_KEY = "datacyber-chat-model";
+const STORAGE_KEY = "datasyn-chat-model";
 
 type Props = {
   locale: UiLocale;
