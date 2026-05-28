@@ -6,6 +6,7 @@ import { AgentChatPanel, type ChatMsg } from "./components/AgentChatPanel";
 import { AnalysisGallery } from "./components/AnalysisGallery";
 import { AppHeader } from "./components/AppHeader";
 import { DatasetCatalog } from "./components/DatasetCatalog";
+import { SkillsToolsView } from "./components/SkillsToolsView";
 import { WorkspaceSidebar, type WorkspaceView } from "./components/WorkspaceSidebar";
 import { loadChatSession, saveChatSession } from "./chatSessionStorage";
 import { readStoredLocale, persistLocale, uiStrings, type UiLocale } from "./locale";
@@ -15,6 +16,7 @@ import { persistSidebarCollapsed, readSidebarCollapsed } from "./workspaceSideba
 
 const AGENT_PANEL_ID = "agent-workspace";
 const DATASETS_PANEL_ID = "datasets-panel";
+const TOOLS_PANEL_ID = "skills-tools-panel";
 const ANALYSES_PANEL_ID = "analyses-panel";
 
 type Msg = ChatMsg & {
@@ -269,6 +271,12 @@ export default function App() {
               className={workspaceView === "datasets" ? "panel-dash" : "panel-dash panel-hidden"}
               locale={locale}
               onAnalyzeDataset={handleAnalyzeDataset}
+            />
+
+            <SkillsToolsView
+              id={TOOLS_PANEL_ID}
+              className={workspaceView === "tools" ? "panel-tools" : "panel-tools panel-hidden"}
+              locale={locale}
             />
 
             <AnalysisGallery

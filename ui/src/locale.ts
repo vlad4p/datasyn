@@ -25,6 +25,7 @@ type Strings = {
   tagline: string;
   navAgent: string;
   navDatasets: string;
+  navSkillsTools: string;
   navAnalyses: string;
   /** @deprecated use navAgent */
   navChat: string;
@@ -94,7 +95,12 @@ type Strings = {
     dagsterComputeKind: string;
     columnsCatalog: string;
     columnsWarehouse: string;
+    /** @deprecated moved to skillsTools view */
     systemTools: string;
+  };
+  skillsTools: {
+    title: string;
+    hint: string;
   };
   analyses: {
     title: string;
@@ -140,6 +146,7 @@ const EN: Strings = {
   tagline: "Warehouse agent · datasets · analyses",
   navAgent: "Agent",
   navDatasets: "Datasets",
+  navSkillsTools: "Skills & Tools",
   navAnalyses: "Analyses",
   navChat: "Agent",
   newChat: "New chat",
@@ -213,13 +220,17 @@ const EN: Strings = {
     dagsterComputeKind: "Compute kind",
     columnsCatalog: "Catalog columns",
     columnsWarehouse: "Warehouse columns",
-    systemTools: "System & tools",
+    systemTools: "Skills & Tools",
+  },
+  skillsTools: {
+    title: "Skills & Tools",
+    hint: "MCP servers, built-in helpers, and project skills available to the agent at runtime.",
   },
   analyses: {
     title: "Last analyses",
     hint: "Exported report-style summaries from agent conversations.",
     loading: "Loading…",
-    empty: "No exported analyses yet. Use Export analysis in the Agent tab.",
+    empty: "No exported analyses yet. Use Export analysis in the Agent view.",
     back: "Back to list",
     messageCount: (n) => `${n} message${n === 1 ? "" : "s"}`,
   },
@@ -259,6 +270,7 @@ const ES: Strings = {
   tagline: "Agente · datasets · análisis",
   navAgent: "Agente",
   navDatasets: "Datasets",
+  navSkillsTools: "Skills y herramientas",
   navAnalyses: "Análisis",
   navChat: "Agente",
   newChat: "Nuevo chat",
@@ -332,13 +344,17 @@ const ES: Strings = {
     dagsterComputeKind: "Compute kind",
     columnsCatalog: "Columnas (catálogo)",
     columnsWarehouse: "Columnas (almacén)",
-    systemTools: "Sistema y herramientas",
+    systemTools: "Skills y herramientas",
+  },
+  skillsTools: {
+    title: "Skills y herramientas",
+    hint: "Servidores MCP, helpers internos y skills del proyecto disponibles para el agente.",
   },
   analyses: {
     title: "Últimos análisis",
     hint: "Resúmenes exportados en estilo informe desde conversaciones con el agente.",
     loading: "Cargando…",
-    empty: "Aún no hay análisis exportados. Usa Exportar análisis en la pestaña Agente.",
+    empty: "Aún no hay análisis exportados. Usa Exportar análisis en la vista Agente.",
     back: "Volver al listado",
     messageCount: (n) => (n === 1 ? "1 mensaje" : `${n} mensajes`),
   },

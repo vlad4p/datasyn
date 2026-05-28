@@ -1,7 +1,7 @@
 import type { UiLocale } from "../locale";
 import { uiStrings } from "../locale";
 
-export type WorkspaceView = "agent" | "datasets" | "analyses";
+export type WorkspaceView = "agent" | "datasets" | "tools" | "analyses";
 
 type Props = {
   locale: UiLocale;
@@ -13,7 +13,7 @@ type Props = {
   onToggleCollapse: () => void;
 };
 
-function NavIcon({ kind }: { kind: "chat" | "datasets" | "analysis" | "new" }) {
+function NavIcon({ kind }: { kind: "chat" | "datasets" | "tools" | "analysis" | "new" }) {
   return (
     <span className="sidebar-nav__icon" aria-hidden>
       {kind === "chat" && (
@@ -26,6 +26,11 @@ function NavIcon({ kind }: { kind: "chat" | "datasets" | "analysis" | "new" }) {
           <ellipse cx="12" cy="5" rx="9" ry="3" />
           <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5" />
           <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6" />
+        </svg>
+      )}
+      {kind === "tools" && (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
         </svg>
       )}
       {kind === "analysis" && (
@@ -54,9 +59,10 @@ export function WorkspaceSidebar({
 }: Props) {
   const s = uiStrings(locale);
 
-  const items: { id: WorkspaceView; label: string; icon: "chat" | "datasets" | "analysis" }[] = [
+  const items: { id: WorkspaceView; label: string; icon: "chat" | "datasets" | "tools" | "analysis" }[] = [
     { id: "agent", label: s.navAgent, icon: "chat" },
     { id: "datasets", label: s.navDatasets, icon: "datasets" },
+    { id: "tools", label: s.navSkillsTools, icon: "tools" },
     { id: "analyses", label: s.navAnalyses, icon: "analysis" },
   ];
 
