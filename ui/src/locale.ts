@@ -23,6 +23,16 @@ export function persistLocale(locale: UiLocale): void {
 
 type Strings = {
   tagline: string;
+  auth: {
+    signInTitle: string;
+    signInSubtitle: string;
+    continueWith: string;
+    noProviders: string;
+    loading: string;
+    signOut: string;
+    oauthFailed: string;
+    profileFailed: string;
+  };
   navAgent: string;
   navDatasets: string;
   navSkillsTools: string;
@@ -105,6 +115,9 @@ type Strings = {
   analyses: {
     title: string;
     hint: string;
+    chatsTitle: string;
+    chatsHint: string;
+    chatsEmpty: string;
     loading: string;
     empty: string;
     back: string;
@@ -144,6 +157,16 @@ type Strings = {
 
 const EN: Strings = {
   tagline: "Warehouse agent · datasets · analyses",
+  auth: {
+    signInTitle: "Sign in",
+    signInSubtitle: "Use your Google or GitHub account to access Datasyn.",
+    continueWith: "Continue with {provider}",
+    noProviders: "No login providers are configured on the server.",
+    loading: "Checking session…",
+    signOut: "Sign out",
+    oauthFailed: "Sign-in was cancelled or failed. Try again.",
+    profileFailed: "Could not load your profile from the provider.",
+  },
   navAgent: "Agent",
   navDatasets: "Datasets",
   navSkillsTools: "Skills & Tools",
@@ -229,6 +252,9 @@ const EN: Strings = {
   analyses: {
     title: "Last analyses",
     hint: "Exported report-style summaries from agent conversations.",
+    chatsTitle: "Chat history",
+    chatsHint: "Past conversations with the agent. Open one to continue in the Agent view.",
+    chatsEmpty: "No saved chats yet.",
     loading: "Loading…",
     empty: "No exported analyses yet. Use Export analysis in the Agent view.",
     back: "Back to list",
@@ -268,6 +294,16 @@ const EN: Strings = {
 
 const ES: Strings = {
   tagline: "Agente · datasets · análisis",
+  auth: {
+    signInTitle: "Iniciar sesión",
+    signInSubtitle: "Usá tu cuenta de Google o GitHub para acceder a Datasyn.",
+    continueWith: "Continuar con {provider}",
+    noProviders: "No hay proveedores de login configurados en el servidor.",
+    loading: "Verificando sesión…",
+    signOut: "Cerrar sesión",
+    oauthFailed: "El inicio de sesión fue cancelado o falló. Intentá de nuevo.",
+    profileFailed: "No se pudo cargar tu perfil del proveedor.",
+  },
   navAgent: "Agente",
   navDatasets: "Datasets",
   navSkillsTools: "Skills y herramientas",
@@ -353,6 +389,9 @@ const ES: Strings = {
   analyses: {
     title: "Últimos análisis",
     hint: "Resúmenes exportados en estilo informe desde conversaciones con el agente.",
+    chatsTitle: "Chats históricos",
+    chatsHint: "Conversaciones anteriores con el agente. Abrí una para continuar en la vista Agente.",
+    chatsEmpty: "Sin chats guardados.",
     loading: "Cargando…",
     empty: "Aún no hay análisis exportados. Usa Exportar análisis en la vista Agente.",
     back: "Volver al listado",

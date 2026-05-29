@@ -116,7 +116,7 @@ cd datasyn && make bootstrap && make infra-up
 
 | Repo | Contenido | Comandos clave |
 |------|-----------|----------------|
-| **datasyn** | Brain, UI, skills, infra (duckdb, minio, Dagster runtime) | `make stack-up` · `make agent-dev` · [`INSTALL.md`](INSTALL.md) |
+| **datasyn** | Brain, UI, skills, infra (duckdb, minio, Dagster runtime) | `make dev` · `make agent-dev` · [`INSTALL.md`](INSTALL.md) |
 | **datasyn-code** | Assets bronze, jobs, schedules, Dockerfile gRPC | `make dev` · `make push` |
 
 ---
@@ -127,7 +127,7 @@ cd datasyn && make bootstrap && make infra-up
 
 Flujo recomendado para agregar una fuente de datos:
 
-1. **Clonar** [`datasyn`](.) y [`datasyn-code`](../datasyn-code) al mismo nivel; levantar la plataforma (`make stack-up` en datasyn).
+1. **Clonar** [`datasyn`](.) y [`datasyn-code`](../datasyn-code) al mismo nivel; levantar infra (`make dev-up` o `make dev`).
 2. **Configurar** el entorno del agente: [`mcp.json`](mcp.json), skills en [`skills/`](skills/) (p. ej. [`ingest-scrape-news-bronze`](skills/ingest-scrape-news-bronze/SKILL.md)), [`AGENTS.md`](AGENTS.md).
 3. **Desarrollar en gitflow** dentro de **`datasyn-code`**: rama `feature/<fuente>`, assets bajo `src/datasyn/assets/bronze/<fuente>/`, job y schedule; PR → merge a `main`.
 4. **Publicar** la code location: `make -C ../datasyn-code push` y redeploy de `dagster_user_code` (ver [`INSTALL.md`](INSTALL.md)).
@@ -207,19 +207,19 @@ Skills en [`skills/`](skills/) — playbooks que el brain descubre al arrancar. 
 
 Guía completa: **[`INSTALL.md`](INSTALL.md)** (bootstrap, registry, troubleshooting).
 
-**Stack Docker (producción local)**
+**Stack Docker local (prod-like, brain/ui en contenedor):**
 
 ```bash
-make bootstrap      # red infra-datasynk + volúmenes
-make stack-up       # infra + MCP + brain/UI
+make bootstrap
+make stack-up       # no usar para daily dev — preferir make dev
 ```
 
-**Desarrollo Mac (brain hot reload, [uv](https://docs.astral.sh/uv/))**
+**Desarrollo local (brain `uv` + UI `npm` en host):**
 
 ```bash
 cp .env.example .env
-uv sync
-make agent-dev      # brain :8002 + UI :5173
+make uv-sync && make ui-install
+make dev            # infra Docker + agent-dev
 ```
 
 Publicar user code tras cambios en pipelines:
@@ -256,12 +256,14 @@ Fuentes con pipeline bronze (detalle en [`datasyn-code`](../datasyn-code)):
 |---------|----------|
 | `make bootstrap` | Red `infra-datasynk` + volúmenes `duckdb_data`, `storage` |
 | `make infra-up` / `infra-down` | Stacks `infra/*` (duckdb, minio, dagster) |
-| `make stack-up` | Infra + MCP + agent/UI |
-| `make agent-dev` | Brain + UI en dev (uv) |
+| `make dev` | Infra Docker + brain/UI en host (`uv` + `npm`) |
+| `make dev-up` | Solo infra Docker |
+| `make agent-dev` | Brain + UI en host (uv + npm) |
+| `make stack-up` | Todo en Docker (prod-like; no daily dev) |
 | `make uv-sync` | Sincroniza deps Python del brain |
 | `make images-push-remote` | buildx push imágenes del stack |
 
-Variables: `DATASYN_IMAGE_REGISTRY`, `DATASYN_CODE_DIR`, `API_PORT`.
+Variables: `ENVIRONMENT` (`dev`|`prod`), `DATASYN_IMAGE_PREFIX`, `DATASYN_IMAGE_REGISTRY` (prod), `DATASYN_CODE_DIR`, `API_PORT`.
 
 ```bash
 make help

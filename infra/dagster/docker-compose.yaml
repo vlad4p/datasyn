@@ -15,7 +15,8 @@ services:
     build:
       context: ./postgres
       dockerfile: Dockerfile
-    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/dagster-postgresql:${DATASYN_IMAGE_TAG:-latest}
+    image: ${DATASYN_IMAGE_PREFIX:-datasyn}/dagster-postgresql:${DATASYN_IMAGE_TAG:-latest}
+    pull_policy: never
     container_name: dagster_postgresql
     labels:
       datasyn.dagster.project: datasyn
@@ -36,17 +37,18 @@ services:
     restart: unless-stopped
 
   # gRPC server that loads user code. DAGSTER_CURRENT_IMAGE tells the DockerRunLauncher
-  # to reuse this same image for per-run containers. Default image is an empty stub in
-  # ``user_code/``; production pipelines are built from sibling repo ``../datasyn-code``.
+  # to reuse this same image for per-run containers.
+  # Build context: sibling ``../datasyn-code`` (``DATASYN_CODE_DIR``) or stub ``user_code/``.
   dagster_user_code:
     build:
-      context: ./user_code
+      context: ${DATASYN_CODE_DIR:-../../../datasyn-code}
       dockerfile: Dockerfile
+    image: ${DATASYN_IMAGE_PREFIX:-datasyn}/dagster_user_code_image:${DATASYN_IMAGE_TAG:-latest}
+    pull_policy: never
     container_name: dagster_user_code
     labels:
       datasyn.dagster.project: datasyn
       datasyn.dagster.component: user_code
-    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/dagster_user_code_image:${DATASYN_IMAGE_TAG:-latest}
     restart: always
     # User-code gRPC loads full defs; align with per-run job limits in ``runtime/dagster.yaml``.
     deploy:
@@ -63,7 +65,7 @@ services:
       DAGSTER_POSTGRES_USER: "postgres_user"
       DAGSTER_POSTGRES_PASSWORD: "postgres_password"
       DAGSTER_POSTGRES_DB: "postgres_db"
-      DAGSTER_CURRENT_IMAGE: "${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/dagster_user_code_image:${DATASYN_IMAGE_TAG:-latest}"
+      DAGSTER_CURRENT_IMAGE: "${DATASYN_IMAGE_PREFIX:-datasyn}/dagster_user_code_image:${DATASYN_IMAGE_TAG:-latest}"
       DUCKDB_PATH: "/data/warehouse.duckdb"
       # LITELLM_KEY / LITELLM_PROXY_BASE come **only** from ``env_file`` (``infra/dagster/.env``).
       # If listed here with ``${VAR:-…}`` the project-root ``.env`` (or host shell exports)
@@ -114,7 +116,8 @@ services:
     build:
       context: ./runtime
       dockerfile: Dockerfile
-    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/dagster-runtime:${DATASYN_IMAGE_TAG:-latest}
+    image: ${DATASYN_IMAGE_PREFIX:-datasyn}/dagster-runtime:${DATASYN_IMAGE_TAG:-latest}
+    pull_policy: never
     entrypoint:
       - dagster-webserver
       - -h
@@ -175,7 +178,11 @@ services:
   # Same image as ``dagster_webserver`` — only one ``build:`` here so ``docker compose build``
   # does not export ``dagster-runtime`` twice in parallel (BuildKit: "already exists").
   dagster_daemon:
-    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/dagster-runtime:${DATASYN_IMAGE_TAG:-latest}
+    build:
+      context: ./runtime
+      dockerfile: Dockerfile
+    image: ${DATASYN_IMAGE_PREFIX:-datasyn}/dagster-runtime:${DATASYN_IMAGE_TAG:-latest}
+    pull_policy: never
     entrypoint:
       - dagster-daemon
       - run

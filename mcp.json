@@ -2,12 +2,12 @@
   "mcpServers": {
     "duckdb": {
       "type": "remote",
-      "url": "http://10.13.10.119:8040/mcp",
+      "url": "http://127.0.0.1:8040/mcp",
       "enabled": true
     },
     "storage": {
       "type": "remote",
-      "url": "http://10.13.10.119:8044/mcp",
+      "url": "http://127.0.0.1:8044/mcp",
       "enabled": true
     }
   }

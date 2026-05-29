@@ -161,6 +161,13 @@ export function SystemToolsPanel({ locale }: Props) {
     return pretty[key] ?? key;
   };
 
+  const chipToneClass = (key: string) => {
+    if (key === "__helpers__") return "mcp-server-chip--helpers";
+    if (key === "__skills__") return "mcp-server-chip--skills";
+    if (key === "duckdb" || key === "storage" || key === "dagster") return `mcp-server-chip--${key}`;
+    return "";
+  };
+
   return (
     <div className="skills-tools-panel">
       <div className="skills-tools-panel__status-row">
@@ -184,7 +191,7 @@ export function SystemToolsPanel({ locale }: Props) {
               type="button"
               role="tab"
               aria-selected={selectedServer === key}
-              className={`mcp-server-chip ${selectedServer === key ? "selected" : ""}`}
+              className={`mcp-server-chip ${chipToneClass(key)} ${selectedServer === key ? "selected" : ""}`}
               onClick={() => setSelectedServer(key)}
             >
               {chipLabel(key)}
@@ -192,9 +199,9 @@ export function SystemToolsPanel({ locale }: Props) {
           ))}
         </div>
       </div>
-      <div className="mcp-tool-cards-grid" style={{ marginTop: "0.75rem" }}>
+      <div className="mcp-tool-cards-grid palette-cards-grid" style={{ marginTop: "0.75rem" }}>
         {toolsForServer.map((tool) => (
-          <article key={tool.name} className="mcp-tool-card">
+          <article key={tool.name} className="mcp-tool-card palette-card">
             <header className="mcp-tool-card-head">
               <span className="mono mcp-tool-name">{tool.name}</span>
               <span className={`pill sm cat-${tool.category}`}>{tool.category}</span>

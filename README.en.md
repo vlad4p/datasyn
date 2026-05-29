@@ -98,7 +98,7 @@ cd datasyn && make bootstrap && make infra-up
 
 | Repo | Contents | Key commands |
 |------|----------|--------------|
-| datasyn | Brain, UI, skills, infra (duckdb, minio, Dagster runtime) | `make stack-up` · `make agent-dev` · [`INSTALL.md`](INSTALL.md) |
+| datasyn | Brain, UI, skills, infra (duckdb, minio, Dagster runtime) | `make dev` · `make agent-dev` · [`INSTALL.md`](INSTALL.md) |
 | datasyn-code | Bronze assets, jobs, schedules, gRPC Dockerfile | `make dev` · `make push` |
 
 ---
@@ -109,7 +109,7 @@ cd datasyn && make bootstrap && make infra-up
 
 Recommended flow to add a data source:
 
-1. **Clone** [`datasyn`](.) and [`datasyn-code`](../datasyn-code) side by side; start the platform (`make stack-up`).
+1. **Clone** [`datasyn`](.) and [`datasyn-code`](../datasyn-code) side by side; start infra (`make dev-up` or `make dev`).
 2. **Configure** the agent: [`mcp.json`](mcp.json), skills under [`skills/`](skills/) (e.g. [`ingest-scrape-news-bronze`](skills/ingest-scrape-news-bronze/SKILL.md)), [`AGENTS.md`](AGENTS.md).
 3. **Develop via gitflow** in **`datasyn-code`**: `feature/<source>` branch, assets under `src/datasyn/assets/bronze/<source>/`, job + schedule; PR → merge to `main`.
 4. **Publish** code location: `make -C ../datasyn-code push` and redeploy `dagster_user_code` (see [`INSTALL.md`](INSTALL.md)).
@@ -160,10 +160,25 @@ Skills: [`skills/`](skills/). Pipeline ingest skills also in [`datasyn-code`](..
 
 Full guide: [`INSTALL.md`](INSTALL.md).
 
+**Daily dev — brain (`uv`) + UI (`npm`) on the host; infra in Docker:**
+
 ```bash
-make bootstrap && make stack-up          # Docker stack
-cp .env.example .env && uv sync && make agent-dev   # Mac dev
-make -C ../datasyn-code push             # publish user code image
+cp .env.example .env
+make uv-sync && make ui-install
+make dev            # infra Docker + brain :8002 + Vite :5173
+```
+
+**Prod-like stack (brain/ui in containers — not daily dev):**
+
+```bash
+make bootstrap && make stack-up
+```
+
+Publish user code after pipeline changes:
+
+```bash
+make -C ../datasyn-code push
+# redeploy: see INSTALL.md (compose recreate dagster_user_code)
 ```
 
 ---
@@ -180,7 +195,7 @@ INDEC EPH, Censo/UCA, elections 2023, Boletín Oficial, press (Infobae, Clarín,
 
 ## Makefile
 
-`make help` · `make bootstrap` · `make infra-up` · `make stack-up` · `make agent-dev` · `make uv-sync`.
+`make help` · `make bootstrap` · `make dev` · `make dev-up` · `make agent-dev` · `make stack-up` · `make uv-sync`.
 
 Sibling repo: `make -C ../datasyn-code help`.
 

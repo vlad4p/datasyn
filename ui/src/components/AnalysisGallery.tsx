@@ -20,7 +20,7 @@ export function AnalysisGallery({ className, id, locale, refreshToken = 0 }: Pro
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AnalysisDetailResponse | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refreshAnalyses = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -34,8 +34,8 @@ export function AnalysisGallery({ className, id, locale, refreshToken = 0 }: Pro
   }, []);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh, refreshToken]);
+    void refreshAnalyses();
+  }, [refreshAnalyses, refreshToken]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -50,9 +50,9 @@ export function AnalysisGallery({ className, id, locale, refreshToken = 0 }: Pro
   if (selectedId && detail) {
     const m = detail.manifest;
     return (
-      <section id={id} className={`workspace-panel workspace-panel--scroll ${className ?? ""}`}>
+      <section id={id} className={`workspace-panel workspace-panel--scroll analyses-view ${className ?? ""}`}>
         <div className="analysis-detail">
-          <div className="analysis-detail-header">
+          <header className="section-header section-header--blue analysis-detail-header">
             <div>
               <h2 className="section-title">{m.title}</h2>
               <p className="small muted">
@@ -63,7 +63,7 @@ export function AnalysisGallery({ className, id, locale, refreshToken = 0 }: Pro
             <button type="button" className="btn ghost" onClick={() => setSelectedId(null)}>
               {a.back}
             </button>
-          </div>
+          </header>
           <MarkdownMessage role="assistant" content={detail.report_md} />
         </div>
       </section>
@@ -71,9 +71,11 @@ export function AnalysisGallery({ className, id, locale, refreshToken = 0 }: Pro
   }
 
   return (
-    <section id={id} className={`workspace-panel workspace-panel--scroll ${className ?? ""}`}>
-      <h2 className="section-title">{a.title}</h2>
-      <p className="small muted">{a.hint}</p>
+    <section id={id} className={`workspace-panel workspace-panel--scroll analyses-view ${className ?? ""}`}>
+      <header className="section-header section-header--blue">
+        <h2 className="section-title">{a.title}</h2>
+        <p className="small muted">{a.hint}</p>
+      </header>
       {error && <p className="error small">{error}</p>}
       {loading && <p className="muted">{a.loading}</p>}
       {!loading && list.length === 0 && (
@@ -81,12 +83,12 @@ export function AnalysisGallery({ className, id, locale, refreshToken = 0 }: Pro
           <p>{a.empty}</p>
         </div>
       )}
-      <div className="analysis-grid">
+      <div className="analysis-grid palette-cards-grid">
         {list.map((item) => (
           <button
             key={item.id}
             type="button"
-            className="analysis-card"
+            className="analysis-card palette-card"
             onClick={() => setSelectedId(item.id)}
           >
             <h3>{item.title}</h3>
@@ -97,9 +99,7 @@ export function AnalysisGallery({ className, id, locale, refreshToken = 0 }: Pro
               </p>
             )}
             <p className="analysis-card-preview">{item.preview}</p>
-            <p className="tiny muted">
-              {a.messageCount(item.message_count)}
-            </p>
+            <p className="tiny muted">{a.messageCount(item.message_count)}</p>
           </button>
         ))}
       </div>
