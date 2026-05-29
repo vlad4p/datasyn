@@ -131,16 +131,16 @@ infra-duckdb-ui-down:
 	@$(MAKE) -C "$(DATASYN_ROOT)/infra/duckdb" ui-down ENVIRONMENT="$(ENVIRONMENT)"
 
 langfuse-up:
-	@$(MAKE) -C "$(DATASYN_ROOT)/infra/langfuse" up
+	@$(MAKE) -C "$(DATASYN_ROOT)/infra/langfuse-deploy" up
 
 langfuse-down:
-	@$(MAKE) -C "$(DATASYN_ROOT)/infra/langfuse" down
+	@$(MAKE) -C "$(DATASYN_ROOT)/infra/langfuse-deploy" down
 
 langfuse-ps:
-	@$(MAKE) -C "$(DATASYN_ROOT)/infra/langfuse" ps
+	@$(MAKE) -C "$(DATASYN_ROOT)/infra/langfuse-deploy" ps
 
 langfuse-logs:
-	@$(MAKE) -C "$(DATASYN_ROOT)/infra/langfuse" logs
+	@$(MAKE) -C "$(DATASYN_ROOT)/infra/langfuse-deploy" logs
 
 mcp-build: bootstrap
 	$(DEPLOY_COMPOSE) -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" build storage-mcp
