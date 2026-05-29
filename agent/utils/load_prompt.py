@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 
 from agent.config import settings
-from agent.deep_agent_constants import DATA_ANALYST_SUBAGENT_TYPE, SANDBOX_PREFIX
+from agent.deep_agent_constants import DATA_ANALYST_SUBAGENT_TYPE, QUERY_SUBAGENT_TYPE, SANDBOX_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +100,8 @@ def supervisor_system_prompt(
         base = load_prompt("supervisor_system_prompt.txt")
 
     parts: list[str] = [base]
+    orchestrator = load_prompt("supervisor_orchestrator.txt")
+    parts.append(f"\n\n{orchestrator}")
     deepagents_helpers = [
         "write_todos",
         "ls",
@@ -135,15 +137,15 @@ def supervisor_system_prompt(
             "### `task`: `subagent_type` (mandatory — pick one)\n\n"
             "The **`task`** tool delegates work to a short-lived subagent. **`subagent_type`** must be "
             "exactly one of the configured types below—anything else fails.\n\n"
-            "- **`general-purpose`** — Full MCP tool set (same servers as this agent): scraping, DuckDB, Dagster, "
-            "skills, filesystem. Use for complex multi-step work that benefits from isolation, parallel delegations, "
-            "or heavy context.\n\n"
+            f"- **`{QUERY_SUBAGENT_TYPE}`** — **Default for every user query.** Full MCP tool set. Gathers "
+            "precise facts (schema, SQL, catalog, paths, counts, tables) and returns a **compact structured brief** "
+            "so this orchestrator thread stays small. **Spawn one `query` task per user turn** for all substantive work.\n\n"
             f"- **`{DATA_ANALYST_SUBAGENT_TYPE}`** — **DuckDB + Dagster MCP tools only** (no `storage_*`). "
-            "Use for deep warehouse analytics, multi-step SQL, catalog/metadata lookups via "
-            "`dagster_catalog_*`, and Dagster code-location operations—especially when you want to keep "
-            "the main thread small or delegate pipeline/database analysis without scraper noise.\n\n"
-            "Put detailed instructions in **`description`** (goal, constraints, expected return shape). "
-            "For trivial chat or one-off tool calls, answer directly—do **not** spawn a subagent."
+            "Optional specialist for warehouse/Dagster-only isolation when `query` is too broad.\n\n"
+            "- **`general-purpose`** — Same tools as `query` but without the compact-return discipline. "
+            "Avoid unless `query` is unavailable.\n\n"
+            "Put the full user goal, constraints, language, and expected return shape in **`description`**. "
+            "The orchestrator synthesizes the user reply from the subagent brief—do **not** run MCP tools in the main thread."
         )
     skills = _runtime_skills_inventory()
     if skills:
@@ -169,11 +171,11 @@ def supervisor_system_prompt(
             "First resolve a real absolute path from tool output (typically under `/data-local/...`, "
             "which is the DuckDB compatibility mirror of MinIO landing data) "
             "and then reuse that exact path.\n\n"
-            "## Delegation hint\n\n"
-            f"When the user needs substantial **database analytics**, **catalog SQL**, or **Dagster pipeline work**, "
-            f"prefer spawning **`task`** with **`subagent_type=\"{DATA_ANALYST_SUBAGENT_TYPE}\"`** so analysis runs "
-            "in an isolated context with only DuckDB and Dagster tools; handle scraping and mixed workflows "
-            "yourself or via **`general-purpose`**.\n\n"
+            "## Delegation (mandatory)\n\n"
+            f"For **every substantive user message**, spawn **`task`** with **`subagent_type=\"{QUERY_SUBAGENT_TYPE}\"`** "
+            "before answering. The query subagent runs MCP tools and returns precise, compact facts; you synthesize "
+            f"the user-facing reply here. Use **`{DATA_ANALYST_SUBAGENT_TYPE}`** only for explicit warehouse-only "
+            "isolation. Parallel `query` tasks only for explicitly independent sub-questions.\n\n"
             "If they ask for **tablas**, **DISTINCT**, **agrupar por descripción**, or similar: put in **`description`** "
             "the **fully qualified table**, columns, and that the return must include **Markdown pipe tables** "
             "plus **fenced SQL** and counts—not prose-only summaries."

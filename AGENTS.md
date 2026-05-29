@@ -111,7 +111,7 @@ When the user asks for **tablas**, **DISTINCT**, **agrupar** / **group by**, **b
 3. **Deliver a real Markdown table** — pipe syntax with a header row. If the user asked for a table, **do not** replace it with vague bullets only. If rows are many, show a **capped sample** in the table plus a separate **`COUNT(DISTINCT …)`** (or totals per group) so cardinality is clear.
 4. **Show your work** — include the **exact SQL** (fenced block), **row / distinct counts**, filters (`WHERE version_number = …`), and tool truncation limits if any.
 5. **Language** — match the **user’s language** for prose and table captions (see **Idioma de respuesta** at end of prompt when Spanish is configured); keep SQL and column identifiers as stored in DuckDB.
-6. **Delegate** — for heavy multi-step SQL + formatting, use **`task`** with **`subagent_type="data-analyst"`** and a **`description`** that states: **FQN**, columns, required **outputs** (e.g. "Markdown: título, bloque SQL, tabla `DISTINCT campo`, luego agrupación por `descripcion` con segunda tabla y conteos"), and **language**.
+6. **Delegate** — the **orchestrator** spawns **`task`** with **`subagent_type="query"`** per user turn; the query subagent runs SQL and returns compact tables/SQL/counts in its brief.
 
 **Anti-pattern:** Prose-only summaries when the user explicitly asked for a **table** or **DISTINCT** listing, or inventing column/group logic without **`duckdb_execute_query`**.
 
@@ -217,14 +217,17 @@ or equivalent) and then reuse that exact absolute path under `/data-local/...`.
 
 ### Tool-use strategy (default loop)
 
-When the task needs warehouse truth: **`duckdb_get_schema`** or a narrow **`information_schema`** query → **`duckdb_execute_query`** for aggregates (never **`SELECT *`** on wide tables without filters) → **`duckdb_list_data_mount`** only when the user needs a host file tree under **`/data-local`**. Subagents (**`task`**) are optional—use for parallel exploration, for **heavy or isolated** warehouse/Dagster analysis, or to save main-thread context; not for a single trivial SQL call.
+**Orchestrator (main thread):** For every substantive user message, spawn **`task`** with **`subagent_type="query"`** and synthesize the reply from the subagent’s compact brief. **Do not** run MCP tools in the main thread except for greetings, capability questions, or one clarifying question.
+
+**Query subagent:** Runs the work loop—**`duckdb_get_schema`** or catalog FTS when a dataset is named → **`duckdb_execute_query`** / **`dagster_catalog_execute_query`** for aggregates (never **`SELECT *`** on wide tables without filters) → **`duckdb_list_data_mount`** only when file paths are needed. Returns **precise facts only** (counts, SQL, tables)—not raw tool transcripts.
 
 **`task` / `subagent_type` (mandatory):** Use exactly one of:
 
-- **`general-purpose`** — same MCP tool set as the main agent (DuckDB, storage, Dagster, etc.) plus skills and filesystem. Default for broad or mixed tasks.
-- **`data-analyst`** — **DuckDB + Dagster MCP only** (no `storage_*` tools). Use for deep SQL, catalog metadata (`dagster_catalog_*`), Dagster project/deploy work, and multi-step analysis that should not pull in object-storage browsing. Scratch files: virtual path **`/sandbox/`** (ephemeral session state); durable reports under **`reports/`** (or **`settings.reports_dir`**).
+- **`query`** — **default for every user query.** Full MCP tool set. Gathers precise information and returns a short structured brief to save main-thread context.
+- **`data-analyst`** — **DuckDB + Dagster MCP only** (no `storage_*`). Optional specialist for warehouse/Dagster-only isolation.
+- **`general-purpose`** — same tools as `query` without compact-return discipline; avoid unless needed.
 
-Any other `subagent_type` is rejected. Put task detail in **`description`**. For trivial chat (e.g. “hola”, “thanks”), **do not** spawn a subagent.
+Put task detail in **`description`** (user goal, constraints, language, expected tables/SQL/counts). Answer directly only for trivial chat (e.g. “hola”, “thanks”) or “what tools do you have?”.
 
 **Filesystem:** **`/sandbox/`** is an ephemeral sandbox (not written to the host git tree). Use it for drafts and scratch; persist deliverables under **`reports/`** as usual.
 

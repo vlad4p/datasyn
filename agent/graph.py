@@ -10,7 +10,7 @@ from langchain_core.tools import BaseTool
 
 from agent.utils.load_prompt import supervisor_system_prompt
 from agent.utils.litellm_chat import build_chat_model
-from agent.utils.subagents_spec import build_composite_backend, data_analyst_subagent
+from agent.utils.subagents_spec import build_composite_backend, data_analyst_subagent, query_subagent
 from agent.config import settings
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ def build_agent(tools: list[BaseTool], *, response_locale: str = "en"):
         tools=tools,
         system_prompt=supervisor_system_prompt(mcp_tool_names=tool_names, response_locale=response_locale),
         backend=backend,
-        subagents=[data_analyst_subagent(tools=tools)],
+        subagents=[query_subagent(tools=tools), data_analyst_subagent(tools=tools)],
         name="datasyn-brain",
         skills=["/skills/"],
     )

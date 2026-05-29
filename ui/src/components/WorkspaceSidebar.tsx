@@ -1,3 +1,5 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { listChatSessions, type ChatSessionSummary } from "../chatHistoryStorage";
 import type { UiLocale } from "../locale";
 import { uiStrings } from "../locale";
 
@@ -8,8 +10,12 @@ type Props = {
   active: WorkspaceView;
   collapsed: boolean;
   busy: boolean;
+  chatHistoryRefresh?: number;
+  activeChatSessionId?: string | null;
+  userId?: string | null;
   onSelect: (view: WorkspaceView) => void;
   onNewChat: () => void;
+  onOpenChat?: (sessionId: string) => void;
   onToggleCollapse: () => void;
 };
 
@@ -48,16 +54,46 @@ function NavIcon({ kind }: { kind: "chat" | "datasets" | "tools" | "analysis" | 
   );
 }
 
+function formatChatDate(iso: string, locale: UiLocale): string {
+  try {
+    return new Date(iso).toLocaleString(locale === "es" ? "es" : "en", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 export function WorkspaceSidebar({
   locale,
   active,
   collapsed,
   busy,
+  chatHistoryRefresh = 0,
+  activeChatSessionId = null,
+  userId = null,
   onSelect,
   onNewChat,
+  onOpenChat,
   onToggleCollapse,
 }: Props) {
   const s = uiStrings(locale);
+  const a = s.analyses;
+  const [chatSessions, setChatSessions] = useState<ChatSessionSummary[]>([]);
+
+  const refreshChats = useCallback(() => {
+    setChatSessions(listChatSessions(userId ?? null));
+  }, [userId]);
+
+  useEffect(() => {
+    refreshChats();
+  }, [refreshChats, chatHistoryRefresh, userId]);
+
+  const defaultChatTitle = useMemo(
+    () => (locale === "es" ? "Chat sin título" : "Untitled chat"),
+    [locale],
+  );
 
   const items: { id: WorkspaceView; label: string; icon: "chat" | "datasets" | "tools" | "analysis" }[] = [
     { id: "agent", label: s.navAgent, icon: "chat" },
@@ -101,6 +137,41 @@ export function WorkspaceSidebar({
             </li>
           ))}
         </ul>
+
+        {!collapsed && (
+          <section className="sidebar-chats" aria-labelledby="sidebar-chats-heading">
+            <h2 className="sidebar-chats__heading" id="sidebar-chats-heading">
+              {a.chatsTitle}
+            </h2>
+            {chatSessions.length === 0 ? (
+              <p className="sidebar-chats__empty">{a.chatsEmpty}</p>
+            ) : (
+              <ul className="sidebar-chats__list" role="list">
+                {chatSessions.map((session) => {
+                  const title = session.title.trim() || defaultChatTitle;
+                  const isActive =
+                    active === "agent" && session.id === activeChatSessionId;
+                  return (
+                    <li key={session.id}>
+                      <button
+                        type="button"
+                        className={`sidebar-chats__item${isActive ? " is-active" : ""}`}
+                        onClick={() => onOpenChat?.(session.id)}
+                        disabled={busy}
+                        title={title}
+                      >
+                        <span className="sidebar-chats__title">{title}</span>
+                        <span className="sidebar-chats__meta">
+                          {formatChatDate(session.updatedAt, locale)}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        )}
       </nav>
 
       <div className="sidebar-footer">

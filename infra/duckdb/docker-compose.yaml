@@ -3,7 +3,7 @@ services:
     build:
       context: ./warehouse
       dockerfile: Dockerfile
-    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/duckdb-warehouse:${DATASYN_IMAGE_TAG:-latest}
+    image: ${DATASYN_IMAGE_PREFIX:-datasyn}/duckdb-warehouse:${DATASYN_IMAGE_TAG:-latest}
     restart: unless-stopped
     volumes:
       - duckdb_data:/data
@@ -19,7 +19,7 @@ services:
     build:
       context: ./mcp
       dockerfile: Dockerfile
-    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/duckdb-mcp:${DATASYN_IMAGE_TAG:-latest}
+    image: ${DATASYN_IMAGE_PREFIX:-datasyn}/duckdb-mcp:${DATASYN_IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       - duckdb
@@ -53,7 +53,7 @@ services:
     build:
       context: ./ui
       dockerfile: Dockerfile
-    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/duckdb-ui:${DATASYN_IMAGE_TAG:-latest}
+    image: ${DATASYN_IMAGE_PREFIX:-datasyn}/duckdb-ui:${DATASYN_IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       - duckdb
