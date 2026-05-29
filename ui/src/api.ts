@@ -42,6 +42,37 @@ export function artifactFileUrl(relativeProjectPath: string): string {
 /** Match Vite proxy `timeout` / `proxyTimeout` (long agent turns). */
 const CHAT_FETCH_MS = 600_000;
 
+/** Include session cookies on brain API calls (OAuth login). */
+export function brainFetch(input: string, init?: RequestInit): Promise<Response> {
+  return fetch(input, { ...init, credentials: "include" });
+}
+
+export type AuthUser = {
+  id: string;
+  email?: string | null;
+  name?: string | null;
+  picture?: string | null;
+  provider: string;
+};
+
+export type AuthMeResponse = {
+  auth_enabled: boolean;
+  authenticated: boolean;
+  user: AuthUser | null;
+  providers: string[];
+};
+
+export async function getAuthMe(): Promise<AuthMeResponse> {
+  const res = await brainFetch(brainApiUrl("/auth/me"));
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<AuthMeResponse>;
+}
+
+export async function logoutAuth(): Promise<void> {
+  const res = await brainFetch(brainApiUrl("/auth/logout"), { method: "POST" });
+  if (!res.ok) throw new Error(await readFetchError(res));
+}
+
 export type ChatResponsePayload = {
   reply: string;
   request_id: string;
@@ -122,7 +153,7 @@ export async function postChatStream(
   const dec = new TextDecoder();
   let buf = "";
   try {
-    const res = await fetch(brainApiUrl("/agent/chat/stream"), {
+    const res = await brainFetch(brainApiUrl("/agent/chat/stream"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, locale, history }),
@@ -187,7 +218,7 @@ export async function postChat(
   const t = window.setTimeout(() => ctrl.abort(), CHAT_FETCH_MS);
   const t0 = performance.now();
   try {
-    const res = await fetch(brainApiUrl("/agent/chat"), {
+    const res = await brainFetch(brainApiUrl("/agent/chat"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, locale, history }),
@@ -328,7 +359,7 @@ export function isStubHealthResponse(h: BrainHealth): boolean {
 }
 
 export async function getHealth(): Promise<BrainHealth> {
-  const res = await fetch(brainApiUrl("/health"));
+  const res = await brainFetch(brainApiUrl("/health"));
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json() as Promise<BrainHealth>;
 }
@@ -366,7 +397,7 @@ export async function getLlmConfig(cachedHealth?: BrainHealth): Promise<LlmConfi
   if (fromHealth) {
     return fromHealth;
   }
-  const res = await fetch(brainApiUrl("/health/llm/config"));
+  const res = await brainFetch(brainApiUrl("/health/llm/config"));
   if (!res.ok) throw new Error(await readFetchError(res));
   const raw = (await res.json()) as Record<string, unknown>;
   return {
@@ -388,7 +419,7 @@ export async function getLlmConfig(cachedHealth?: BrainHealth): Promise<LlmConfi
 }
 
 export async function probeLlm(): Promise<unknown> {
-  const res = await fetch(brainApiUrl("/health/llm"));
+  const res = await brainFetch(brainApiUrl("/health/llm"));
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json();
 }
@@ -401,13 +432,13 @@ export async function getOpenRouterModels(options?: {
   if (options?.freeOnly) params.set("free_only", "true");
   if (options?.refresh) params.set("refresh", "true");
   const qs = params.toString();
-  const res = await fetch(brainApiUrl(`/health/llm/models${qs ? `?${qs}` : ""}`));
+  const res = await brainFetch(brainApiUrl(`/health/llm/models${qs ? `?${qs}` : ""}`));
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json() as Promise<OpenRouterModelsResponse>;
 }
 
 export async function setChatModel(chatModel: string): Promise<ChatModelUpdateResponse> {
-  const res = await fetch(brainApiUrl("/health/llm/model"), {
+  const res = await brainFetch(brainApiUrl("/health/llm/model"), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ chat_model: chatModel }),
@@ -420,14 +451,14 @@ export async function setChatModel(chatModel: string): Promise<ChatModelUpdateRe
  * Optional alias: same JSON as ``GET /health`` → ``pipeline`` (older brains may 404 — prefer ``pipeline`` on health).
  */
 export async function getHealthPipeline(): Promise<Record<string, unknown> | null> {
-  const res = await fetch(brainApiUrl("/health/pipeline"));
+  const res = await brainFetch(brainApiUrl("/health/pipeline"));
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json() as Promise<Record<string, unknown>>;
 }
 
 export async function getToolsInventory(): Promise<ToolInventoryResponse> {
-  const res = await fetch(brainApiUrl("/health/tools"));
+  const res = await brainFetch(brainApiUrl("/health/tools"));
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json() as Promise<ToolInventoryResponse>;
 }
@@ -458,7 +489,7 @@ export type WarehouseTablesResponse = {
 };
 
 export async function getWarehouseTables(): Promise<WarehouseTablesResponse> {
-  const res = await fetch(brainApiUrl("/health/warehouse/tables"));
+  const res = await brainFetch(brainApiUrl("/health/warehouse/tables"));
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json() as Promise<WarehouseTablesResponse>;
 }
@@ -547,14 +578,14 @@ export async function getCatalogDatasets(options?: {
     params.set("duckdb_table", options.duckdbTable);
   }
   const qs = params.toString();
-  const res = await fetch(brainApiUrl(`/catalog/datasets${qs ? `?${qs}` : ""}`));
+  const res = await brainFetch(brainApiUrl(`/catalog/datasets${qs ? `?${qs}` : ""}`));
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json() as Promise<CatalogDatasetsResponse>;
 }
 
 export async function getCatalogDatasetDetail(fqn: string): Promise<CatalogDatasetDetailResponse> {
   const enc = encodeURIComponent(fqn);
-  const res = await fetch(brainApiUrl(`/catalog/datasets/${enc}`));
+  const res = await brainFetch(brainApiUrl(`/catalog/datasets/${enc}`));
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json() as Promise<CatalogDatasetDetailResponse>;
 }
@@ -591,19 +622,19 @@ export type AnalysisExportRequest = {
 };
 
 export async function listAnalyses(): Promise<AnalysesListResponse> {
-  const res = await fetch(brainApiUrl("/analyses"));
+  const res = await brainFetch(brainApiUrl("/analyses"));
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json() as Promise<AnalysesListResponse>;
 }
 
 export async function getAnalysis(id: string): Promise<AnalysisDetailResponse> {
-  const res = await fetch(brainApiUrl(`/analyses/${encodeURIComponent(id)}`));
+  const res = await brainFetch(brainApiUrl(`/analyses/${encodeURIComponent(id)}`));
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json() as Promise<AnalysisDetailResponse>;
 }
 
 export async function exportAnalysis(body: AnalysisExportRequest): Promise<{ status: string; analysis: AnalysisManifest }> {
-  const res = await fetch(brainApiUrl("/analyses/export"), {
+  const res = await brainFetch(brainApiUrl("/analyses/export"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

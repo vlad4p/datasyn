@@ -9,7 +9,11 @@ from deepagents import FilesystemPermission
 from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
 from langchain_core.tools import BaseTool
 
-from agent.deep_agent_constants import DATA_ANALYST_SUBAGENT_TYPE, SANDBOX_PREFIX
+from agent.deep_agent_constants import (
+    DATA_ANALYST_SUBAGENT_TYPE,
+    QUERY_SUBAGENT_TYPE,
+    SANDBOX_PREFIX,
+)
 from agent.utils.load_prompt import load_prompt
 
 logger = logging.getLogger(__name__)
@@ -17,7 +21,7 @@ logger = logging.getLogger(__name__)
 # User-facing deliverables (same root as the main agent).
 REPORTS_GLOB = "/reports/**"
 
-_DATA_ANALYST_WRITE_PERMS: list[FilesystemPermission] = [
+_SUBAGENT_WRITE_PERMS: list[FilesystemPermission] = [
     FilesystemPermission(operations=["write"], paths=[SANDBOX_PREFIX + "**", REPORTS_GLOB], mode="allow"),
     FilesystemPermission(operations=["write"], paths=["/**"], mode="deny"),
 ]
@@ -47,6 +51,23 @@ def mcp_tools_duckdb_dagster(tools: list[BaseTool]) -> list[BaseTool]:
     return out
 
 
+def query_subagent(*, tools: list[BaseTool]) -> dict:
+    """``SubAgent`` spec: per-turn information gathering with full MCP tools; compact return."""
+    return {
+        "name": QUERY_SUBAGENT_TYPE,
+        "description": (
+            "Default subagent for **every user query**: runs MCP tools and skills to collect **precise facts** "
+            "(schema, SQL results, catalog metadata, file paths, counts, markdown tables) and returns a **short structured "
+            "brief**—not raw tool dumps. Use for all substantive questions so the main orchestrator thread stays small. "
+            "Has the full MCP tool set. Write scratch under `/sandbox/`; reports under `/reports/`."
+        ),
+        "system_prompt": load_prompt("query_subagent.txt"),
+        "tools": tools,
+        "skills": ["/skills/"],
+        "permissions": _SUBAGENT_WRITE_PERMS,
+    }
+
+
 def data_analyst_subagent(*, tools: list[BaseTool]) -> dict:
     """``SubAgent`` spec: warehouse SQL, catalog SQL, Dagster project ops, sandbox scratch files."""
     return {
@@ -62,5 +83,5 @@ def data_analyst_subagent(*, tools: list[BaseTool]) -> dict:
         "system_prompt": load_prompt("data_analyst_subagent.txt"),
         "tools": mcp_tools_duckdb_dagster(tools),
         "skills": ["/skills/"],
-        "permissions": _DATA_ANALYST_WRITE_PERMS,
+        "permissions": _SUBAGENT_WRITE_PERMS,
     }

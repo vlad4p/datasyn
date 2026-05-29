@@ -1,14 +1,22 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ChatResponsePayload } from "./api";
 import { exportAnalysis, postChatStream } from "./api";
 import type { ChatHistoryTurn, ChatStreamEvent } from "./api";
+import { useAuth } from "./auth/AuthContext";
 import { AgentChatPanel, type ChatMsg } from "./components/AgentChatPanel";
 import { AnalysisGallery } from "./components/AnalysisGallery";
 import { AppHeader } from "./components/AppHeader";
 import { DatasetCatalog } from "./components/DatasetCatalog";
+import { LoginPage } from "./components/LoginPage";
 import { SkillsToolsView } from "./components/SkillsToolsView";
 import { WorkspaceSidebar, type WorkspaceView } from "./components/WorkspaceSidebar";
-import { loadChatSession, saveChatSession } from "./chatSessionStorage";
+import {
+  createChatSession,
+  getActiveSessionId,
+  loadChatSession,
+  saveChatSession,
+  setActiveSessionId,
+} from "./chatHistoryStorage";
 import { readStoredLocale, persistLocale, uiStrings, type UiLocale } from "./locale";
 import { newId } from "./newId";
 import { formatStreamStep, formatStreamToolDelta } from "./streamActivityFormat";
@@ -24,23 +32,84 @@ type Msg = ChatMsg & {
 };
 
 export default function App() {
+  const auth = useAuth();
   const [locale, setLocale] = useState<UiLocale>(() => readStoredLocale());
-  const [messages, setMessages] = useState<Msg[]>(() => loadChatSession() as Msg[]);
+  const s = uiStrings(locale);
+
+  const authError = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("auth_error");
+    if (!code) return null;
+    if (code === "profile_failed") return s.auth.profileFailed;
+    return s.auth.oauthFailed;
+  }, [s.auth.oauthFailed, s.auth.profileFailed]);
+
+  useEffect(() => {
+    if (!authError) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("auth_error");
+    window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+  }, [authError]);
+
+  const onLocaleChange = useCallback((l: UiLocale) => {
+    persistLocale(l);
+    setLocale(l);
+  }, []);
+
+  if (auth.loading) {
+    return (
+      <div className="login-shell">
+        <main className="login-main">
+          <p className="login-loading">{s.auth.loading}</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (auth.authEnabled && !auth.user) {
+    return (
+      <LoginPage
+        locale={locale}
+        onLocaleChange={onLocaleChange}
+        providers={auth.providers}
+        error={authError}
+      />
+    );
+  }
+
+  return (
+    <AppWorkspace
+      locale={locale}
+      onLocaleChange={onLocaleChange}
+      user={auth.user}
+      onLogout={() => void auth.logout()}
+    />
+  );
+}
+
+type WorkspaceProps = {
+  locale: UiLocale;
+  onLocaleChange: (locale: UiLocale) => void;
+  user: import("./api").AuthUser | null;
+  onLogout: () => void;
+};
+
+function AppWorkspace({ locale, onLocaleChange, user, onLogout }: WorkspaceProps) {
+  const [activeSessionId, setActiveSessionIdState] = useState(() => getActiveSessionId());
+  const [messages, setMessages] = useState<Msg[]>(() => loadChatSession(getActiveSessionId()) as Msg[]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [analysisRefresh, setAnalysisRefresh] = useState(0);
+  const [chatHistoryRefresh, setChatHistoryRefresh] = useState(0);
   const [pendingDatasetFqn, setPendingDatasetFqn] = useState<string | null>(null);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("agent");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readSidebarCollapsed());
   const s = uiStrings(locale);
-
-  const onLocaleChange = useCallback((l: UiLocale) => {
-    persistLocale(l);
-    setLocale(l);
-  }, []);
+  const userId = user?.id ?? null;
 
   const selectView = useCallback((view: WorkspaceView) => {
     setWorkspaceView(view);
@@ -56,17 +125,33 @@ export default function App() {
 
   const handleNewChat = useCallback(() => {
     if (busy) return;
+    const nextId = createChatSession(userId);
+    setActiveSessionIdState(nextId);
     setMessages([]);
     setError(null);
     setInput("");
-    saveChatSession([]);
+    setChatHistoryRefresh((n) => n + 1);
     setWorkspaceView("agent");
-  }, [busy]);
+  }, [busy, userId]);
+
+  const handleOpenChatSession = useCallback(
+    (sessionId: string) => {
+      if (busy) return;
+      setActiveSessionId(sessionId);
+      setActiveSessionIdState(sessionId);
+      setMessages(loadChatSession(sessionId) as Msg[]);
+      setError(null);
+      setInput("");
+      setWorkspaceView("agent");
+    },
+    [busy],
+  );
 
   useEffect(() => {
     if (busy) return;
-    saveChatSession(messages);
-  }, [messages, busy]);
+    saveChatSession(messages, userId, activeSessionId);
+    setChatHistoryRefresh((n) => n + 1);
+  }, [messages, busy, activeSessionId, userId]);
 
   const handleAnalyzeDataset = useCallback(
     (fqn: string) => {
@@ -224,7 +309,12 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <AppHeader locale={locale} onLocaleChange={onLocaleChange} />
+      <AppHeader
+        locale={locale}
+        onLocaleChange={onLocaleChange}
+        user={user}
+        onLogout={onLogout}
+      />
 
       <div className={layoutClass}>
         <WorkspaceSidebar
@@ -232,8 +322,12 @@ export default function App() {
           active={workspaceView}
           collapsed={sidebarCollapsed}
           busy={busy}
+          chatHistoryRefresh={chatHistoryRefresh}
+          activeChatSessionId={activeSessionId}
+          userId={userId}
           onSelect={selectView}
           onNewChat={handleNewChat}
+          onOpenChat={handleOpenChatSession}
           onToggleCollapse={toggleSidebar}
         />
 

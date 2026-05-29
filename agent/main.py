@@ -22,9 +22,15 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import AliasChoices, BaseModel, Field
+from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
+
+from agent.auth import auth_router
+from agent.auth.config import auth_settings
+from agent.auth.middleware import AuthMiddleware
+from agent.auth.deps import optional_user
 from langchain_mcp_adapters.client import MultiServerMCPClient as MultiServerToolClient
 
 from agent.utils.agent_chat import run_agent_chat_turn, stream_agent_chat_sse_events
@@ -236,6 +242,8 @@ _cors_origins = [
     "http://127.0.0.1:5173",
     "http://localhost:4173",
     "http://127.0.0.1:4173",
+    "http://localhost:8003",
+    "http://127.0.0.1:8003",
     *settings.cors_extra_origins,
 ]
 app.add_middleware(
@@ -245,8 +253,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+if auth_settings.enabled and auth_settings.session_secret:
+    app.add_middleware(AuthMiddleware)
+    app.add_middleware(SessionMiddleware, secret_key=auth_settings.session_secret)
 # Outermost runs first: strip `/api` before routing so `/api/health` matches `GET /health`.
 app.add_middleware(StripApiPrefixMiddleware)
+
+app.include_router(auth_router)
 
 
 @app.exception_handler(HTTPException)
@@ -466,6 +479,10 @@ def health() -> dict[str, Any]:
         "status": "ok",
         **_llm_config_snapshot(),
         "pipeline": _pipeline_snapshot(),
+        "auth": {
+            "enabled": auth_settings.enabled,
+            "providers": list(auth_settings.providers),
+        },
     }
 
 
@@ -651,6 +668,9 @@ async def agent_chat(request: Request, response: Response, body: ChatRequest) ->
     )
     session_id = (request.headers.get("X-Langfuse-Session-Id") or "").strip() or None
     user_id = (request.headers.get("X-Langfuse-User-Id") or "").strip() or None
+    auth_user = optional_user(request)
+    if auth_user and not user_id:
+        user_id = auth_user.id
     try:
         result = await run_agent_chat_turn(
             body.message,
@@ -691,6 +711,9 @@ async def agent_chat_stream(request: Request, body: ChatRequest) -> StreamingRes
     request_id = request.headers.get("X-Request-ID") or str(uuid4())
     session_id = (request.headers.get("X-Langfuse-Session-Id") or "").strip() or None
     user_id = (request.headers.get("X-Langfuse-User-Id") or "").strip() or None
+    auth_user = optional_user(request)
+    if auth_user and not user_id:
+        user_id = auth_user.id
     logger.info(
         "POST /agent/chat/stream request_id=%s message_chars=%s pipeline_debug=%s",
         request_id,

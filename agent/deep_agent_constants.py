@@ -3,5 +3,8 @@
 # Ephemeral virtual path routed to ``StateBackend`` in ``CompositeBackend``.
 SANDBOX_PREFIX = "/sandbox/"
 
+# ``task`` tool: ``subagent_type="query"`` (default per user turn — gather precise facts).
+QUERY_SUBAGENT_TYPE = "query"
+
 # ``task`` tool: ``subagent_type="data-analyst"`` (DuckDB + Dagster MCP only).
 DATA_ANALYST_SUBAGENT_TYPE = "data-analyst"

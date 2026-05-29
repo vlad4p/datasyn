@@ -3,7 +3,7 @@ services:
     build:
       context: ./minio
       dockerfile: Dockerfile
-    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/minio:${DATASYN_IMAGE_TAG:-latest}
+    image: ${DATASYN_IMAGE_PREFIX:-datasyn}/minio:${DATASYN_IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:
       - path: ./.env
@@ -29,7 +29,7 @@ services:
     build:
       context: ./mcp
       dockerfile: Dockerfile
-    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/storage-mcp:${DATASYN_IMAGE_TAG:-latest}
+    image: ${DATASYN_IMAGE_PREFIX:-datasyn}/storage-mcp:${DATASYN_IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       - minio

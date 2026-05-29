@@ -2,87 +2,316 @@
 
 Despliegue del stack DataSyn (brain + UI + plataforma de datos + servidores MCP).
 
-Para qué hace cada componente y cómo se usa, ver [`README.md`](README.md). Para reglas operativas del agente y reglas de SQL, ver [`AGENTS.md`](AGENTS.md).
+- Qué hace cada pieza: [`README.md`](README.md)
+- Agente y SQL: [`AGENTS.md`](AGENTS.md)
+- Lógica de deploy compartida: [`make/deploy.mk`](make/deploy.mk)
 
 ---
 
 ## Requisitos
 
-- Docker + Docker Compose v2
-- Make (recomendado)
-- **[uv](https://docs.astral.sh/uv/getting-started/installation/)** — gestor de Python del brain (local: siempre `uv sync` / `uv run`, no `pip` ni `python` sueltos)
-- Node.js — solo para la UI en host (`npm run dev`)
+| Herramienta | Uso |
+|---|---|
+| Docker + Compose v2 | Infra + MCP en contenedor (MinIO, DuckDB, Dagster) |
+| Make | Orquestación (`Makefile` raíz + `infra/*/Makefile`) |
+| [uv](https://docs.astral.sh/uv/getting-started/installation/) | **Brain en host:** `make uv-sync`, `uv run brain-dev` |
+| Node.js + npm | **UI en host:** `make ui-install`, `npm run dev` en `ui/` |
 
-Puertos publicados por defecto:
-
-| Servicio | Puerto host | Servicio MCP |
-|---|---|---|
-| UI (Vite servida en container) | `8003` | — |
-| Brain (FastAPI) | `8002` | — |
-| Dagster webserver | `3001` | — |
-| MinIO (consola) | `9001` | — |
-| MinIO (S3 API) | interno | — |
-| `duckdb-mcp` | `8040` | `duckdb` |
-| `storage-mcp` | `8044` | `storage` |
-| Registry OCI (`registry:3`) | `5000` | — |
+**Repo hermano (pipelines Dagster):** clonar [`datasyn-code`](../datasyn-code) al lado de `datasyn/` (`../datasyn-code`). Sin él, Dagster usa un stub vacío en `infra/dagster/user_code/`.
 
 ---
 
-## Quick start
+## `ENVIRONMENT`: dev vs prod
+
+Un solo conjunto de targets Make; el modo lo define **`ENVIRONMENT`** (resuelto en [`make/deploy.mk`](make/deploy.mk)):
+
+| | `ENVIRONMENT=dev` (default) | `ENVIRONMENT=prod` |
+|---|---|---|
+| **Imágenes** | `docker compose build` en tu máquina | `docker compose pull` desde registry |
+| **Prefijo de tag** | `datasyn/<servicio>:latest` | `<registry>/datasyn/<servicio>:latest` |
+| **Registry OCI** | No se usa | Obligatorio: `DATASYN_IMAGE_REGISTRY=host:port` |
+| **Ejemplo de tag** | `datasyn/brain:latest` | `10.13.10.119:5000/datasyn/brain:latest` |
+
+Comprobar resolución:
 
 ```bash
-make bootstrap        # red infra-datasynk + volúmenes duckdb_data, storage
-make images-prepare   # registry local + build de todas las imágenes
-make infra-up         # MinIO, DuckDB+MCP, Dagster (empty user-code stub)
-make agent-up         # brain + UI
+make deploy-print-env
+make deploy-print-env ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=10.13.10.119:5000
 ```
 
-`make stack-up` = `infra-up` + `agent-up`. `make help` lista todos los targets.
+Variables útiles:
 
-### Compose-only (sin Make)
+| Variable | Default (dev) | Prod |
+|---|---|---|
+| `ENVIRONMENT` | `dev` | `prod` |
+| `DATASYN_IMAGE_PREFIX` | `datasyn` (auto) | `$DATASYN_IMAGE_REGISTRY/datasyn` (auto) |
+| `DATASYN_IMAGE_TAG` | `latest` | `latest` |
+| `DATASYN_IMAGE_REGISTRY` | — | `host:port` o derivado de `REGISTRY_HTTP_URL` |
+| `DATASYN_CODE_DIR` | `../datasyn-code` | igual |
+
+---
+
+## Puertos (host)
+
+| Servicio | Puerto | Notas |
+|---|---|---|
+| Brain (FastAPI) | `8002` | **Host** con `make agent-dev` (`uv run brain-dev`) |
+| UI | `5173` | **Host** con `make agent-dev` (`npm run dev`) |
+| UI (contenedor) | `8003` | Solo con `make stack-up` / `make agent-up` (no daily dev) |
+| Dagster UI | `3001` | |
+| MinIO consola | `9001` | |
+| `duckdb-mcp` | `8040` | `mcp.json` → `duckdb` |
+| `storage-mcp` | `8044` | `mcp.json` → `storage` |
+| **Langfuse UI** | `3000` | Opcional: `make langfuse-up` (`infra/langfuse`) |
+| DuckDB Local UI | `4213` | Perfil `ui`; opcional |
+| Registry OCI | `5000` | Solo `make publish` / `infra/distribution`; **no** en dev local |
+
+En macOS, el puerto **5000** suele estar ocupado por AirPlay. Para un registry local: `REGISTRY_PUBLISH_PORT=5001` y `DATASYN_IMAGE_REGISTRY=localhost:5001` (añadir a Docker **insecure-registries**).
+
+---
+
+## Quick start — desarrollo local (recomendado)
+
+**Brain y UI en el host** (`uv` + `npm`). **Infra en Docker** (MinIO, DuckDB, Dagster, MCPs). No uses `make stack-up` ni `make agent-up` para el día a día — esos levantan brain/UI en contenedores.
+
+### Primera vez
+
+```bash
+cp .env.example .env          # LLM, OAuth, MCP
+make uv-sync                  # Python → .venv (uv)
+make ui-install               # deps en ui/ (npm)
+```
+
+### Cada sesión
+
+```bash
+make dev-up                   # Docker: infra (ENVIRONMENT=dev)
+make agent-dev                # host: uv brain :8002 + npm Vite :5173
+```
+
+O en un solo paso (infra + brain + UI):
+
+```bash
+make dev
+```
+
+| Qué | Dónde | URL |
+|---|---|---|
+| UI (Vite) | **host** (`npm run dev`) | http://127.0.0.1:5173 |
+| Brain (FastAPI) | **host** (`uv run brain-dev`) | http://127.0.0.1:8002 |
+| Dagster | Docker | http://127.0.0.1:3001 |
+| MinIO consola | Docker | http://127.0.0.1:9001 |
+| duckdb-mcp / storage-mcp | Docker | :8040 / :8044 |
+
+Parar infra:
+
+```bash
+make dev-down                 # baja contenedores de infra
+# brain/vite: Ctrl+C en la terminal de agent-dev
+```
+
+Solo brain en host (sin UI):
+
+```bash
+make dev-up && make agent-brain
+```
+
+### Stack completo en Docker (prod-like, no daily dev)
+
+Brain y UI **en contenedores** — útil para probar imágenes `datasyn/*` como en prod:
+
+```bash
+make stack-up                 # infra-up + agent-up → :8002 brain, :8003 ui
+```
+
+Por stack:
+
+```bash
+make -C infra/object-storage up
+make -C infra/duckdb up
+make -C infra/dagster up
+```
+
+### User code Dagster (`datasyn-code`)
+
+```bash
+# Desde datasyn (detecta ../datasyn-code o usa stub):
+make dagster-user-code-build
+
+# Desde el repo hermano:
+cd ../datasyn-code && make build ENVIRONMENT=dev
+```
+
+Recrear tras cambios:
+
+```bash
+make -C infra/dagster user-code-build
+docker compose -f infra/dagster/docker-compose.yaml up -d --force-recreate dagster_user_code
+```
+
+---
+
+## Quick start — producción (`ENVIRONMENT=prod`)
+
+En un servidor (o laptop) que **tira** imágenes ya publicadas:
+
+```bash
+export DATASYN_IMAGE_REGISTRY=10.13.10.119:5000   # host:port del registry, sin http://
+
+make bootstrap
+make infra-up ENVIRONMENT=prod
+make agent-up ENVIRONMENT=prod
+# o
+make stack-up ENVIRONMENT=prod
+```
+
+### Publicar imágenes al registry
+
+Desde una máquina de build (p. ej. CI o laptop):
+
+```bash
+# Build + push (compose push; puede requerir insecure-registries si el registry es HTTP local)
+make publish ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=10.13.10.119:5000
+
+# Registry local en Docker (opcional, puerto 5000/5001):
+make registry-up REGISTRY_PUBLISH_PORT=5001
+make publish ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=localhost:5001
+
+# Push a registry HTTP sin tocar Docker Engine (Skopeo + buildx):
+make publish-remote ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=10.13.10.119:5000
+```
+
+User code de pipelines:
+
+```bash
+cd ../datasyn-code
+make build ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=10.13.10.119:5000
+make push ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=10.13.10.119:5000
+```
+
+---
+
+## Compose sin Make (solo infra en dev local)
+
+Brain y UI: **`uv run brain-dev`** y **`cd ui && npm run dev`** — no levantes `docker-compose.yaml` raíz en daily dev.
 
 ```bash
 docker network create infra-datasynk 2>/dev/null || true
-docker volume create duckdb_data 2>/dev/null || true
-docker volume create storage 2>/dev/null || true
+docker volume create duckdb_data storage 2>/dev/null || true
 
-export DATASYN_IMAGE_REGISTRY=localhost:5000
-export DATASYN_IMAGE_NAMESPACE=datasyn
+export ENVIRONMENT=dev
+export DATASYN_IMAGE_PREFIX=datasyn
 export DATASYN_IMAGE_TAG=latest
+export DATASYN_CODE_DIR=/ruta/a/datasyn-code
 
-docker compose -f infra/distribution/docker-compose.yaml up -d
+docker compose -f infra/object-storage/docker-compose.yaml up -d --build
+docker compose -f infra/duckdb/docker-compose.yaml up -d --build
+docker compose -f infra/dagster/docker-compose.yaml up -d --build
+
+cp .env.example .env && uv sync && cd ui && npm install
+uv run brain-dev          # terminal 1
+cd ui && npm run dev        # terminal 2
+```
+
+Prod (pull):
+
+```bash
+export ENVIRONMENT=prod
+export DATASYN_IMAGE_REGISTRY=10.13.10.119:5000
+export DATASYN_IMAGE_PREFIX=$DATASYN_IMAGE_REGISTRY/datasyn
+
+docker compose -f infra/object-storage/docker-compose.yaml pull
 docker compose -f infra/object-storage/docker-compose.yaml up -d
-docker compose -f infra/duckdb/docker-compose.yaml up -d
-docker compose -f infra/dagster/docker-compose.yaml up -d
-docker compose up -d
+# … mismo patrón para duckdb, dagster, docker-compose.yaml raíz
 ```
 
 ---
 
-## Desarrollo del brain en host
+## Archivos de entorno
 
-Requisito: [uv](https://docs.astral.sh/uv/getting-started/installation/) instalado. Python lo fija `.python-version` (3.12); `uv sync` crea `.venv`.
+| Archivo | Stack |
+|---|---|
+| `.env` (raíz) | Brain en host: LLM, OAuth, MCP |
+| `compose.env` | Brain en contenedor |
+| `infra/object-storage/.env` | MinIO (`cp .env.example`) |
+| `infra/dagster/.env` | Dagster user code / runs (LiteLLM, MinIO, paths) |
+| `infra/duckdb/mcp/.env` | Opcional, duckdb-mcp |
+| `mcp.json` | URLs MCP para el brain |
+
+---
+
+## Brain y UI en host (`uv` + `npm`)
+
+Flujo diario: **no** contenedores `brain` / `ui`. Solo infra en Docker.
+
+| Comando | Qué hace |
+|---|---|
+| `make uv-sync` | `uv sync` — deps Python en `.venv` |
+| `make ui-install` | `npm install` en `ui/` |
+| `make agent-dev` | `uv run brain-dev` (:8002) + `npm run dev` (:5173) en paralelo |
+| `make agent-brain` | Solo brain en host |
+| `make brain-restart` | Mata :8002 y relanza `brain-dev` |
+| `make test-agent` | `uv run pytest tests/` |
+
+`.env` en la raíz alimenta al brain en host (LLM, OAuth, MCP). `compose.env` solo aplica si corrés brain en contenedor (`make agent-up`).
+
+MCP en Docker + brain en host: URLs de `mcp.json` se reescriben a `127.0.0.1:8040` / `8044`. Remotos: `MCP_DISABLE_HOST_URL_REWRITE=1`.
+
+---
+
+## Langfuse (trazas del agente, opcional)
+
+Stack upstream en **`infra/langfuse/`** (repo Langfuse). No forma parte de `make infra-up`; levántalo aparte.
+
+### 1. Arrancar Langfuse
 
 ```bash
-cp .env.example .env          # LLM + MCP (editar OPENROUTER_API_KEY u otro provider)
-uv sync                       # instala deps en .venv
-make agent-dev                # uv run brain-dev :8002 + Vite :5173
+make langfuse-up
+# equivalente:
+# cp infra/langfuse/.env.datasyn.example infra/langfuse/.env
+# docker compose -f infra/langfuse/docker-compose.yml --env-file infra/langfuse/.env up -d
 ```
 
-Solo brain (sin UI):
+- UI: http://127.0.0.1:3000  
+- Login inicial (`.env.datasyn.example`): `admin@example.com` / `datasyn-local`  
+- Proyecto pre-creado: **datasyn-brain** con claves fijas de dev (ver abajo).
+
+**Puertos en localhost:** 3000 (UI), 3030 (worker), 5432 (Postgres), 6379 (Redis), 8123/9000 (ClickHouse), 9090/9091 (MinIO interno de Langfuse). Dagster sigue en **:3001** para no chocar con la UI de Langfuse.
+
+### 2. Configurar el brain (host `uv`)
+
+En la raíz, en **`.env`** (mismas claves que `LANGFUSE_INIT_PROJECT_*` en `infra/langfuse/.env`):
 
 ```bash
-make agent-brain              # equivalente a: uv run brain-dev
+LANGFUSE_PUBLIC_KEY=pk-lf-datasyn-local-dev
+LANGFUSE_SECRET_KEY=sk-lf-datasyn-local-dev
+LANGFUSE_BASE_URL=http://127.0.0.1:3000
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:3000/api/public/otel
+OTEL_SERVICE_NAME=datasyn-brain
+DEPLOYMENT_ENV=dev
 ```
 
-MCP local en Docker (opcional; si usás un servidor remoto, configurá `mcp.json` y `MCP_DISABLE_HOST_URL_REWRITE=1` en `.env`):
+Reiniciar el brain tras editar `.env`:
 
 ```bash
-make mcp-up
-make agent-dev
+make brain-restart
+# o Ctrl+C en agent-dev y volver a lanzar
 ```
 
-En modo host con MCP en Docker, las URLs de `mcp.json` (`duckdb-mcp`, …) se reescriben a `127.0.0.1:8040 / 8044`. Para URLs externas (IP/hostname): `MCP_DISABLE_HOST_URL_REWRITE=1`.
+### 3. Verificar
+
+```bash
+curl -s http://127.0.0.1:8002/api/health | jq '.langfuse_tracing_enabled'
+# true
+
+# Tras un mensaje en el chat del agente, abrir Langfuse → Traces
+```
+
+El brain envía trazas por **Langfuse SDK** (`CallbackHandler` en `/agent/chat`) y por **OTLP** si `OTEL_EXPORTER_OTLP_ENDPOINT` está definido (auth Basic desde las mismas claves).
+
+**Brain en contenedor** (`make agent-up`): usa `http://host.docker.internal:3000` para `LANGFUSE_BASE_URL` y OTLP (ver `compose.env`).
+
+Parar Langfuse: `make langfuse-down`.
 
 ---
 
@@ -92,66 +321,76 @@ En modo host con MCP en Docker, las URLs de `mcp.json` (`duckdb-mcp`, …) se re
 
 | Valor | Requerido | Notas |
 |---|---|---|
-| `litellm` | `LITELLM_KEY`, `LITELLM_PROXY_BASE`, `CHAT_MODEL` | Proxy auto-hosteado (`infra/litellm/`); `CHAT_MODEL` debe existir en `GET /v1/models` |
-| `openrouter` | `OPENROUTER_API_KEY`, `CHAT_MODEL` | Slug de OpenRouter; opcional `OPENROUTER_BASE_URL` |
-| `gemini` | `GEMINI_API_KEY` (o `GOOGLE_API_KEY`) | `CHAT_MODEL` opcional (default `gemini-2.0-flash`) |
+| `litellm` | `LITELLM_KEY`, `LITELLM_PROXY_BASE`, `CHAT_MODEL` | `infra/litellm/` |
+| `openrouter` | `OPENROUTER_API_KEY`, `CHAT_MODEL` | |
+| `gemini` | `GEMINI_API_KEY` o `GOOGLE_API_KEY` | |
 
-Trazas opcionales con Langfuse (`infra/langfuse/`): `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL`. Detalle de loopback host/Docker en `compose.env`.
+Langfuse opcional: `LANGFUSE_*` en `compose.env`. Brain en Docker hacia LiteLLM en host: `http://host.docker.internal:4000` o `LITELLM_DOCKER_HOST_REWRITE=1`.
 
 ---
 
-## Imágenes y registry
+## Imágenes y registry (referencia Make)
 
-Tags: `${DATASYN_IMAGE_REGISTRY}/${DATASYN_IMAGE_NAMESPACE}/<servicio>:${DATASYN_IMAGE_TAG}` (default `localhost:5000/datasyn/...:latest`).
-
-| Target | Acción |
+| Target | Uso |
 |---|---|
-| `make images-build` | Build local (todos los compose) |
-| `make images-push` | Push al registry local |
-| `make publish` | `images-prepare` + `images-push` |
-| `make images-build-remote DATASYN_IMAGE_REGISTRY=<host:port>` | Build con `DOCKER_DEFAULT_PLATFORM=linux/amd64` (Apple Silicon → server x86) |
-| `make publish-remote DATASYN_IMAGE_REGISTRY=<host:port>` | Build + push a registry externo (Skopeo, sin `insecure-registries`) |
-| `make storage-mcp-build-push-remote` | Cross-build buildx + push de `storage-mcp` |
-| `make dagster-user-code-build-push-remote` | Idem para `dagster_user_code_image` |
+| `make dev` | **Local daily:** infra Docker + `agent-dev` (uv + npm) |
+| `make langfuse-up` | Langfuse self-hosted :3000 (tracing opcional) |
+| `make dev-up` | Solo infra Docker |
+| `make agent-dev` | Solo brain + UI en host |
+| `make stack-up` | Todo en Docker (brain :8002, ui :8003) |
+| `make images-build` | Build imágenes `datasyn/*` |
+| `make publish` | Push al registry (`ENVIRONMENT=prod`) |
 
-Para registries HTTP: agregar host:port a `insecure-registries` del Docker Engine, **o** usar los targets `*-remote` que evitan ese requisito.
+Listado completo: `make help`.
 
 ---
 
 ## DuckDB Local UI (opcional)
 
-Behind compose `profile: ui`. **Mantiene un lock sobre `warehouse.duckdb`** mientras corre, así que no la dejes prendida durante ingest.
+Perfil Compose `ui`. **Bloquea `warehouse.duckdb`** — no usar durante ingest.
 
 ```bash
-make infra-duckdb-ui-up    # http://127.0.0.1:4213
+make -C infra/duckdb ui-up      # http://127.0.0.1:4213
+make -C infra/duckdb ui-down
+# alias raíz:
+make infra-duckdb-ui-up
 make infra-duckdb-ui-down
 ```
 
 ---
 
-## Catálogo de metadatos (opcional)
+## Catálogo y UI
 
-Si tu organización tiene un catálogo (Postgres con descripciones de columnas, lineage, tags), apuntá un servidor MCP **dagster** en `mcp.json` (puede vivir en otro repo/despliegue) con `dagster_catalog_get_schema` y `dagster_catalog_execute_query`. El agente prioriza catálogo antes de tocar archivos. La UI (**pestaña Datasets**) consume `GET /api/catalog/datasets` y fusiona tablas DuckDB con `dataset_entity`; sin dagster en `mcp.json` verás solo el almacén. Patrones de SQL en `skills/catalog-sql/SKILL.md` cuando exista en el repo.
-
-Los análisis exportados desde la UI se guardan en `./reports/analyses/` (montado en el contenedor `brain` como `/project/reports`).
-
-**Datasets tab:** el brain consulta el [GraphQL API de Dagster](https://docs.dagster.io/api/graphql) (`DAGSTER_URL` + `/graphql` en código; default `http://127.0.0.1:3001`) para assets, jobs y linaje; lo fusiona con tablas DuckDB vía MCP.
+- **Datasets (UI):** `GET /api/catalog/datasets` — fusiona DuckDB + Dagster GraphQL (`DAGSTER_URL`, default `http://127.0.0.1:3001`).
+- **MCP catálogo:** `dagster_catalog_*` en `mcp.json` si hay Postgres de metadatos; ver `skills/catalog-sql/`.
+- **Análisis exportados:** `./reports/analyses/` (montado en brain como `/project/reports`).
 
 ---
 
 ## Verificación rápida
 
 ```bash
-make infra-ps              # estado de containers de infra
-make agent-ps              # estado de brain + UI
-make registry-api-v2       # GET /v2/ del registry
-curl -s http://localhost:8002/api/health        | jq .       # brain
-curl -s http://localhost:8002/api/health/tools  | jq '.tools | length'   # tools MCP cargadas
-curl -s http://localhost:8002/api/catalog/datasets | jq '.count'
-uv run pytest tests/test_analysis_export.py -q   # export de análisis (sin MCP)
+make deploy-print-env
+make infra-ps
+
+curl -s http://127.0.0.1:8002/api/health | jq .
+curl -s http://127.0.0.1:8002/api/health/tools | jq '.tools | length'
+open http://127.0.0.1:5173    # UI host (make agent-dev)
 ```
 
-UI: `http://localhost:8003` · Dagster: `http://localhost:3001` · MinIO console: `http://localhost:9001`.
+| URL | Servicio |
+|---|---|
+| http://127.0.0.1:5173 | UI Vite (`make agent-dev`) |
+| http://127.0.0.1:8002 | Brain |
+| http://127.0.0.1:8003 | UI contenedor |
+| http://127.0.0.1:3001 | Dagster |
+| http://127.0.0.1:9001 | MinIO consola |
+
+Tests (sin MCP):
+
+```bash
+uv run pytest tests/ -q
+```
 
 ---
 
@@ -159,30 +398,31 @@ UI: `http://localhost:8003` · Dagster: `http://localhost:3001` · MinIO console
 
 | Síntoma | Causa | Mitigación |
 |---|---|---|
-| `Could not set lock` / IO error de DuckDB | DuckDB Local UI mantiene la DB abierta | `make infra-duckdb-ui-down` o evitar `--profile ui` durante ingest |
-| `InvalidAccessKeyId` desde `storage-mcp` | Endpoint o credenciales MinIO incorrectos | Usar alias `http://datasyn-object-minio:9000`; alinear `MINIO_ROOT_*` con `infra/object-storage/.env` |
-| Brain no alcanza MCP en `make agent-dev` | URL de `mcp.json` apunta a hostname Docker | El brain reescribe a `127.0.0.1:8040/43/44`; verificar `make mcp-up` |
-| `dagster_user_code` no levanta | Imagen stale tras cambio de assets | `make dagster-user-code-image` y recrear el servicio |
-| `ConnectError` desde brain a LiteLLM (Docker) | `LITELLM_PROXY_BASE` apunta a loopback | Usar `http://host.docker.internal:4000` o `LITELLM_DOCKER_HOST_REWRITE=1` |
-| `dagster.yaml` no toma cambios | Solo COPY en imagen, no bind | Verificar bind mount en `dagster_webserver` / `dagster_daemon` |
+| `bind: address already in use` en `:5000` | AirPlay (macOS) u otro proceso | `REGISTRY_PUBLISH_PORT=5001` o desactivar Receptor AirPlay |
+| `stack-up` en curso con brain/ui en Docker | Conflicto de puertos con host | `make agent-down` luego `make dev-up` + `make agent-dev` |
+| `pull access denied` / `repository does not exist` | Imagen no construida (dev) o no publicada (prod) | Dev: `make images-build` o `make infra-up`. Prod: `make publish` + `ENVIRONMENT=prod` |
+| `Could not set lock` (DuckDB) | DuckDB UI abierta | `make -C infra/duckdb ui-down` |
+| `InvalidAccessKeyId` (storage-mcp) | Endpoint/credenciales MinIO | Host `datasyn-object-minio:9000`; alinear con `infra/object-storage/.env` |
+| Brain no alcanza MCP (`agent-dev`) | Hostnames Docker en `mcp.json` | `make mcp-up`; brain reescribe a `127.0.0.1:8040/8044` |
+| `dagster_user_code` unhealthy | Imagen vieja o sin build | `make dagster-user-code-build` y `--force-recreate dagster_user_code` |
+| LiteLLM `ConnectError` desde brain en Docker | `127.0.0.1` en contenedor | `host.docker.internal:4000` o `LITELLM_DOCKER_HOST_REWRITE=1` |
+| Cambios en `dagster.yaml` ignorados | Solo en imagen | Bind mount ya en webserver/daemon; reiniciar servicios |
 
 ---
 
-## `.gitignore` y secretos
+## Secretos
 
-No commitear:
-
-- `.env` / `.env.*` (excepto `*.env.example`)
-- Claves privadas: `*.pem`, `*.p12`, `*.pfx`, material SSH
-- Datos locales: `data-local/`, `*.duckdb`
-
-Si se filtró una clave: rotarla y limpiar historia (`git filter-repo`, BFG).
+No commitear `.env`, claves (`*.pem`), ni `data-local/` / `*.duckdb`. Ver `.gitignore`.
 
 ---
 
 ## Referencias
 
-- [`Makefile`](Makefile) — `make help` para la lista completa.
-- [`AGENTS.md`](AGENTS.md) — contrato del agente, reglas DuckDB, antipatrones.
-- [`mcp.json`](mcp.json) — URLs de los servidores MCP.
-- [`compose.env`](compose.env) — variables del brain (LiteLLM, OpenRouter, Gemini, Langfuse).
+| Recurso | Contenido |
+|---|---|
+| [`Makefile`](Makefile) | Targets raíz; `make help` |
+| [`make/deploy.mk`](make/deploy.mk) | `ENVIRONMENT`, prefijos, `infra-up` / `images-*` |
+| `infra/*/Makefile` | Deploy por stack |
+| [`../datasyn-code/Makefile`](../datasyn-code/Makefile) | Build/push user code |
+| [`mcp.json`](mcp.json) | Servidores MCP |
+| [`compose.env`](compose.env) | Variables brain en contenedor |

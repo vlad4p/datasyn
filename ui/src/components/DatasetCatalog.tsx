@@ -146,20 +146,7 @@ export function DatasetCatalog({ className, id, locale, onAnalyzeDataset }: Prop
   return (
     <section id={id} className={`workspace-panel workspace-panel--scroll ${className ?? ""}`}>
       <h2 className="section-title">{c.title}</h2>
-      <p className="small muted">{c.hint}</p>
-      {payload?.dagster_url && (
-        <p className="tiny muted">
-          Dagster ({c.dagsterOk}): {payload.dagster_url}
-          {payload.dagster_graphql_url ? ` · GraphQL ${payload.dagster_graphql_url}` : ""}
-        </p>
-      )}
-      {statusHints.map((h) => (
-        <p key={h} className="small muted">
-          {h}
-        </p>
-      ))}
       {error && <p className="error small">{error}</p>}
-
       <div className="catalog-toolbar">
         <div className="catalog-toolbar__primary">
           <label className="catalog-toolbar__field catalog-toolbar__field--grow">
@@ -226,7 +213,7 @@ export function DatasetCatalog({ className, id, locale, onAnalyzeDataset }: Prop
         </div>
       )}
 
-      <div className="dataset-grid">
+      <div className="dataset-grid palette-cards-grid">
         {filtered.map((d) => (
           <DatasetCard key={d.fqn} dataset={d} locale={locale} onClick={() => setSelectedFqn(d.fqn)} />
         ))}
@@ -398,7 +385,7 @@ function DatasetCard({
   const down = d.lineage_downstream?.length ?? 0;
 
   return (
-    <button type="button" className={`dataset-card layer-${layer}`} onClick={onClick}>
+    <button type="button" className={`dataset-card palette-card layer-${layer}`} onClick={onClick}>
       <div className="dataset-card-head">
         <h3>{d.name}</h3>
         <LayerBadge layer={layer} />

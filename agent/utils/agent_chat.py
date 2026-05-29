@@ -245,8 +245,8 @@ async def run_agent_chat_turn(
                 "messages": msg_summary,
                 "skills": (
                     "Deep Agents `skills=[\"/skills/\"]` (parent dir; SkillsMiddleware auto-discovers "
-                    "every subdir with a SKILL.md). Subagents: `task(subagent_type=\"general-purpose\"|\"data-analyst\")`; "
-                    "`data-analyst` uses DuckDB+Dagster MCP tools only. Sandbox virtual path: `/sandbox/`."
+                    "every subdir with a SKILL.md). Subagents: `task(subagent_type=\"query\"|\"data-analyst\"|\"general-purpose\")`; "
+                    "`query` is default per user turn (full MCP, compact return). `data-analyst` uses DuckDB+Dagster MCP only. Sandbox virtual path: `/sandbox/`."
                 ),
                 "steps": steps,
             }

@@ -1,11 +1,11 @@
 # Datasyn aggregator compose (agent + ui).
 #
-# Start order:
-#   1. docker compose -f infra/distribution/docker-compose.yaml up -d   # local OCI registry
-#   2. docker compose -f infra/object-storage/docker-compose.yaml up -d
-#   3. docker compose -f infra/duckdb/docker-compose.yaml up -d
-#   4. docker compose -f infra/dagster/docker-compose.yaml up -d
-#   5. docker compose up -d
+# Start order (local dev — ``make stack-up`` builds images as ``datasyn/<service>:latest``, no registry):
+#   1. docker compose -f infra/object-storage/docker-compose.yaml up -d --build
+#   2. docker compose -f infra/duckdb/docker-compose.yaml up -d --build
+#   3. docker compose -f infra/dagster/docker-compose.yaml up -d --build
+#   4. docker compose up -d --build
+# Registry publish (CI / remote): ``make publish`` — see INSTALL.md
 #
 # All stacks share external network `infra-datasynk`.
 #
@@ -30,7 +30,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/brain:${DATASYN_IMAGE_TAG:-latest}
+    image: ${DATASYN_IMAGE_PREFIX:-datasyn}/brain:${DATASYN_IMAGE_TAG:-latest}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     env_file:
@@ -75,7 +75,7 @@ services:
     build:
       context: ./ui
       dockerfile: Dockerfile
-    image: ${DATASYN_IMAGE_REGISTRY:-localhost:5000}/${DATASYN_IMAGE_NAMESPACE:-datasyn}/ui:${DATASYN_IMAGE_TAG:-latest}
+    image: ${DATASYN_IMAGE_PREFIX:-datasyn}/ui:${DATASYN_IMAGE_TAG:-latest}
     environment:
       VITE_PROXY_TARGET: http://brain:8000
     depends_on:
