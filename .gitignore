@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!**/.env.datasyn.example
 agent/.env
 ui/.env
 ui/.env.local
@@ -67,3 +68,6 @@ Thumbs.db
 docker-compose.override.yml
 CONCEPTO.md
 reporte/
+
+# Optional Langfuse upstream clone (git clone into infra/langfuse/ — see make langfuse-up)
+infra/langfuse/

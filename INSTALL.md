@@ -268,7 +268,8 @@ Stack upstream en **`infra/langfuse/`** (repo Langfuse). No forma parte de `make
 ```bash
 make langfuse-up
 # equivalente:
-# cp infra/langfuse/.env.datasyn.example infra/langfuse/.env
+# cp infra/langfuse-deploy/.env.datasyn.example infra/langfuse/.env
+#   # or: make -C infra/langfuse-deploy init-env
 # docker compose -f infra/langfuse/docker-compose.yml --env-file infra/langfuse/.env up -d
 ```
 
