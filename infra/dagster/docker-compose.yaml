@@ -94,7 +94,7 @@ services:
       - storage:/storage
       # Absolute host path — set ``DATASYN_DATA_LOCAL_HOST`` in ``.env`` if your tree differs.
       # RW under ``/data-local`` (e.g. ``landing/...``) for assets that mirror to MinIO.
-      - ${DATASYN_DATA_LOCAL_HOST:-/Users/vlad/project/datasyn/data-local}:/data-local
+      - ${DATASYN_DATA_LOCAL_HOST:-../../data-local}:/data-local
     healthcheck:
       # Avoid daemon/webserver gRPC race: they must not connect before ``dagster api grpc``
       # is listening on 4000 (otherwise DagsterUserCodeUnreachableError / UNAVAILABLE).

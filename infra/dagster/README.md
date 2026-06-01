@@ -2,7 +2,7 @@
 
 Part of the Datasyn monorepo. For shared network, volumes, and `make` orchestration across stacks, see the repo root **`README.md`**.
 
-Local Docker Compose deployment of [Dagster](https://dagster.io/), adapted from the upstream [`deploy_docker` example](https://github.com/dagster-io/dagster/tree/master/examples/deploy_docker). The default **gRPC code location** is an **empty stub** in **`user_code/`** so this repo can run the control plane without production pipelines. Production user code lives in sibling repo **`../datasyn-code`**. The **`ubika_dagster`** tree under this folder is a legacy reference layout.
+Local Docker Compose deployment of [Dagster](https://dagster.io/), adapted from the upstream [`deploy_docker` example](https://github.com/dagster-io/dagster/tree/master/examples/deploy_docker). The default **gRPC code location** is an **empty stub** in **`user_code/`** so this repo can run the control plane without production pipelines. Production user code lives in sibling repo **`../datasyn-code`** (or [`datasyn-code` on GitHub](https://github.com/YOUR_ORG/datasyn-code)). Legacy **`ubika_dagster`** metadata in **`pyproject.toml`** is unused when running the stub.
 
 Four long-running containers plus one container per Dagster run:
 

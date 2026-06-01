@@ -27,7 +27,7 @@ After editing **`.env`**, restart brain: `make brain-restart` (kills :8002, then
 | `uv run datasyn-api` | Brain without reload |
 | `uv run pytest tests/ -q` | Unit tests |
 
-Prefer **`make agent-dev`**, **`make agent-brain`**, **`make test-agent`**, **`make brain-restart`**.
+Prefer **`make agent-dev`**, **`make agent-brain`**, **`make test-agent`**, **`make brain-restart`**. Infra: **`make -C infra/object-storage up`** (see `infra/README.md`).
 
 ## Forbidden on the host
 

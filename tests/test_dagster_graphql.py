@@ -9,7 +9,7 @@ from agent.utils.dagster_graphql import (
 
 
 def test_dagster_graphql_url_from_base() -> None:
-    assert dagster_graphql_url(base_url="http://10.13.10.119:3001") == "http://10.13.10.119:3001/graphql"
+    assert dagster_graphql_url(base_url="http://192.0.2.10:3001") == "http://192.0.2.10:3001/graphql"
 
 
 def test_infer_fqn_from_tags() -> None:

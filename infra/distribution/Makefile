@@ -1,21 +1,48 @@
-# OCI Distribution registry (prod publish only). Not used when ENVIRONMENT=dev.
+# OCI Distribution registry + prod image publish (all stacks).
 
 DATASYN_ROOT := $(abspath ../..)
-SERVICE_COMPOSE := $(DATASYN_ROOT)/infra/distribution/docker-compose.yaml
-include $(DATASYN_ROOT)/make/deploy.mk
+COMPOSE_FILE := $(DATASYN_ROOT)/infra/distribution/docker-compose.yaml
+include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../deploy.mk)
 
-.PHONY: help up down ps api-v2 catalog-v2
+OBJECT_STORAGE_COMPOSE := $(DATASYN_ROOT)/infra/object-storage/docker-compose.yaml
+DUCKDB_COMPOSE := $(DATASYN_ROOT)/infra/duckdb/docker-compose.yaml
+DAGSTER_COMPOSE := $(DATASYN_ROOT)/infra/dagster/docker-compose.yaml
+AGENT_COMPOSE := $(DATASYN_ROOT)/docker-compose.yaml
+
+DATASYN_CODE_DIR ?= $(abspath $(DATASYN_ROOT)/../datasyn-code)
+DATASYN_USER_CODE_STUB_DIR := $(abspath $(DATASYN_ROOT)/infra/dagster/user_code)
+DATASYN_CODE_BUILD_DIR := $(if $(wildcard $(DATASYN_CODE_DIR)/Dockerfile),$(DATASYN_CODE_DIR),$(DATASYN_USER_CODE_STUB_DIR))
+export DATASYN_CODE_DIR := $(DATASYN_CODE_BUILD_DIR)
+
+DOCKER_PLATFORM_REMOTE ?= linux/amd64
+SKOPEO_IMAGE ?= quay.io/skopeo/stable:latest
+STORAGE_MCP_BUILDX_BUILDER ?= datasyn-registry-push
+BUILDKIT_CFG := $(DATASYN_ROOT)/infra/distribution/buildkit-registry-insecure.toml
+
+DEPLOY_COMPOSE = DATASYN_IMAGE_PREFIX="$(DATASYN_IMAGE_PREFIX)" DATASYN_IMAGE_TAG="$(DATASYN_IMAGE_TAG)" \
+	DATASYN_IMAGE_NAMESPACE="$(DATASYN_IMAGE_NAMESPACE)" DATASYN_CODE_DIR="$(DATASYN_CODE_DIR)" \
+	docker compose
+
+.PHONY: help up down ps api-v2 catalog-v2 \
+	dagster-user-code-build images-build images-push images-pull \
+	publish publish-remote images-push-skopeo \
+	storage-mcp-build-push-remote storage-mcp-manifest-v2
 
 help:
-	@echo "infra/distribution — local OCI registry (ENVIRONMENT=prod publish workflow)"
-	@echo "  make up | down | ps | api-v2 | catalog-v2"
+	@echo "infra/distribution — OCI registry + prod publish (ENVIRONMENT=prod)"
+	@echo "  Registry:  make bootstrap | up | down | ps | api-v2 | catalog-v2 | print-env"
+	@echo "  Publish:   make publish ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=<host:port>"
+	@echo "             make publish-remote ...   # buildx + skopeo (HTTP registry)"
+	@echo "  Storage MCP: make storage-mcp-build-push-remote ENVIRONMENT=prod ..."
 
-up: registry-up
+up: bootstrap
+	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" up -d
 
-down: registry-down
+down:
+	-$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" down
 
 ps:
-	$(DEPLOY_COMPOSE) -f "$(SERVICE_COMPOSE)" ps
+	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" ps
 
 api-v2:
 	@echo "GET $(REGISTRY_HTTP_URL)/v2/"
@@ -24,3 +51,79 @@ api-v2:
 catalog-v2:
 	@echo "GET $(REGISTRY_HTTP_URL)/v2/_catalog"
 	@curl -fsS "$(REGISTRY_HTTP_URL)/v2/_catalog?n=50"
+
+dagster-user-code-build: bootstrap
+	$(call deploy_echo_env)
+	@if [ "$(DATASYN_CODE_BUILD_DIR)" = "$(DATASYN_USER_CODE_STUB_DIR)" ]; then \
+	  docker build -t "$(DATASYN_IMAGE_PREFIX)/dagster_user_code_image:$(DATASYN_IMAGE_TAG)" \
+	    -f "$(DATASYN_USER_CODE_STUB_DIR)/Dockerfile" "$(DATASYN_USER_CODE_STUB_DIR)"; \
+	else \
+	  $(MAKE) -C "$(DATASYN_CODE_DIR)" build ENVIRONMENT="$(ENVIRONMENT)"; \
+	fi
+
+images-build: bootstrap dagster-user-code-build
+	$(call deploy_echo_env)
+	$(DEPLOY_COMPOSE) -f "$(OBJECT_STORAGE_COMPOSE)" build
+	$(DEPLOY_COMPOSE) -f "$(DUCKDB_COMPOSE)" --profile ui build
+	$(DEPLOY_COMPOSE) -f "$(DAGSTER_COMPOSE)" build
+	$(DEPLOY_COMPOSE) -f "$(AGENT_COMPOSE)" build
+
+images-push: images-build
+	$(call deploy_echo_env)
+	@test "$(ENVIRONMENT)" = "prod" || { echo "images-push: use ENVIRONMENT=prod"; exit 1; }
+	$(DEPLOY_COMPOSE) -f "$(OBJECT_STORAGE_COMPOSE)" push
+	$(DEPLOY_COMPOSE) -f "$(DUCKDB_COMPOSE)" --profile ui push
+	$(DEPLOY_COMPOSE) -f "$(DAGSTER_COMPOSE)" push
+	$(DEPLOY_COMPOSE) -f "$(AGENT_COMPOSE)" push brain ui
+
+images-pull: bootstrap
+	$(call deploy_echo_env)
+	@test "$(ENVIRONMENT)" = "prod" || { echo "images-pull: use ENVIRONMENT=prod"; exit 1; }
+	$(DEPLOY_COMPOSE) -f "$(OBJECT_STORAGE_COMPOSE)" pull
+	$(DEPLOY_COMPOSE) -f "$(DUCKDB_COMPOSE)" --profile ui pull
+	$(DEPLOY_COMPOSE) -f "$(DAGSTER_COMPOSE)" pull
+	$(DEPLOY_COMPOSE) -f "$(AGENT_COMPOSE)" pull
+
+publish:
+	@test "$(ENVIRONMENT)" = "prod" || { echo "Set ENVIRONMENT=prod"; exit 1; }
+	@$(MAKE) images-push ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY="$(DATASYN_IMAGE_REGISTRY)"
+
+publish-remote:
+	@test "$(ENVIRONMENT)" = "prod" || { echo "Set ENVIRONMENT=prod"; exit 1; }
+	@export DOCKER_DEFAULT_PLATFORM="$(DOCKER_PLATFORM_REMOTE)" && \
+	  $(MAKE) images-build ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY="$(DATASYN_IMAGE_REGISTRY)"
+	@$(MAKE) images-push-skopeo ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY="$(DATASYN_IMAGE_REGISTRY)"
+
+images-push-skopeo:
+	@test "$(ENVIRONMENT)" = "prod" || { echo "images-push-skopeo: use ENVIRONMENT=prod"; exit 1; }
+	@set -euo pipefail; \
+	_prefix="$(DATASYN_IMAGE_PREFIX)"; \
+	push_img() { \
+	  img="$$1"; echo "Pushing $$img (skopeo)..."; \
+	  dockermount=(); [ -d "$${HOME}/.docker" ] && dockermount=(-v "$${HOME}/.docker:/root/.docker:ro"); \
+	  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$${dockermount[@]}" \
+	    "$(SKOPEO_IMAGE)" copy --dest-tls-verify=false "docker-daemon:$$img" "docker://$$img"; \
+	}; \
+	for f in "$(OBJECT_STORAGE_COMPOSE)" "$(DUCKDB_COMPOSE)" "$(DAGSTER_COMPOSE)" "$(AGENT_COMPOSE)"; do \
+	  for img in $$(DATASYN_IMAGE_PREFIX="$$_prefix" docker compose -f "$$f" config --images 2>/dev/null | sort -u); do \
+	    [ -n "$$img" ] && push_img "$$img"; \
+	  done; \
+	done
+
+storage-mcp-buildx-ensure:
+	@docker buildx inspect "$(STORAGE_MCP_BUILDX_BUILDER)" >/dev/null 2>&1 || \
+	  docker buildx create --name "$(STORAGE_MCP_BUILDX_BUILDER)" --driver docker-container \
+	    --config "$(BUILDKIT_CFG)" --bootstrap
+
+storage-mcp-build-push-remote: storage-mcp-buildx-ensure
+	@test "$(ENVIRONMENT)" = "prod" || { echo "Set ENVIRONMENT=prod"; exit 1; }
+	@test -n "$(DATASYN_IMAGE_REGISTRY)" || { echo "Set DATASYN_IMAGE_REGISTRY"; exit 1; }
+	@echo "Pushing $(DATASYN_IMAGE_PREFIX)/storage-mcp:$(DATASYN_IMAGE_TAG) ($(DOCKER_PLATFORM_REMOTE))"
+	docker buildx build --builder "$(STORAGE_MCP_BUILDX_BUILDER)" --platform "$(DOCKER_PLATFORM_REMOTE)" --provenance=false \
+	  -f "$(DATASYN_ROOT)/infra/object-storage/mcp/Dockerfile" \
+	  -t "$(DATASYN_IMAGE_PREFIX)/storage-mcp:$(DATASYN_IMAGE_TAG)" \
+	  "$(DATASYN_ROOT)/infra/object-storage/mcp" --push
+
+storage-mcp-manifest-v2:
+	@echo "HEAD manifest $(DATASYN_IMAGE_NAMESPACE)/storage-mcp:$(DATASYN_IMAGE_TAG)"
+	@curl -fsS -I "$(REGISTRY_HTTP_URL)/v2/$(DATASYN_IMAGE_NAMESPACE)/storage-mcp/manifests/$(DATASYN_IMAGE_TAG)" | sed -n '1,25p'

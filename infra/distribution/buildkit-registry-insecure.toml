@@ -5,6 +5,6 @@
 #
 # Adjust the host:port if your registry URL differs from the default in the Makefile.
 
-[registry."10.13.10.119:5000"]
+[registry."localhost:5000"]
   http = true
   insecure = true

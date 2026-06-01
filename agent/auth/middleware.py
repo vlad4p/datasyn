@@ -9,7 +9,8 @@ from starlette.responses import JSONResponse, Response
 from agent.auth.config import auth_settings
 from agent.auth.session import user_from_request
 
-_PUBLIC_PREFIXES = ("/health", "/auth")
+_PUBLIC_EXACT = frozenset({"/health"})
+_PUBLIC_PREFIXES = ("/auth",)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -19,7 +20,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS":
             return await call_next(request)
         path = request.url.path or ""
-        if any(path.startswith(prefix) for prefix in _PUBLIC_PREFIXES):
+        if path in _PUBLIC_EXACT or any(path.startswith(prefix) for prefix in _PUBLIC_PREFIXES):
             return await call_next(request)
         if user_from_request(request) is None:
             return JSONResponse(
