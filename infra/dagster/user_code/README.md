@@ -1,27 +1,19 @@
-# Empty Dagster user code (dev stub)
+# Dagster user code (stub)
 
-This image lets **`infra/dagster/docker-compose.yaml`** start a healthy gRPC code location
-without checking out production pipelines in this repo.
+This folder is the **default gRPC code location** when sibling repo **`../datasyn-code`** is not present. It exports empty `Definitions()` so the Dagster control plane can start without production pipelines.
 
-| Image | Built from | Purpose |
-| ----- | ---------- | ------- |
-| `datasyn/dagster_user_code_image:latest` | **`user_code/`** (stub) | Empty `Definitions()` — used when `../datasyn-code` is missing |
-| Same tag | Sibling repo **`../datasyn-code`** | Real `datasyn` assets, jobs, schedules (preferred) |
-
-## Production image (sibling repo)
+Production pipelines live in **[`datasyn-code`](https://github.com/YOUR_ORG/datasyn-code)**. Build and deploy from there, or:
 
 ```bash
-# From datasyn repo (builds ../datasyn-code when present):
-make dagster-user-code-build
-make infra-up
-
-# Or from datasyn-code:
-make build          # → datasyn/dagster_user_code_image:latest
-make push           # remote registry only
-
-# Recreate after code changes:
-docker compose -f infra/dagster/docker-compose.yaml up -d --force-recreate dagster_user_code
+make -C ../../infra dagster-user-code-build
+make -C ../../infra up
 ```
 
-Set **`DAGSTER_CURRENT_IMAGE`** on `dagster_user_code` to the same ref the daemon uses for
-`DockerRunLauncher` per-run containers.
+Swap the running container after building a new image:
+
+```bash
+make -C ../../infra/dagster user-code-build
+docker compose -f ../docker-compose.yaml up -d --force-recreate dagster_user_code
+```
+
+See [`../README.md`](../README.md) and root [`INSTALL.md`](../../../INSTALL.md).

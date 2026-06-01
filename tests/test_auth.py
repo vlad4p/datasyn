@@ -17,6 +17,10 @@ def test_auth_settings_auto_enable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "google-id")
     monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_SECRET", "google-secret")
     monkeypatch.delenv("AUTH_ENABLED", raising=False)
+    monkeypatch.delenv("OAUTH_GITHUB_CLIENT_ID", raising=False)
+    monkeypatch.delenv("OAUTH_GITHUB_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("GITHUB_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GITHUB_CLIENT_SECRET", raising=False)
     cfg = AuthSettings.load()
     assert cfg.enabled is True
     assert cfg.providers == ("google",)

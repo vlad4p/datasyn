@@ -38,7 +38,7 @@ In **Cursor** or other hosts, the server label may differ (e.g. `user-duckdb`), 
 
 ## Tooling surface (hard constraints)
 
-This process loads the HTTP MCP servers declared in **`mcp.json`** (by default: **`duckdb`** warehouse, **`storage`** MinIO/S3 helpers, **`dagster`** project/deploy helpers). LangChain prefixes tool names with the server key (e.g. **`duckdb_*`**, **`storage_*`**, **`dagster_*`**).
+This process loads the HTTP MCP servers declared in **`mcp.json`** (default: **`duckdb`** warehouse and **`storage`** MinIO/S3 helpers). LangChain prefixes tool names with the server key (e.g. **`duckdb_*`**, **`storage_*`**). Optional **`dagster_*`** tools require a separate **`dagster`** entry in **`mcp.json`** (not shipped in the default file).
 
 ### Warehouse (`duckdb_*`)
 
@@ -261,7 +261,7 @@ When the user asks to scaffold or modify a Dagster code-location project:
 
 ## Skills
 
-Skills live under **`./skills/<name>/SKILL.md`**. **`agent/graph.py`** passes **`skills=["/skills/"]`** to Deep Agents so **every** subdirectory containing a **`SKILL.md`** is discovered (today in-repo examples include **`analyze-indec-eph-hogar`**, **`analyze-indec-eph-individual`**, **`analyze-news-sentimental`**, **`extract-variables-pdf`**, **`ingest-indec-mercadolaboral`**, **`ingest-scrape-news-bronze`**, **`scrape-indec-mercado-laboral`**, **`update-catalog`**, **`improve-response-format`**). **`catalog-sql`** documents SQL shapes for **`dagster_catalog_execute_query`** / **`dagster_catalog_get_schema`** on **dagster-mcp**. Injected snippets may be short; when a task clearly matches a domain, call **`read_file`** with argument **`file_path`** (required by the tool) using a **virtual absolute path** under the project root, e.g. **`file_path="/skills/analyze-indec-eph-hogar/SKILL.md"`**; do not use a host path like `/Users/.../project/skills/...`. Relative repo paths like `skills/...` are normalized to the same virtual path.
+Skills live under **`./skills/<name>/SKILL.md`**. **`agent/graph.py`** passes **`skills=["/skills/"]`** to Deep Agents so **every** subdirectory containing a **`SKILL.md`** is discovered. **In this repo today:** **`ingest-scrape-news-bronze`**, **`upload_files_storage`**. Additional playbooks (EPH analysis, catalog SQL, INDEC ingest, etc.) may live in sibling **[`datasyn-code`](https://github.com/YOUR_ORG/datasyn-code)** or be inlined below in **`AGENTS.md`**. When a skill file exists, call **`read_file`** with **`file_path="/skills/<name>/SKILL.md"`** (virtual path under the project root); do not use host paths like `/Users/.../project/skills/...`.
 
 For **`/data-local/indec/mercado_laboral/`** EPH loads, **`ingest-indec-mercadolaboral`** overrides the generic bronze-first rule. When a task matches a domain, **follow the skill** instead of improvising.
 
@@ -325,7 +325,7 @@ The runtime appends the canonical **reports directory** after this file—use it
 
 Human operators: see **`README.md`** for Docker stack layout, `make` targets, and compose start order.
 
-MCP servers are **only** those declared in **`mcp.json`**. Do not assume extra servers exist. **`storage-mcp`** talks to application MinIO on **`datasyn-object-minio`** (see **`infra/object-storage/docker-compose.yaml`**). **`duckdb`** / **`duckdb-mcp`** mount **`./data-local`** read-only for SQL and directory listing. The brain-only compose file is the repo root **`docker-compose.yaml`**. Optional **metadata catalog** (PostgreSQL) is accessed via **`dagster_catalog_*`** tools on **`dagster-mcp`**—set **`DATABASE_URL`** or **`CATALOG_DATABASE_URL`** on that service (e.g. in **`infra/dagster/.env`**). Skills **`./skills/update-catalog/`** and **`./skills/catalog-sql/`** apply when that database is available.
+MCP servers are **only** those declared in **`mcp.json`**. Do not assume extra servers exist. **`storage-mcp`** talks to application MinIO on **`datasyn-object-minio`** (see **`infra/object-storage/docker-compose.yaml`**). **`duckdb`** / **`duckdb-mcp`** mount **`./data-local`** read-only for SQL and directory listing. The brain-only compose file is the repo root **`docker-compose.yaml`**. Optional **metadata catalog** (PostgreSQL) is accessed via **`dagster_catalog_*`** tools when a **`dagster`** MCP server is configured with **`DATABASE_URL`** or **`CATALOG_DATABASE_URL`**—not in the default **`mcp.json`**. Skills for catalog updates may live in **`datasyn-code`**.
 
 ---
 

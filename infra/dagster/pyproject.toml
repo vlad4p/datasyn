@@ -3,13 +3,13 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ubika-dagster"
+name = "datasyn-dagster-stub"
 version = "0.1.0"
-description = "Dagster code location for the ubika-infra MVP deployment."
+description = "Legacy Dagster metadata for local infra/dagster/ layout (production code lives in datasyn-code)."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Proprietary" }
-authors = [{ name = "Ubika" }]
+license = { text = "MIT" }
+authors = [{ name = "datasyn contributors" }]
 dependencies = [
     "dagster>=1.13",
     "dagster-graphql>=1.13",

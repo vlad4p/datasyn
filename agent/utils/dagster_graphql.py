@@ -3,7 +3,7 @@
 See https://docs.dagster.io/api/graphql
 
 Set ``DAGSTER_URL`` in repo ``.env`` to the webserver host + port only (e.g.
-``http://10.13.10.119:3001``). The GraphQL path is appended in code.
+``http://127.0.0.1:3001`` or ``http://registry-host:3001``). The GraphQL path is appended in code.
 """
 
 from __future__ import annotations

@@ -79,12 +79,12 @@ run_launcher:
         # location; container_kwargs.volumes does not support env interpolation.
         - /tmp/dagster_data:/opt/dagster/data
         # Same warehouse and ``/data-local`` host tree as ``dagster_user_code``.
-        # ``container_kwargs.volumes`` does not support env interpolation, so the
-        # ``data-local`` host path is hard-coded; align with the Datasyn repo or
-        # use a symlink if your tree differs.
+        # ``container_kwargs.volumes`` does not support env interpolation — set this
+        # absolute path to YOUR clone's ``data-local`` directory (same tree as
+        # ``DATASYN_DATA_LOCAL_HOST`` in ``docker-compose.yaml``).
         - duckdb_data:/data
         # RW under ``/data-local`` (e.g. ``landing/...``) for assets that sync to MinIO.
-        - /Users/vlad/project/datasyn/data-local:/data-local
+        - /path/to/datasyn/data-local:/data-local
 
 run_storage:
   module: dagster_postgres.run_storage

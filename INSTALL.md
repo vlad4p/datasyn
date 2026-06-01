@@ -13,7 +13,7 @@ Despliegue del stack DataSyn (brain + UI + plataforma de datos + servidores MCP)
 | Herramienta | Uso |
 |---|---|
 | Docker + Compose v2 | Infra + MCP en contenedor (MinIO, DuckDB, Dagster) |
-| Make | Orquestación (`Makefile` raíz + `infra/*/Makefile`) |
+| Make | Orquestación: **`Makefile` raíz** (brain + UI) + **`infra/Makefile`** y **`infra/*/Makefile`** |
 | [uv](https://docs.astral.sh/uv/getting-started/installation/) | **Brain en host:** `make uv-sync`, `uv run brain-dev` |
 | Node.js + npm | **UI en host:** `make ui-install`, `npm run dev` en `ui/` |
 
@@ -30,13 +30,13 @@ Un solo conjunto de targets Make; el modo lo define **`ENVIRONMENT`** (resuelto 
 | **Imágenes** | `docker compose build` en tu máquina | `docker compose pull` desde registry |
 | **Prefijo de tag** | `datasyn/<servicio>:latest` | `<registry>/datasyn/<servicio>:latest` |
 | **Registry OCI** | No se usa | Obligatorio: `DATASYN_IMAGE_REGISTRY=host:port` |
-| **Ejemplo de tag** | `datasyn/brain:latest` | `10.13.10.119:5000/datasyn/brain:latest` |
+| **Ejemplo de tag** | `datasyn/brain:latest` | `registry.example.com:5000/datasyn/brain:latest` |
 
 Comprobar resolución:
 
 ```bash
-make deploy-print-env
-make deploy-print-env ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=10.13.10.119:5000
+make -C infra deploy-print-env
+make -C infra deploy-print-env ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=registry.example.com:5000
 ```
 
 Variables útiles:
@@ -57,14 +57,14 @@ Variables útiles:
 |---|---|---|
 | Brain (FastAPI) | `8002` | **Host** con `make agent-dev` (`uv run brain-dev`) |
 | UI | `5173` | **Host** con `make agent-dev` (`npm run dev`) |
-| UI (contenedor) | `8003` | Solo con `make stack-up` / `make agent-up` (no daily dev) |
+| UI (contenedor) | `8003` | Solo con `make -C infra stack-up` / `make -C infra/agent up` (no daily dev) |
 | Dagster UI | `3001` | |
 | MinIO consola | `9001` | |
 | `duckdb-mcp` | `8040` | `mcp.json` → `duckdb` |
 | `storage-mcp` | `8044` | `mcp.json` → `storage` |
-| **Langfuse UI** | `3000` | Opcional: `make langfuse-up` (`infra/langfuse`) |
+| **Langfuse UI** | `3000` | Opcional: `make -C infra/langfuse-deploy up` |
 | DuckDB Local UI | `4213` | Perfil `ui`; opcional |
-| Registry OCI | `5000` | Solo `make publish` / `infra/distribution`; **no** en dev local |
+| Registry OCI | `5000` | `make -C infra/distribution up` + `make -C infra publish`; **no** en dev local |
 
 En macOS, el puerto **5000** suele estar ocupado por AirPlay. Para un registry local: `REGISTRY_PUBLISH_PORT=5001` y `DATASYN_IMAGE_REGISTRY=localhost:5001` (añadir a Docker **insecure-registries**).
 
@@ -72,7 +72,7 @@ En macOS, el puerto **5000** suele estar ocupado por AirPlay. Para un registry l
 
 ## Quick start — desarrollo local (recomendado)
 
-**Brain y UI en el host** (`uv` + `npm`). **Infra en Docker** (MinIO, DuckDB, Dagster, MCPs). No uses `make stack-up` ni `make agent-up` para el día a día — esos levantan brain/UI en contenedores.
+**Brain y UI en el host** (`uv` + `npm`). **Infra en Docker** (MinIO, DuckDB, Dagster, MCPs). No uses `make -C infra stack-up` ni `make -C infra/agent up` para el día a día — esos levantan brain/UI en contenedores.
 
 ### Primera vez
 
@@ -85,14 +85,9 @@ make ui-install               # deps en ui/ (npm)
 ### Cada sesión
 
 ```bash
-make dev-up                   # Docker: infra (ENVIRONMENT=dev)
-make agent-dev                # host: uv brain :8002 + npm Vite :5173
-```
-
-O en un solo paso (infra + brain + UI):
-
-```bash
-make dev
+make -C infra bootstrap          # red + volúmenes (primera vez)
+make -C infra up                 # Docker: infra (ENVIRONMENT=dev)
+make agent-dev                   # host: uv brain :8002 + npm Vite :5173
 ```
 
 | Qué | Dónde | URL |
@@ -106,14 +101,14 @@ make dev
 Parar infra:
 
 ```bash
-make dev-down                 # baja contenedores de infra
+make -C infra down                 # baja contenedores de infra
 # brain/vite: Ctrl+C en la terminal de agent-dev
 ```
 
 Solo brain en host (sin UI):
 
 ```bash
-make dev-up && make agent-brain
+make -C infra up && make agent-brain
 ```
 
 ### Stack completo en Docker (prod-like, no daily dev)
@@ -121,7 +116,7 @@ make dev-up && make agent-brain
 Brain y UI **en contenedores** — útil para probar imágenes `datasyn/*` como en prod:
 
 ```bash
-make stack-up                 # infra-up + agent-up → :8002 brain, :8003 ui
+make -C infra stack-up                 # infra + agent containers → :8002 brain, :8003 ui
 ```
 
 Por stack:
@@ -136,7 +131,7 @@ make -C infra/dagster up
 
 ```bash
 # Desde datasyn (detecta ../datasyn-code o usa stub):
-make dagster-user-code-build
+make -C infra dagster-user-code-build
 
 # Desde el repo hermano:
 cd ../datasyn-code && make build ENVIRONMENT=dev
@@ -156,13 +151,13 @@ docker compose -f infra/dagster/docker-compose.yaml up -d --force-recreate dagst
 En un servidor (o laptop) que **tira** imágenes ya publicadas:
 
 ```bash
-export DATASYN_IMAGE_REGISTRY=10.13.10.119:5000   # host:port del registry, sin http://
+export DATASYN_IMAGE_REGISTRY=registry.example.com:5000   # host:port del registry, sin http://
 
-make bootstrap
-make infra-up ENVIRONMENT=prod
-make agent-up ENVIRONMENT=prod
+make -C infra bootstrap
+make -C infra up ENVIRONMENT=prod
+make -C infra/agent up ENVIRONMENT=prod
 # o
-make stack-up ENVIRONMENT=prod
+make -C infra stack-up ENVIRONMENT=prod
 ```
 
 ### Publicar imágenes al registry
@@ -171,22 +166,22 @@ Desde una máquina de build (p. ej. CI o laptop):
 
 ```bash
 # Build + push (compose push; puede requerir insecure-registries si el registry es HTTP local)
-make publish ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=10.13.10.119:5000
+make -C infra publish ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=registry.example.com:5000
 
 # Registry local en Docker (opcional, puerto 5000/5001):
-make registry-up REGISTRY_PUBLISH_PORT=5001
-make publish ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=localhost:5001
+make -C infra/distribution up REGISTRY_PUBLISH_PORT=5001
+make -C infra publish ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=localhost:5001
 
 # Push a registry HTTP sin tocar Docker Engine (Skopeo + buildx):
-make publish-remote ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=10.13.10.119:5000
+make -C infra publish-remote ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=registry.example.com:5000
 ```
 
 User code de pipelines:
 
 ```bash
 cd ../datasyn-code
-make build ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=10.13.10.119:5000
-make push ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=10.13.10.119:5000
+make build ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=registry.example.com:5000
+make push ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=registry.example.com:5000
 ```
 
 ---
@@ -217,7 +212,7 @@ Prod (pull):
 
 ```bash
 export ENVIRONMENT=prod
-export DATASYN_IMAGE_REGISTRY=10.13.10.119:5000
+export DATASYN_IMAGE_REGISTRY=registry.example.com:5000
 export DATASYN_IMAGE_PREFIX=$DATASYN_IMAGE_REGISTRY/datasyn
 
 docker compose -f infra/object-storage/docker-compose.yaml pull
@@ -253,7 +248,7 @@ Flujo diario: **no** contenedores `brain` / `ui`. Solo infra en Docker.
 | `make brain-restart` | Mata :8002 y relanza `brain-dev` |
 | `make test-agent` | `uv run pytest tests/` |
 
-`.env` en la raíz alimenta al brain en host (LLM, OAuth, MCP). `compose.env` solo aplica si corrés brain en contenedor (`make agent-up`).
+`.env` en la raíz alimenta al brain en host (LLM, OAuth, MCP). `compose.env` solo aplica si corrés brain en contenedor (`make -C infra/agent up`).
 
 MCP en Docker + brain en host: URLs de `mcp.json` se reescriben a `127.0.0.1:8040` / `8044`. Remotos: `MCP_DISABLE_HOST_URL_REWRITE=1`.
 
@@ -261,12 +256,12 @@ MCP en Docker + brain en host: URLs de `mcp.json` se reescriben a `127.0.0.1:804
 
 ## Langfuse (trazas del agente, opcional)
 
-Stack upstream en **`infra/langfuse/`** (repo Langfuse). No forma parte de `make infra-up`; levántalo aparte.
+Stack upstream en **`infra/langfuse/`** (repo Langfuse). No forma parte de `make -C infra up`; levántalo aparte.
 
 ### 1. Arrancar Langfuse
 
 ```bash
-make langfuse-up
+make -C infra/langfuse-deploy up
 # equivalente:
 # cp infra/langfuse-deploy/.env.datasyn.example infra/langfuse/.env
 #   # or: make -C infra/langfuse-deploy init-env
@@ -310,7 +305,7 @@ curl -s http://127.0.0.1:8002/api/health | jq '.langfuse_tracing_enabled'
 
 El brain envía trazas por **Langfuse SDK** (`CallbackHandler` en `/agent/chat`) y por **OTLP** si `OTEL_EXPORTER_OTLP_ENDPOINT` está definido (auth Basic desde las mismas claves).
 
-**Brain en contenedor** (`make agent-up`): usa `http://host.docker.internal:3000` para `LANGFUSE_BASE_URL` y OTLP (ver `compose.env`).
+**Brain en contenedor** (`make -C infra/agent up`): usa `http://host.docker.internal:3000` para `LANGFUSE_BASE_URL` y OTLP (ver `compose.env`).
 
 Parar Langfuse: `make langfuse-down`.
 
@@ -334,15 +329,15 @@ Langfuse opcional: `LANGFUSE_*` en `compose.env`. Brain en Docker hacia LiteLLM 
 
 | Target | Uso |
 |---|---|
-| `make dev` | **Local daily:** infra Docker + `agent-dev` (uv + npm) |
-| `make langfuse-up` | Langfuse self-hosted :3000 (tracing opcional) |
-| `make dev-up` | Solo infra Docker |
-| `make agent-dev` | Solo brain + UI en host |
-| `make stack-up` | Todo en Docker (brain :8002, ui :8003) |
-| `make images-build` | Build imágenes `datasyn/*` |
-| `make publish` | Push al registry (`ENVIRONMENT=prod`) |
+| `make agent-dev` | Brain + UI en host (uv + npm) — **Makefile raíz** |
+| `make -C infra up` | Infra Docker (MinIO, DuckDB, Dagster) |
+| `make -C infra mcp-up` | MCP servers (:8040, :8044) |
+| `make -C infra stack-up` | Todo en Docker (brain :8002, ui :8003) |
+| `make -C infra images-build` | Build imágenes `datasyn/*` |
+| `make -C infra publish …` | Push al registry (`ENVIRONMENT=prod`) |
+| `make -C infra/langfuse-deploy up` | Langfuse :3000 (opcional) |
 
-Listado completo: `make help`.
+Listado: `make help` (raíz) · `make -C infra help` (Docker).
 
 ---
 
@@ -371,7 +366,7 @@ make infra-duckdb-ui-down
 ## Verificación rápida
 
 ```bash
-make deploy-print-env
+make -C infra deploy-print-env
 make infra-ps
 
 curl -s http://127.0.0.1:8002/api/health | jq .
@@ -400,12 +395,12 @@ uv run pytest tests/ -q
 | Síntoma | Causa | Mitigación |
 |---|---|---|
 | `bind: address already in use` en `:5000` | AirPlay (macOS) u otro proceso | `REGISTRY_PUBLISH_PORT=5001` o desactivar Receptor AirPlay |
-| `stack-up` en curso con brain/ui en Docker | Conflicto de puertos con host | `make agent-down` luego `make dev-up` + `make agent-dev` |
-| `pull access denied` / `repository does not exist` | Imagen no construida (dev) o no publicada (prod) | Dev: `make images-build` o `make infra-up`. Prod: `make publish` + `ENVIRONMENT=prod` |
+| `stack-up` en curso con brain/ui en Docker | Conflicto de puertos con host | `make -C infra/agent down` luego `make -C infra up` + `make agent-dev` |
+| `pull access denied` / `repository does not exist` | Imagen no construida (dev) o no publicada (prod) | Dev: `make -C infra images-build` o `make -C infra up`. Prod: `make -C infra publish` + `ENVIRONMENT=prod` |
 | `Could not set lock` (DuckDB) | DuckDB UI abierta | `make -C infra/duckdb ui-down` |
 | `InvalidAccessKeyId` (storage-mcp) | Endpoint/credenciales MinIO | Host `datasyn-object-minio:9000`; alinear con `infra/object-storage/.env` |
-| Brain no alcanza MCP (`agent-dev`) | Hostnames Docker en `mcp.json` | `make mcp-up`; brain reescribe a `127.0.0.1:8040/8044` |
-| `dagster_user_code` unhealthy | Imagen vieja o sin build | `make dagster-user-code-build` y `--force-recreate dagster_user_code` |
+| Brain no alcanza MCP (`agent-dev`) | Hostnames Docker en `mcp.json` | `make -C infra mcp-up`; brain reescribe a `127.0.0.1:8040/8044` |
+| `dagster_user_code` unhealthy | Imagen vieja o sin build | `make -C infra dagster-user-code-build` y `--force-recreate dagster_user_code` |
 | LiteLLM `ConnectError` desde brain en Docker | `127.0.0.1` en contenedor | `host.docker.internal:4000` o `LITELLM_DOCKER_HOST_REWRITE=1` |
 | Cambios en `dagster.yaml` ignorados | Solo en imagen | Bind mount ya en webserver/daemon; reiniciar servicios |
 

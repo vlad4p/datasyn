@@ -1,5 +1,5 @@
-# Shared deploy logic for datasyn (root + infra/* + datasyn-code).
-# Include from a Makefile after setting DATASYN_ROOT (repo root abspath).
+# Shared deploy logic for datasyn (include from infra/Makefile or infra/*/Makefile).
+# Set DATASYN_ROOT before include when not using infra/Makefile.
 #
 #   ENVIRONMENT=dev   — local ``docker compose build``; image prefix ``datasyn/…``; no registry
 #   ENVIRONMENT=prod  — ``docker compose pull``; prefix ``<registry>/datasyn/…``; build/push via ``publish``
@@ -25,7 +25,7 @@ DATASYN_IMAGE_TAG ?= latest
 
 DATASYN_IMAGE_REGISTRY ?=
 REGISTRY_PUBLISH_PORT ?= 5000
-REGISTRY_HTTP_URL ?= http://10.13.10.119:5000
+REGISTRY_HTTP_URL ?= http://localhost:5000
 DOCKER_PLATFORM_REMOTE ?= linux/amd64
 SKOPEO_IMAGE ?= quay.io/skopeo/stable:latest
 STORAGE_MCP_BUILDX_BUILDER ?= datasyn-registry-push
@@ -47,7 +47,7 @@ endif
 export ENVIRONMENT DATASYN_IMAGE_PREFIX DATASYN_IMAGE_NAMESPACE DATASYN_IMAGE_TAG
 export DOCKER_REGISTRY := $(DATASYN_IMAGE_PREFIX)
 
-# --- Compose paths (root Makefile may override before include) ---
+# --- Compose paths (infra/Makefile may override before include) ---
 INFRA_OBJECT_STORAGE_COMPOSE ?= $(DATASYN_ROOT)/infra/object-storage/docker-compose.yaml
 INFRA_DUCKDB_COMPOSE ?= $(DATASYN_ROOT)/infra/duckdb/docker-compose.yaml
 INFRA_DAGSTER_COMPOSE ?= $(DATASYN_ROOT)/infra/dagster/docker-compose.yaml
@@ -99,14 +99,11 @@ deploy-service-build:
 	$(call deploy_echo_env)
 	$(DEPLOY_COMPOSE) -f "$(SERVICE_COMPOSE)" build
 
-deploy-service-up:
-	@test -n '$(SERVICE_COMPOSE)' || (echo 'Set SERVICE_COMPOSE in infra/*/Makefile' >&2; exit 1)
+deploy-service-up: bootstrap
 	$(call deploy_echo_env)
 ifeq ($(ENVIRONMENT),dev)
-	$(MAKE) -C "$(DATASYN_ROOT)" bootstrap
 	$(DEPLOY_COMPOSE) -f "$(SERVICE_COMPOSE)" up -d --build
 else
-	$(MAKE) -C "$(DATASYN_ROOT)" bootstrap
 	$(DEPLOY_COMPOSE) -f "$(SERVICE_COMPOSE)" pull
 	$(DEPLOY_COMPOSE) -f "$(SERVICE_COMPOSE)" up -d
 endif
@@ -123,7 +120,7 @@ deploy-service-logs:
 	@test -n '$(SERVICE_COMPOSE)' || (echo 'Set SERVICE_COMPOSE in infra/*/Makefile' >&2; exit 1)
 	$(DEPLOY_COMPOSE) -f "$(SERVICE_COMPOSE)" logs --tail=100
 
-# --- Full-stack image lifecycle (root Makefile) ---
+# --- Full-stack image lifecycle (infra/Makefile) ---
 
 deploy-dagster-user-code-build:
 	$(call deploy_echo_env)
@@ -174,20 +171,11 @@ deploy-images-push-skopeo:
 	  done; \
 	done
 
-deploy-infra-up: bootstrap
+deploy-infra-up: bootstrap $(if $(filter prod,$(ENVIRONMENT)),deploy-images-pull,deploy-images-build)
 	$(call deploy_echo_env)
-ifeq ($(ENVIRONMENT),dev)
-	$(MAKE) -C "$(DATASYN_ROOT)" deploy-images-build ENVIRONMENT=dev
 	$(DEPLOY_COMPOSE) -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" up -d
 	$(DEPLOY_COMPOSE) -f "$(INFRA_DUCKDB_COMPOSE)" up -d
 	$(DEPLOY_COMPOSE) -f "$(INFRA_DAGSTER_COMPOSE)" up -d
-else
-	$(MAKE) -C "$(DATASYN_ROOT)" deploy-images-pull ENVIRONMENT=prod \
-		DATASYN_IMAGE_REGISTRY="$(DATASYN_IMAGE_REGISTRY)"
-	$(DEPLOY_COMPOSE) -f "$(INFRA_OBJECT_STORAGE_COMPOSE)" up -d
-	$(DEPLOY_COMPOSE) -f "$(INFRA_DUCKDB_COMPOSE)" up -d
-	$(DEPLOY_COMPOSE) -f "$(INFRA_DAGSTER_COMPOSE)" up -d
-endif
 
 deploy-agent-up: bootstrap
 	$(call deploy_echo_env)

@@ -50,6 +50,7 @@ reports/
 inbox/
 tmp/
 data-local/*
+!data-local/.gitkeep
 
 # Node / frontend
 ui/node_modules/
@@ -69,5 +70,5 @@ docker-compose.override.yml
 CONCEPTO.md
 reporte/
 
-# Optional Langfuse upstream clone (git clone into infra/langfuse/ — see make langfuse-up)
+# Optional Langfuse upstream clone (git clone into infra/langfuse/ — see make -C infra/langfuse-deploy up)
 infra/langfuse/
