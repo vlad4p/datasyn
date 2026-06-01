@@ -50,7 +50,7 @@ El agente no “asiste” en abstracto: **ejecuta** SQL, lista objetos en MinIO 
 
 <p align="center"><img src="docs/diagrams/repo-layout.svg" alt="Layout del repositorio datasyn" width="560"/></p>
 
-Raíz: `Makefile` (brain + UI), `mcp.json`, `AGENTS.md`, `docker-compose.yaml` (brain/UI en Docker), `pyproject.toml` + `uv`. Infra Docker: `infra/Makefile` y `infra/*/Makefile`.
+Raíz: `Makefile` (brain + UI), `mcp.json`, `AGENTS.md`, `docker-compose.yaml` (brain/UI en Docker), `pyproject.toml` + `uv`. Infra Docker: [`infra/README.md`](infra/README.md) y un `Makefile` por stack.
 
 ---
 
@@ -111,12 +111,14 @@ Patrón [Dagster distributed code location](https://docs.dagster.io/deployment/o
 git clone …/datasyn.git
 git clone …/datasyn-code.git   # mismo directorio padre
 
-cd datasyn && make -C infra bootstrap && make -C infra up
+cd datasyn
+make -C infra/object-storage bootstrap
+make -C infra/object-storage up && make -C infra/duckdb up && make -C infra/dagster up
 ```
 
 | Repo | Contenido | Comandos clave |
 |------|-----------|----------------|
-| **datasyn** | Brain, UI, skills, infra (duckdb, minio, Dagster runtime) | `make agent-dev` · `make -C infra up` · [`INSTALL.md`](INSTALL.md) |
+| **datasyn** | Brain, UI, skills, infra (duckdb, minio, Dagster runtime) | `make agent-dev` · stacks en `infra/` · [`INSTALL.md`](INSTALL.md) |
 | **datasyn-code** | Assets bronze, jobs, schedules, Dockerfile gRPC | `make dev` · `make push` |
 
 ---
@@ -127,7 +129,7 @@ cd datasyn && make -C infra bootstrap && make -C infra up
 
 Flujo recomendado para agregar una fuente de datos:
 
-1. **Clonar** [`datasyn`](.) y [`datasyn-code`](../datasyn-code) al mismo nivel; levantar infra (`make -C infra up`).
+1. **Clonar** [`datasyn`](.) y [`datasyn-code`](../datasyn-code) al mismo nivel; levantar stacks (`infra/README.md`).
 2. **Configurar** el entorno del agente: [`mcp.json`](mcp.json), skills en [`skills/`](skills/) (p. ej. [`ingest-scrape-news-bronze`](skills/ingest-scrape-news-bronze/SKILL.md)), [`AGENTS.md`](AGENTS.md).
 3. **Desarrollar en gitflow** dentro de **`datasyn-code`**: rama `feature/<fuente>`, assets bajo `src/datasyn/assets/bronze/<fuente>/`, job y schedule; PR → merge a `main`.
 4. **Publicar** la code location: `make -C ../datasyn-code push` y redeploy de `dagster_user_code` (ver [`INSTALL.md`](INSTALL.md)).
@@ -209,8 +211,11 @@ Guía completa: **[`INSTALL.md`](INSTALL.md)** (bootstrap, registry, troubleshoo
 **Stack Docker local (prod-like, brain/ui en contenedor):**
 
 ```bash
-make -C infra bootstrap
-make -C infra stack-up    # no usar para daily dev — preferir make agent-dev
+make -C infra/object-storage bootstrap
+make -C infra/object-storage up
+make -C infra/duckdb up
+make -C infra/dagster up
+make -C infra/agent up        # no daily dev — preferir make agent-dev
 ```
 
 **Desarrollo local (brain `uv` + UI `npm` en host):**
@@ -218,8 +223,10 @@ make -C infra stack-up    # no usar para daily dev — preferir make agent-dev
 ```bash
 cp .env.example .env
 make uv-sync && make ui-install
-make -C infra up          # infra Docker
-make agent-dev            # brain :8002 + Vite :5173
+make -C infra/object-storage up
+make -C infra/duckdb up
+make -C infra/dagster up
+make agent-dev
 ```
 
 Publicar user code tras cambios en pipelines:
@@ -263,23 +270,22 @@ Fuentes con pipeline bronze (detalle en [`datasyn-code`](../datasyn-code)):
 | `make test-agent` | `uv run pytest` |
 | `make brain-restart` | Mata `:8002` y reinicia brain |
 
-**Infra Docker (`make -C infra help`)** — MinIO, DuckDB, Dagster, MCP, registry, etc.:
+**Infra Docker** — un `Makefile` por stack ([`infra/README.md`](infra/README.md)):
 
 | Comando | Qué hace |
 |---------|----------|
-| `make -C infra bootstrap` | Red `infra-datasynk` + volúmenes |
-| `make -C infra up` / `down` | Stacks object-storage + duckdb + dagster |
-| `make -C infra mcp-up` | MinIO + `duckdb-mcp` + `storage-mcp` |
-| `make -C infra stack-up` | Infra + brain/UI en contenedores (prod-like) |
-| `make -C infra publish …` | Push imágenes al registry (`ENVIRONMENT=prod`) |
+| `make -C infra/object-storage bootstrap` | Red `infra-datasynk` + volúmenes |
+| `make -C infra/object-storage up` | MinIO + storage-mcp |
+| `make -C infra/duckdb up` | DuckDB + duckdb-mcp |
+| `make -C infra/dagster up` | Dagster runtime |
+| `make -C infra/agent up` | Brain + UI en contenedores (prod-like) |
+| `make -C infra/distribution publish …` | Push imágenes (`ENVIRONMENT=prod`) |
 
-**Por stack:** `make -C infra/{object-storage,duckdb,dagster,litellm,langfuse-deploy,distribution,agent} help`
-
-Flujo diario recomendado:
+Flujo diario:
 
 ```bash
-make -C infra bootstrap && make -C infra up   # una vez por sesión
-make agent-dev                              # brain + UI en host
+make -C infra/object-storage up && make -C infra/duckdb up && make -C infra/dagster up
+make agent-dev
 ```
 
 Variables infra: `ENVIRONMENT` (`dev`|`prod`), `DATASYN_IMAGE_REGISTRY` (prod). Ver [`INSTALL.md`](INSTALL.md).
@@ -294,7 +300,6 @@ Variables infra: `ENVIRONMENT` (`dev`|`prod`), `DATASYN_IMAGE_REGISTRY` (prod). 
 |------|--------|
 | Instalación y deploy | [`INSTALL.md`](INSTALL.md) |
 | Publicar / seguridad | [`docs/PUBLISHING.md`](docs/PUBLISHING.md) · [`SECURITY.md`](SECURITY.md) |
-| Licencia | [`LICENSE`](LICENSE) (MIT) |
 | Agente warehouse | [`AGENTS.md`](AGENTS.md) |
 | Skills | [`skills/`](skills/) |
 | Diagramas (SVG) | [`docs/diagrams/`](docs/diagrams/) |

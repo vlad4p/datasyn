@@ -1,11 +1,11 @@
 # Datasyn aggregator compose (agent + ui).
 #
-# Start order (local dev — ``make -C infra stack-up`` builds images as ``datasyn/<service>:latest``, no registry):
+# Start order (local dev): ``make -C infra/object-storage up``, ``duckdb up``, ``dagster up`` — see infra/README.md
 #   1. docker compose -f infra/object-storage/docker-compose.yaml up -d --build
 #   2. docker compose -f infra/duckdb/docker-compose.yaml up -d --build
 #   3. docker compose -f infra/dagster/docker-compose.yaml up -d --build
 #   4. docker compose up -d --build
-# Registry publish (CI / remote): ``make -C infra publish`` — see INSTALL.md
+# Registry publish (CI / remote): ``make -C infra/distribution publish`` — see INSTALL.md
 #
 # All stacks share external network `infra-datasynk`.
 #

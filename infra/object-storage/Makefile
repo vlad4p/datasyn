@@ -1,21 +1,46 @@
-# Object storage (MinIO + storage-mcp). Same targets as root; set ENVIRONMENT=dev|prod.
+# Object storage (MinIO + storage-mcp). ENVIRONMENT=dev|prod.
 
 DATASYN_ROOT := $(abspath ../..)
-SERVICE_COMPOSE := $(DATASYN_ROOT)/infra/object-storage/docker-compose.yaml
-include $(DATASYN_ROOT)/make/deploy.mk
+COMPOSE_FILE := $(DATASYN_ROOT)/infra/object-storage/docker-compose.yaml
+include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../deploy.mk)
 
-.PHONY: help build up down ps logs
+.PHONY: help build up down ps logs mcp-up mcp-down
 
 help:
 	@echo "infra/object-storage — ENVIRONMENT=$(ENVIRONMENT) prefix=$(DATASYN_IMAGE_PREFIX)"
-	@echo "  make build | up | down | ps | logs"
+	@echo "  make bootstrap | print-env | build | up | down | ps | logs"
+	@echo "  make mcp-up | mcp-down   # minio + storage-mcp only"
 
-build: deploy-service-build
+build: bootstrap
+	$(call deploy_echo_env)
+	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" build
 
-up: deploy-service-up
+up: bootstrap
+	$(call deploy_echo_env)
+ifeq ($(ENVIRONMENT),dev)
+	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" up -d --build
+else
+	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" pull
+	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" up -d
+endif
 
-down: deploy-service-down
+down:
+	-$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" down
 
-ps: deploy-service-ps
+ps:
+	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" ps
 
-logs: deploy-service-logs
+logs:
+	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" logs --tail=100
+
+mcp-up: bootstrap
+	$(call deploy_echo_env)
+ifeq ($(ENVIRONMENT),dev)
+	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" up -d --build minio storage-mcp
+else
+	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" pull minio storage-mcp
+	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" up -d minio storage-mcp
+endif
+
+mcp-down:
+	-$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" stop storage-mcp

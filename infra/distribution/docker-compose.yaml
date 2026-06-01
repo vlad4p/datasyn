@@ -2,7 +2,7 @@
 # Image: https://hub.docker.com/_/registry  (``registry:3``)
 #
 # Built application images use ``${DATASYN_IMAGE_PREFIX}/…`` (local dev default: ``datasyn/…``).
-# For registry publish: ``make -C infra publish`` sets ``DATASYN_IMAGE_PREFIX`` to
+# For registry publish: ``make -C infra/distribution publish`` sets ``DATASYN_IMAGE_PREFIX`` to
 # ``${DATASYN_IMAGE_REGISTRY}/${DATASYN_IMAGE_NAMESPACE}`` (see ``registry.env.example``).
 #
 # For HTTP (no TLS), configure the Docker daemon ``insecure-registries`` for that host:port.

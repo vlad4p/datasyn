@@ -1,7 +1,6 @@
 # Datasyn — brain + UI local development (host uv + Vite).
 #
-# Docker infra (MinIO, DuckDB, Dagster, MCP, …): make -C infra help
-# Per stack: make -C infra/<service> {build,up,down,ps,logs}
+# Docker infra: see infra/README.md — each stack has its own Makefile.
 
 SHELL := /bin/bash
 DATASYN_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
@@ -25,7 +24,8 @@ help:
 	@echo "  make agent-brain      # brain only (uv run brain-dev)"
 	@echo "  make brain-restart    # kill :$(API_PORT) + agent-brain"
 	@echo ""
-	@echo "Infra (Docker):  make -C infra help"
+	@echo "Infra (Docker):  infra/README.md"
+	@echo "  make -C infra/object-storage help"
 	@echo "Full install:    INSTALL.md"
 
 uv-check:

@@ -5,17 +5,17 @@ Use this list before making **datasyn** public on GitHub.
 ## Completed in repo
 
 - [x] Remove internal IPs and personal filesystem paths from tracked files
-- [x] Add `LICENSE` (MIT) and `SECURITY.md`
+- [x] Add `SECURITY.md`
 - [x] Generalize legacy **Ubika** deployment docs
 - [x] Align `AGENTS.md` / README with in-repo skills and `mcp.json`
 - [x] Fix auth test env isolation; narrow public routes when OAuth is on
 - [x] Add `data-local/.gitkeep` for empty clone ergonomics
-- [x] Split Makefiles: root = brain + UI; `infra/` = Docker stacks
+- [x] Split Makefiles: root = brain + UI; each `infra/<stack>/Makefile` owns deploy
 
 ## Before first public push
 
 1. **History scan** — run [gitleaks](https://github.com/gitleaks/gitleaks) or [trufflehog](https://github.com/trufflesecurity/trufflehog) on full git history.
-2. **Registry URL** — set `DATASYN_IMAGE_REGISTRY` / `REGISTRY_HTTP_URL` (see `make -C infra deploy-print-env`, `INSTALL.md`).
+2. **Registry URL** — set `DATASYN_IMAGE_REGISTRY` / `REGISTRY_HTTP_URL` (see `make -C infra/distribution print-env`, `INSTALL.md`).
 3. **Dagster run launcher** — edit `infra/dagster/runtime/dagster.yaml` volume path to your clone’s absolute `data-local` path (DockerRunLauncher does not support env interpolation there).
 4. **Sibling repo** — publish [`datasyn-code`](https://github.com/YOUR_ORG/datasyn-code) or replace placeholder URLs in README.
 5. **IDE config** — review `.cursor/` and `.kilo/`; remove or sanitize machine-specific MCP URLs if needed.

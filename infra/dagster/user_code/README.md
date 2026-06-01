@@ -5,14 +5,16 @@ This folder is the **default gRPC code location** when sibling repo **`../datasy
 Production pipelines live in **[`datasyn-code`](https://github.com/YOUR_ORG/datasyn-code)**. Build and deploy from there, or:
 
 ```bash
-make -C ../../infra dagster-user-code-build
-make -C ../../infra up
+make -C ../../dagster user-code-build
+make -C ../../object-storage up
+make -C ../../duckdb up
+make -C .. up
 ```
 
 Swap the running container after building a new image:
 
 ```bash
-make -C ../../infra/dagster user-code-build
+make -C .. user-code-build
 docker compose -f ../docker-compose.yaml up -d --force-recreate dagster_user_code
 ```
 

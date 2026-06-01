@@ -7,7 +7,7 @@ Full rules live under `.cursor/rules/`. This file is a short index for Cursor.
 - **Never** use bare `python`, `python3`, `pip`, or `.venv/bin/*` on the host.
 - **Always** `uv sync` then `uv run …` (see `.cursor/rules/python-uv.mdc`).
 - Prefer **`make agent-dev`** or **`make agent-brain`** / **`make brain-restart`** (http://127.0.0.1:8002).
-- Infra Docker: **`make -C infra up`** (see `INSTALL.md`).
+- Infra Docker: per-stack Makefiles under **`infra/`** (see [`infra/README.md`](infra/README.md)).
 - UI dev: `cd ui && npm run dev` (http://127.0.0.1:5173, proxies `/api` to brain).
 - Tests: `uv run pytest` or `make test-agent`.
 - Shell one-liners: `uv run python -c "…"` only.

@@ -15,7 +15,7 @@ This document defines **VM sizing**, **storage**, **networking**, and **docker-c
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Compose-only**              | Every deployable unit is started with `docker compose` (no Kubernetes requirement in this spec).                                                                                                                                                                           |
 | **One service domain per VM** | Each VM hosts **one** stack from the table below (that stack may include tightly coupled sidecars, e.g. `duckdb` + `duckdb-mcp`).                                                                                                                                          |
-| **Shared overlay network**    | All VMs join the same logical Docker network **`infra-datasynk`** (create once: `make -C infra bootstrap` or `docker network create infra-datasynk`). In production, use a **VPN / private VPC** and point compose at an **external** network, or use Swarm/overlay plugins—see §5. |
+| **Shared overlay network**    | All VMs join the same logical Docker network **`infra-datasynk`** (create once: `make -C infra/object-storage bootstrap` or `docker network create infra-datasynk`). |
 | **Named volumes**             | `duckdb_data` and `storage` are **external** volumes; create on the VM that owns the data plane before `up`.                                                                                                                                                               |
 | **Few users**                 | Sizing assumes **1–10** concurrent analysts/agents, not multi-tenant SaaS scale.                                                                                                                                                                                           |
 | **Data tiers**                | Three scenarios: **small**, **medium**, **high** (§4)—primarily **landing + warehouse + object storage** growth.                                                                                                                                                           |
@@ -317,11 +317,11 @@ docker volume create duckdb_data || true
 | 6     | Brain + UI     | `make -C infra/agent up` or split services                                              |
 
 
-Full dev stack: `make -C infra stack-up` (`ENVIRONMENT=dev`).
+Full dev stack: start each stack separately (see [`infra/README.md`](../../infra/README.md)).
 
 ### 8.3 Production images
 
-Set `ENVIRONMENT=prod`, `DATASYN_IMAGE_REGISTRY=<registry-host:5000>`, push/pull via `make/deploy.mk` (`deploy-images-push`, `deploy-infra-up`, `deploy-agent-up`).
+Set `ENVIRONMENT=prod`, `DATASYN_IMAGE_REGISTRY=<registry-host:5000>`, push via `make -C infra/distribution publish`, pull via `ENVIRONMENT=prod make -C infra/<stack> up`.
 
 ---
 
@@ -342,7 +342,7 @@ Set `ENVIRONMENT=prod`, `DATASYN_IMAGE_REGISTRY=<registry-host:5000>`, push/pull
 
 ## 10. Optional: compose-only “all-in-one” dev
 
-For local laptops, all stacks may run on **one host** (see `INSTALL.md`, `make -C infra stack-up`). This spec’s **per-VM** layout is the **target production** shape; sizing in §4 still applies by **summing** resources if you temporarily colocate.
+For local laptops, all stacks may run on **one host** (see `INSTALL.md`, per-stack `make -C infra/<stack> up`).
 
 ---
 
@@ -352,7 +352,7 @@ For local laptops, all stacks may run on **one host** (see `INSTALL.md`, `make -
 | Document / path                      | Content                                      |
 | ------------------------------------ | -------------------------------------------- |
 | `INSTALL.md`                         | Ports, Langfuse, LiteLLM, stack order        |
-| `make/deploy.mk`                     | `ENVIRONMENT=dev                             |
+| `infra/deploy.mk`                    | `ENVIRONMENT`, image prefix, `bootstrap` (included by each stack) |
 | `AGENTS.md`                          | Agent tool contracts, ingest rules           |
 | `infra/dagster/runtime/dagster.yaml` | Concurrency, per-run CPU/RAM                 |
 | `mcp.json`                           | MCP server URLs for brain / IDE              |
