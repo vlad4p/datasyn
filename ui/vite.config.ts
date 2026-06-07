@@ -7,6 +7,9 @@ import react from "@vitejs/plugin-react";
  */
 const proxyTarget = process.env.VITE_PROXY_TARGET || "http://127.0.0.1:8002";
 
+/** Hostnames allowed when accessing Vite via reverse proxy / VPN (Host header check). */
+const allowedHosts = ["test-datasyn.vpn.rlab.lat"];
+
 /** Agent turns can exceed default proxy timeouts (LiteLLM + many tool calls). */
 const apiProxy = {
   "/api": {
@@ -23,11 +26,13 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    allowedHosts,
     proxy: apiProxy,
   },
   preview: {
     port: 4173,
     strictPort: true,
+    allowedHosts,
     proxy: apiProxy,
   },
 });
