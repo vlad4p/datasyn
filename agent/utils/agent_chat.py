@@ -40,6 +40,7 @@ from agent.utils.langfuse_tracing import (
     root_chat_observation,
 )
 from agent.config import settings
+from agent.utils.locale_detect import resolve_response_locale
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -157,8 +158,8 @@ async def run_agent_chat_turn(
         record("mcp_get_tools", tool_count=len(tools), tool_names=tool_names, ms=tools_ms)
         span.set_attribute("datasyn.mcp_tool_count", len(tool_names))
 
-        loc = "es" if (response_locale or "en").strip().lower() == "es" else "en"
-        record("response_locale", locale=loc)
+        loc = resolve_response_locale(message, response_locale)
+        record("response_locale", locale=loc, requested=response_locale)
         agent = build_agent(tools, response_locale=loc)
         record("build_agent_done")
 
@@ -302,7 +303,7 @@ async def stream_agent_chat_sse_events(
         tool_names = sorted([getattr(t, "name", repr(t)) for t in tools])
         record("mcp_get_tools", tool_count=len(tools), tool_names=tool_names)
 
-        loc = "es" if (response_locale or "en").strip().lower() == "es" else "en"
+        loc = resolve_response_locale(message, response_locale)
         agent = build_agent(tools, response_locale=loc)
 
         lf_handler = create_langchain_callback_handler()

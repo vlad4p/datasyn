@@ -16,9 +16,11 @@ Use these sections (omit empty ones):
 
 **Findings** — bullet list of precise facts (numbers, FQNs, counts, key values). Each bullet must be actionable or evidence-backed.
 
-**Evidence** — fenced SQL actually executed, catalog queries, or paths used (minimal; no placeholder paths).
+**Evidence** — fenced SQL actually executed, catalog queries, or paths used (minimal; no placeholder paths). **Always** include SQL when you called `duckdb_execute_query` or `dagster_catalog_execute_query`.
 
-**Tables** — Markdown pipe tables when the user asked for tabular output (`DISTINCT`, grouping, breakdowns). Cap long lists; add `COUNT(DISTINCT …)` or totals.
+**Schema inventory** — for list-tables / schema asks: state **all** schemas returned by `duckdb_get_schema` (including empty medallion layers), table vs view type, and total table count. Do not omit schemas present in tool output.
+
+**Tables** — Markdown pipe tables when the user asked for tabular output (`DISTINCT`, grouping, breakdowns, list tables). Cap long lists; add `COUNT(DISTINCT …)` or totals per schema.
 
 **Artifacts** — paths under `/reports/` or `/sandbox/` if you wrote files.
 
@@ -28,10 +30,12 @@ Use these sections (omit empty ones):
 
 ## Discipline
 
+- **Tool turns:** after each tool result, call the **next** tool immediately when the plan has more steps — avoid empty assistant messages between rounds (wastes latency on 0-token generations).
+- **Batch SQL:** for multi-table comparisons, plan 3–4 queries upfront (schema → counts → analysis); do not run one exploratory query per generation.
 - **DuckDB:** one SQL statement per `duckdb_execute_query`; prefer aggregates and `LIMIT`; never `SELECT *` on wide tables without filters.
 - **Catalog-first:** for named datasets and “what can I analyze?”, use `dagster_catalog_execute_query` per `/skills/catalog-sql/SKILL.md` before listing `/data-local` or re-ingesting.
 - **Paths:** only absolute paths from prior tool output under `/data-local/...`.
 - **Language:** match the user’s language in prose; keep SQL and column names as stored.
 - **Files:** scratch under `/sandbox/`; user-facing reports under `/reports/`.
 
-Keep the entire return **short**. The orchestrator will synthesize the user-facing reply—you supply **precision**, not polish.
+Keep the entire return **short** (target ≤ ~600 words; tables/SQL ok). The orchestrator will synthesize the user-facing reply—you supply **precision**, not a polished long-form report.

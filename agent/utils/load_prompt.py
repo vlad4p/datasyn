@@ -1,11 +1,13 @@
-"""Load ``.txt`` prompt files from ``src/agent/prompts/``."""
+"""Load ``.txt`` prompt files from ``agent/prompts/``."""
 
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 from agent.config import settings
+from agent.skills import discover_skills, resolve_skills_root
 from agent.deep_agent_constants import DATA_ANALYST_SUBAGENT_TYPE, QUERY_SUBAGENT_TYPE, SANDBOX_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -16,13 +18,7 @@ def _prompts_dir() -> Path:
 
 
 def _read_agents_md(path: Path) -> str:
-    """Read ``AGENTS.md`` tolerantly so a stray non-UTF-8 byte cannot crash brain startup.
-
-    Strategy: try strict UTF-8 first; on failure, normalize the few CP1252 mojibake bytes
-    we have seen in practice (em dash, ellipsis) and retry; if still invalid, fall back to
-    CP1252 decoding (a superset of Latin-1) and log a warning. The prompt only feeds the
-    LLM, so a best-effort decode is far safer than aborting ``create_deep_agent``.
-    """
+    """Read ``AGENTS.md`` tolerantly so a stray non-UTF-8 byte cannot crash brain startup."""
     raw = path.read_bytes()
     try:
         return raw.decode("utf-8")
@@ -43,7 +39,7 @@ def _read_agents_md(path: Path) -> str:
 
 
 def load_prompt(filename: str) -> str:
-    """Read a UTF-8 prompt file from ``src/agent/prompts/{filename}``."""
+    """Read a UTF-8 prompt file from ``agent/prompts/{filename}``."""
     path = _prompts_dir() / filename
     if not path.is_file():
         raise FileNotFoundError(f"Prompt file not found: {path}")
@@ -70,38 +66,32 @@ def _response_language_suffix(locale: str) -> str:
 
 
 def _runtime_skills_inventory() -> list[str]:
-    """Return discovered skill names under ``<project_root>/skills/*/SKILL.md``."""
-    skills_root = settings.project_root / "skills"
-    if not skills_root.is_dir():
-        return []
-    names: list[str] = []
-    for p in sorted(skills_root.glob("*/SKILL.md")):
-        parent = p.parent.name.strip()
-        if parent:
-            names.append(parent)
-    return names
+    """Return discovered skill names from the active skills root."""
+    return discover_skills(resolve_skills_root())
 
 
-def supervisor_system_prompt(
-    mcp_tool_names: list[str] | None = None,
-    *,
-    response_locale: str = "en",
-) -> str:
-    """Use project ``AGENTS.md`` when present; otherwise ``supervisor_system_prompt.txt``.
+def _warehouse_playbook(*, compact: bool = True) -> str:
+    """Warehouse playbook for subagents.
 
-    When ``mcp_tool_names`` is provided, the actual runtime MCP tools (from ``mcp.json``) are appended to
-    the prompt so the model cannot invent names from other products.
+    Default **compact** prompt (~3k chars) keeps subagent context small; set
+    ``DATASYN_SUBAGENT_FULL_AGENTS_MD=1`` to inject full ``AGENTS.md``.
     """
-    root = settings.project_root
-    agents = root / "AGENTS.md"
-    if agents.is_file():
-        base = _read_agents_md(agents).strip()
-    else:
-        base = load_prompt("supervisor_system_prompt.txt")
+    use_full = os.environ.get("DATASYN_SUBAGENT_FULL_AGENTS_MD", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if not compact or use_full:
+        agents = settings.project_root / "AGENTS.md"
+        if agents.is_file():
+            return _read_agents_md(agents).strip()
+        return load_prompt("supervisor_system_prompt.txt")
+    return load_prompt("warehouse_subagent_playbook.txt")
 
-    parts: list[str] = [base]
-    orchestrator = load_prompt("supervisor_orchestrator.txt")
-    parts.append(f"\n\n{orchestrator}")
+
+def _orchestrator_runtime_appendix(mcp_tool_names: list[str] | None) -> str:
+    """Compact runtime appendix for the orchestrator (names only — no full warehouse playbook)."""
+    parts: list[str] = []
     deepagents_helpers = [
         "write_todos",
         "ls",
@@ -115,71 +105,90 @@ def supervisor_system_prompt(
     if mcp_tool_names:
         listed = "\n".join(f"- `{n}`" for n in sorted(mcp_tool_names))
         parts.append(
-            "\n\n## Runtime MCP tools (authoritative)\n\n"
-            "These are the **only** MCP tools loaded from `mcp.json` in this process. "
-            "If a tool is not in this list, it **does not exist**. When the user asks "
-            '"what tools do you have?", answer with **this exact list** (plus the built-in '
-            "Deep Agents helpers: `write_todos`, `ls`, `read_file`, `write_file`, `edit_file`, "
-            "`glob`, `grep`, `task`). Do **not** mention `database_*`, `process_*`, "
-            "`ingest_csv`, `database_ingest_csv`, legacy warehouse aliases (`warehouse_query`, "
-            "`duckdb_warehouse_query`), or any other name not listed below.\n\n"
+            "\n\n## Runtime MCP tools (subagents only — authoritative names)\n\n"
+            "These MCP tools exist in this process but are **not** callable in this orchestrator thread. "
+            "When the user asks what tools exist, list these names plus Deep Agents helpers below.\n\n"
             f"{listed}"
         )
-        parts.append(
-            "\n\n## Runtime Deep Agents tools (authoritative)\n\n"
-            "These are runtime-provided helper tools available in this process:\n\n"
-            + "\n".join(f"- `{n}`" for n in deepagents_helpers)
-            + "\n\n### Filesystem: sandbox (ephemeral)\n\n"
-            f"Virtual path **`{SANDBOX_PREFIX}`** is a **session sandbox** (not persisted to disk). "
-            "Use it for scratch notes, intermediate extracts, and drafts. "
-            f"Final user-facing reports and artifacts go under `{settings.reports_dir}` (or paths you agree with the user). "
-            "The main project tree is still available for reading skills, `AGENTS.md`, and existing reports.\n\n"
-            "### `task`: `subagent_type` (mandatory — pick one)\n\n"
-            "The **`task`** tool delegates work to a short-lived subagent. **`subagent_type`** must be "
-            "exactly one of the configured types below—anything else fails.\n\n"
-            f"- **`{QUERY_SUBAGENT_TYPE}`** — **Default for every user query.** Full MCP tool set. Gathers "
-            "precise facts (schema, SQL, catalog, paths, counts, tables) and returns a **compact structured brief** "
-            "so this orchestrator thread stays small. **Spawn one `query` task per user turn** for all substantive work.\n\n"
-            f"- **`{DATA_ANALYST_SUBAGENT_TYPE}`** — **DuckDB + Dagster MCP tools only** (no `storage_*`). "
-            "Optional specialist for warehouse/Dagster-only isolation when `query` is too broad.\n\n"
-            "- **`general-purpose`** — Same tools as `query` but without the compact-return discipline. "
-            "Avoid unless `query` is unavailable.\n\n"
-            "Put the full user goal, constraints, language, and expected return shape in **`description`**. "
-            "The orchestrator synthesizes the user reply from the subagent brief—do **not** run MCP tools in the main thread."
-        )
+    parts.append(
+        "\n\n## Runtime Deep Agents tools (orchestrator)\n\n"
+        + "\n".join(f"- `{n}`" for n in deepagents_helpers)
+        + "\n\n### `task`: `subagent_type` (mandatory)\n\n"
+        f"- **`{QUERY_SUBAGENT_TYPE}`** — default for every substantive user turn (full MCP).\n"
+        f"- **`{DATA_ANALYST_SUBAGENT_TYPE}`** — DuckDB + Dagster only.\n"
+        "- **`general-purpose`** — disabled; do not use.\n\n"
+        "Put user goal, response language, and required output (tables, SQL, counts) in **`description`**."
+    )
     skills = _runtime_skills_inventory()
     if skills:
         parts.append(
-            "\n\n## Runtime skills (authoritative)\n\n"
-            "These are the skills currently discovered from `/skills/*/SKILL.md`:\n\n"
+            "\n\n## Runtime skills (names only)\n\n"
             + "\n".join(f"- `{n}`" for n in skills)
         )
-    else:
-        parts.append(
-            "\n\n## Runtime skills (authoritative)\n\n"
-            "No skills were discovered under `/skills/*/SKILL.md`."
-        )
-    if mcp_tool_names:
-        parts.append(
-            "\n\n## Dagster project safety\n\n"
-            "For Dagster code-location work, operate with `dagster_*` tools only "
-            "(`dagster_list_projects` → `dagster_create_project` → `dagster_add_*`). "
-            "Do **not** use Deep Agents filesystem helpers (`write_file`, `edit_file`, etc.) "
-            "to modify `/projects/...` because that path belongs to the dagster-mcp container "
-            "mount and helper-tool updates there can be misleading.\n\n"
-            "Never execute SQL/code with placeholder paths (`path/to/...`, `your_file_here`, etc.). "
-            "First resolve a real absolute path from tool output (typically under `/data-local/...`, "
-            "which is the DuckDB compatibility mirror of MinIO landing data) "
-            "and then reuse that exact path.\n\n"
-            "## Delegation (mandatory)\n\n"
-            f"For **every substantive user message**, spawn **`task`** with **`subagent_type=\"{QUERY_SUBAGENT_TYPE}\"`** "
-            "before answering. The query subagent runs MCP tools and returns precise, compact facts; you synthesize "
-            f"the user-facing reply here. Use **`{DATA_ANALYST_SUBAGENT_TYPE}`** only for explicit warehouse-only "
-            "isolation. Parallel `query` tasks only for explicitly independent sub-questions.\n\n"
-            "If they ask for **tablas**, **DISTINCT**, **agrupar por descripción**, or similar: put in **`description`** "
-            "the **fully qualified table**, columns, and that the return must include **Markdown pipe tables** "
-            "plus **fenced SQL** and counts—not prose-only summaries."
-        )
     parts.append(f"\n\nWrite Markdown reports under: `{settings.reports_dir}`.")
-    parts.append(_response_language_suffix(response_locale))
     return "".join(parts)
+
+
+def _subagent_runtime_appendix(mcp_tool_names: list[str] | None) -> str:
+    """Full MCP tool list for subagents that execute warehouse work."""
+    if not mcp_tool_names:
+        return ""
+    listed = "\n".join(f"- `{n}`" for n in sorted(mcp_tool_names))
+    return (
+        "\n\n## Runtime MCP tools (authoritative)\n\n"
+        "These are the **only** MCP tools in this process. Do not invent other names.\n\n"
+        f"{listed}\n\n"
+        f"Scratch under `{SANDBOX_PREFIX}`; user reports under `{settings.reports_dir}`."
+    )
+
+
+def orchestrator_system_prompt(
+    mcp_tool_names: list[str] | None = None,
+    *,
+    response_locale: str = "en",
+) -> str:
+    """Slim orchestrator prompt — delegation + synthesis only (no full ``AGENTS.md``)."""
+    parts = [
+        load_prompt("orchestrator_system.txt"),
+        "\n\n",
+        load_prompt("supervisor_orchestrator.txt"),
+        _orchestrator_runtime_appendix(mcp_tool_names),
+        _response_language_suffix(response_locale),
+    ]
+    return "".join(parts)
+
+
+def warehouse_subagent_system_prompt(
+    role_prompt_file: str,
+    *,
+    mcp_tool_names: list[str] | None = None,
+    response_locale: str = "en",
+    extra_playbooks: list[str] | None = None,
+) -> str:
+    """Warehouse playbook + role prompt for ``query`` / ``data-analyst`` subagents."""
+    parts = [
+        _warehouse_playbook(compact=True),
+        "\n\n",
+        load_prompt(role_prompt_file),
+    ]
+    for playbook_file in extra_playbooks or []:
+        parts.extend(["\n\n", load_prompt(playbook_file)])
+    parts.extend(
+        [
+            _subagent_runtime_appendix(mcp_tool_names),
+            _response_language_suffix(response_locale),
+        ]
+    )
+    return "".join(parts)
+
+
+def supervisor_system_prompt(
+    mcp_tool_names: list[str] | None = None,
+    *,
+    response_locale: str = "en",
+) -> str:
+    """Alias for ``orchestrator_system_prompt`` (slim main-thread prompt)."""
+    return orchestrator_system_prompt(
+        mcp_tool_names=mcp_tool_names,
+        response_locale=response_locale,
+    )

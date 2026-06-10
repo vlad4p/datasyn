@@ -219,6 +219,134 @@ def finalize_root_observation(obs: Any | None, *, reply: str) -> None:
         pass
 
 
+_TOOL_IO_MAX = 2000
+
+
+def _tool_observation_metadata(
+    *,
+    tool_name: str,
+    request_id: str,
+    parent_run_id: str | None,
+    thread: str,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    meta: dict[str, Any] = {
+        "datasyn_request_id": request_id,
+        "tool_name": tool_name,
+        "thread": thread,
+        "parent_run_id": parent_run_id,
+    }
+    if run_id:
+        meta["langchain_run_id"] = run_id
+    return meta
+
+
+def start_mcp_tool_observation(
+    *,
+    tool_name: str,
+    request_id: str,
+    input_preview: str = "",
+    parent_run_id: str | None = None,
+    thread: str = "unknown",
+    run_id: str | None = None,
+) -> Any | None:
+    """Open a Langfuse ``tool`` observation with input preview (best-effort)."""
+    if not langfuse_tracing_enabled():
+        return None
+    try:
+        from langfuse import get_client
+
+        lf = get_client()
+        return lf.start_observation(
+            name=tool_name,
+            as_type="tool",
+            input=_preview(input_preview, _TOOL_IO_MAX),
+            metadata=_tool_observation_metadata(
+                tool_name=tool_name,
+                request_id=request_id,
+                parent_run_id=parent_run_id,
+                thread=thread,
+                run_id=run_id,
+            ),
+        )
+    except Exception:
+        return None
+
+
+def end_mcp_tool_observation(
+    obs: Any | None,
+    *,
+    tool_name: str,
+    request_id: str,
+    phase: str,
+    output_preview: str = "",
+    parent_run_id: str | None = None,
+    thread: str = "unknown",
+    run_id: str | None = None,
+) -> None:
+    """Close a Langfuse tool observation and emit a correlated event for timeline exports."""
+    if not langfuse_tracing_enabled():
+        return
+    try:
+        from langfuse import get_client
+
+        lf = get_client()
+        metadata = _tool_observation_metadata(
+            tool_name=tool_name,
+            request_id=request_id,
+            parent_run_id=parent_run_id,
+            thread=thread,
+            run_id=run_id,
+        )
+        metadata["phase"] = phase
+        out = _preview(output_preview, _TOOL_IO_MAX)
+        if obs is not None:
+            obs.update(output=out, metadata=metadata)
+            obs.end()
+        lf.create_event(
+            name=f"mcp:{tool_name}:{phase}",
+            metadata=metadata,
+            output=out,
+        )
+    except Exception:
+        pass
+
+
+def record_mcp_tool_observation(
+    *,
+    tool_name: str,
+    phase: str,
+    request_id: str,
+    input_preview: str = "",
+    output_preview: str = "",
+    parent_run_id: str | None = None,
+    thread: str = "unknown",
+    run_id: str | None = None,
+    tool_observation: Any | None = None,
+) -> Any | None:
+    """Best-effort Langfuse enrichment for MCP tool I/O beyond default CallbackHandler."""
+    if phase == "start":
+        return start_mcp_tool_observation(
+            tool_name=tool_name,
+            request_id=request_id,
+            input_preview=input_preview,
+            parent_run_id=parent_run_id,
+            thread=thread,
+            run_id=run_id,
+        )
+    end_mcp_tool_observation(
+        tool_observation,
+        tool_name=tool_name,
+        request_id=request_id,
+        phase=phase,
+        output_preview=output_preview,
+        parent_run_id=parent_run_id,
+        thread=thread,
+        run_id=run_id,
+    )
+    return None
+
+
 def build_langfuse_run_metadata(
     *,
     request_id: str,

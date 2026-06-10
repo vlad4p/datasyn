@@ -43,6 +43,7 @@ include = ["agent*"]
 datasyn-agent = "agent.runner:main"
 datasyn-api = "agent.main:run"
 brain-dev = "agent.main:dev"
+skills-sync = "agent.skills.cli:main"
 
 [tool.uv]
 managed = true

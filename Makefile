@@ -12,7 +12,7 @@ export VITE_PROXY_TARGET
 UV ?= uv
 
 .PHONY: help uv-sync ui-install test-agent brain-restart \
-	agent-brain agent-dev agent-dev-brain agent-dev-ui
+	agent-brain agent-dev agent-dev-brain agent-dev-ui skills-sync-push skills-sync-pull skills-sync-list
 
 help:
 	@echo "Datasyn — brain + UI (host development)"
@@ -23,6 +23,9 @@ help:
 	@echo "  make agent-dev        # brain :$(API_PORT) + Vite :5173 (parallel)"
 	@echo "  make agent-brain      # brain only (uv run brain-dev)"
 	@echo "  make brain-restart    # kill :$(API_PORT) + agent-brain"
+	@echo "  make skills-sync-list # list skills in active source dir"
+	@echo "  make skills-sync-push # publish ./skills to LiteLLM Skills Gateway"
+	@echo "  make skills-sync-pull # download skills bundle into .cache/skills"
 	@echo ""
 	@echo "Infra (Docker):  infra/README.md"
 	@echo "  make -C infra/object-storage help"
@@ -62,3 +65,12 @@ agent-dev-brain: uv-sync
 agent-dev-ui:
 	@echo "[ui] npm run dev → http://127.0.0.1:5173  proxy /api → $(VITE_PROXY_TARGET)"
 	cd "$(DATASYN_ROOT)/ui" && npm run dev
+
+skills-sync-list: uv-sync
+	cd "$(DATASYN_ROOT)" && $(UV) run skills-sync list
+
+skills-sync-push: uv-sync
+	cd "$(DATASYN_ROOT)" && $(UV) run skills-sync push
+
+skills-sync-pull: uv-sync
+	cd "$(DATASYN_ROOT)" && $(UV) run skills-sync pull

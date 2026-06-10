@@ -41,6 +41,9 @@ services:
     environment:
       LITELLM_PROXY_BASE: ${LITELLM_PROXY_BASE:-http://litellm:4000}
       LITELLM_API_BASE: ${LITELLM_API_BASE:-http://litellm:4000}
+      # Skills: default local mount below. For LiteLLM pull in prod, set SKILLS_SOURCE=litellm
+      # and LITELLM_SKILLS_STATIC_BASE=http://skills-static:4001 (see infra/litellm).
+      SKILLS_SOURCE: ${SKILLS_SOURCE:-local}
     networks:
       - infra
     volumes:

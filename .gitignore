@@ -36,8 +36,8 @@ htmlcov/
 .venv/
 venv/
 
-# uv (project-local cache if present)
-.uv/
+# Agent skills cache (LiteLLM pull)
+.cache/skills/
 
 # Data and local databases
 data/
