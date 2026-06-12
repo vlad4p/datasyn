@@ -21,8 +21,29 @@ const apiProxy = {
   },
 };
 
+/** Docker publish: VITE_FAST_BUILD=1 skips minify (~2–3 min faster on large vendor chunks). */
+const fastBuild = Boolean(process.env.VITE_FAST_BUILD);
+
 export default defineConfig({
   plugins: [react()],
+  build: {
+    minify: fastBuild ? false : "esbuild",
+    sourcemap: false,
+    reportCompressedSize: false,
+    chunkSizeWarningLimit: 6000,
+    target: "es2022",
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("mermaid")) return "vendor-mermaid";
+          if (id.includes("plotly")) return "vendor-plotly";
+          if (id.includes("vega")) return "vendor-vega";
+          if (id.includes("react-dom") || id.includes("/react/")) return "vendor-react";
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     strictPort: true,

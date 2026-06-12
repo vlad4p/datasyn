@@ -17,6 +17,14 @@
   http = true
   insecure = true
 
+[registry."10.13.10.156:5000"]
+  http = true
+  insecure = true
+
+[registry."10.13.10.159:5000"]
+  http = true
+  insecure = true
+
 [registry."10.13.10.144:5000"]
   http = true
   insecure = true
