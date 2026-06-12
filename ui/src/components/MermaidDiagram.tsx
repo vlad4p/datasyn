@@ -1,17 +1,22 @@
 import { useEffect, useId, useRef, useState } from "react";
-import mermaid from "mermaid";
 
-let mermaidInit = false;
+type MermaidApi = typeof import("mermaid")["default"];
 
-function ensureMermaidTheme() {
-  if (mermaidInit) return;
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: "dark",
-    securityLevel: "strict",
-    fontFamily: "DM Sans, system-ui, sans-serif",
-  });
-  mermaidInit = true;
+let mermaidPromise: Promise<MermaidApi> | null = null;
+
+function loadMermaid(): Promise<MermaidApi> {
+  if (!mermaidPromise) {
+    mermaidPromise = import("mermaid").then(({ default: mermaid }) => {
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: "dark",
+        securityLevel: "strict",
+        fontFamily: "DM Sans, system-ui, sans-serif",
+      });
+      return mermaid;
+    });
+  }
+  return mermaidPromise;
 }
 
 type Props = { chart: string };
@@ -26,10 +31,10 @@ export function MermaidDiagram({ chart }: Props) {
     if (!el) return;
     let cancelled = false;
     setError(null);
-    ensureMermaidTheme();
     const rid = `mmd-${id}-${Math.random().toString(36).slice(2, 9)}`;
     (async () => {
       try {
+        const mermaid = await loadMermaid();
         const { svg } = await mermaid.render(rid, chart);
         if (!cancelled && ref.current) ref.current.innerHTML = svg;
       } catch (e) {

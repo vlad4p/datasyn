@@ -1,5 +1,3 @@
-import embed from "vega-embed";
-import type { Result } from "vega-embed";
 import type { VisualizationSpec } from "vega-embed";
 import { useEffect, useRef, useState } from "react";
 
@@ -60,7 +58,7 @@ type Props = { spec: VisualizationSpec };
  */
 export function ChatChart({ spec }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const resultRef = useRef<Result | null>(null);
+  const resultRef = useRef<{ finalize: () => void } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const specKey = JSON.stringify(spec);
 
@@ -83,18 +81,26 @@ export function ChatChart({ spec }: Props) {
     const merged = mergeDarkTheme(parsed);
     el.innerHTML = "";
 
-    void embed(el, merged, EMBED_OPTIONS).then(
-      (r) => {
-        if (cancelled) {
-          r.finalize();
-          return;
-        }
-        resultRef.current = r;
-      },
+    void import("vega-embed").then(
+      ({ default: embed }) =>
+        embed(el, merged, EMBED_OPTIONS).then(
+          (r) => {
+            if (cancelled) {
+              r.finalize();
+              return;
+            }
+            resultRef.current = r;
+          },
+          (e: unknown) => {
+            el.innerHTML = "";
+            if (!cancelled) {
+              setError(e instanceof Error ? e.message : String(e));
+            }
+          },
+        ),
       (e: unknown) => {
-        el.innerHTML = "";
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : String(e));
+          setError(e instanceof Error ? e.message : "Failed to load chart library");
         }
       },
     );

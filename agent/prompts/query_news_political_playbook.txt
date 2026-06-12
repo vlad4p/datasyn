@@ -1,0 +1,28 @@
+## News / political analysis playbook (mandatory when matched)
+
+**Trigger** when the user (or `description`) asks for political analysis, sentiment, tone, or comparison of **news tables** (e.g. `infobae_noticias`, `tn_noticias`, `clarin_noticias`, `lanacion_noticias`) or phrases like *reporte político*, *análisis de noticias*.
+
+### 1. Load sentiment skill first
+
+`read_file(file_path="/skills/sentiment-analysis/SKILL.md", limit=1000)` — use SQL keyword heuristics or documented workflow on **`cuerpo_md`** (body), not title-only word counts.
+
+### 2. Fixed SQL plan (3–4 tool rounds max)
+
+Execute in order; **batch** where possible — do not discover one column per generation:
+
+| Step | SQL purpose | Notes |
+|------|-------------|-------|
+| A | Schema for both tables | One query on `information_schema.columns` with `table_name IN (...)` |
+| B | Volume + date range | One query with `UNION ALL` per table: `COUNT(*)`, `MIN/MAX(fecha_publicacion)` |
+| C | Sentiment column check | One query: columns `ILIKE '%sentiment%'` for both tables |
+| D | Analysis | Prefer sentiment on `cuerpo_md` per skill; if only titles, state limitation once |
+
+**Word-frequency fallback** (only if sentiment skill cannot run): one `duckdb_execute_query` per table for top terms — do not exceed **4** `execute_query` calls total for the comparison.
+
+### 3. Tool-turn discipline
+
+Issue the **next** `duckdb_*` call promptly after each result. Avoid empty assistant messages between tool rounds (reduces wasted generations with 0 output tokens).
+
+### 4. Brief for orchestrator
+
+Return **compact** sections: Objective, Findings (numbers + interpretation), Evidence (SQL list), Tables (capped), Limitations. Do **not** write the full user-facing report — the orchestrator synthesizes.

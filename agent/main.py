@@ -12,6 +12,7 @@ import logging
 import os
 import sys
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import unquote
@@ -61,6 +62,12 @@ from agent.config import (
     OPENROUTER_DEFAULT_API_BASE,
     settings,
 )
+from agent.skills import (
+    ensure_skills_ready,
+    resolve_skills_root,
+    skills_inventory,
+)
+from agent.skills.resolver import skills_runtime_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -204,12 +211,28 @@ def _format_agent_error(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
+def _skills_inventory() -> list[dict[str, str]]:
+    """List skill folders from the active skills root."""
+    return skills_inventory(resolve_skills_root())
+
+
+@asynccontextmanager
+async def _app_lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Pull skills from LiteLLM on startup when ``SKILLS_SOURCE=litellm``."""
+    try:
+        ensure_skills_ready()
+    except Exception:
+        logger.exception("skills startup sync failed")
+    yield
+
+
 app = FastAPI(
     title="Datasyn",
     description=(
         "Leader agent API. Remote tools use HTTP endpoints listed in mcp.json "
         "(mcpServers block)."
     ),
+    lifespan=_app_lifespan,
 )
 
 
@@ -400,26 +423,6 @@ def _tool_connections() -> dict[str, Any]:
     return load_mcp_tool_connections(settings.project_root)
 
 
-def _skills_inventory() -> list[dict[str, str]]:
-    """List all skill folders under project ``./skills`` that contain ``SKILL.md``."""
-    root = settings.project_root / "skills"
-    if not root.is_dir():
-        return []
-    out: list[dict[str, str]] = []
-    for child in sorted(root.iterdir(), key=lambda p: p.name.lower()):
-        if not child.is_dir():
-            continue
-        skill_md = child / "SKILL.md"
-        if skill_md.is_file():
-            out.append(
-                {
-                    "name": child.name,
-                    "path": f"skills/{child.name}/SKILL.md",
-                }
-            )
-    return out
-
-
 def _pipeline_snapshot() -> dict[str, Any]:
     """Architecture snapshot: MinIO landing + /data-local mirror usage, MCP URLs, debug flags."""
     duckdb_ui_public = (os.environ.get("DUCKDB_UI_PUBLIC_URL") or "").strip()
@@ -464,10 +467,9 @@ def _pipeline_snapshot() -> dict[str, Any]:
             "ui_lists_files": False,
         },
         "skills": {
-            "where": "./skills/ingest-scrape-news-bronze/SKILL.md, ./skills/upload_files_storage/SKILL.md",
-            "how": "Deep Agents `skills=[\"/skills/\"]` on create_deep_agent — SkillsMiddleware treats this as a PARENT directory and auto-discovers every subdir with a SKILL.md "
-            "(immediate children only; today: ingest-scrape-news-bronze, upload_files_storage). "
-            "Additional playbooks may live in sibling datasyn-code or in AGENTS.md inline sections.",
+            **skills_runtime_snapshot(),
+            "how": "Deep Agents skills=[\"/skills/\"] — local ./skills or LiteLLM-pulled .cache/skills. "
+            "Push: `uv run skills-sync push`. Pull: SKILLS_SOURCE=litellm or `uv run skills-sync pull`.",
         },
     }
 

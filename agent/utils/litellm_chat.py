@@ -14,7 +14,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 
 from agent.config import OPENROUTER_DEFAULT_API_BASE, settings
-from agent.utils.chat_model_state import effective_chat_model
+from agent.utils.chat_model_state import effective_chat_model, effective_fast_chat_model
 
 _GEMINI_DEFAULT_MODEL = "gemini-2.0-flash"
 
@@ -299,7 +299,28 @@ def _temperature() -> float:
         return 0.2
 
 
-def _build_litellm_chat_model() -> BaseChatModel:
+def _prompt_cache_extra_body() -> dict[str, Any]:
+    """Optional provider cache hints (LiteLLM / OpenRouter); no-op when unset."""
+    if os.getenv("LITELLM_ENABLE_PROMPT_CACHE", "").strip().lower() not in ("1", "true", "yes"):
+        return {}
+    # LiteLLM passes unknown keys through to upstream when supported.
+    return {"cache": {"type": "ephemeral"}}
+
+
+def _resolve_model_name(*, tier: str) -> str:
+    if tier == "fast":
+        model_name = (effective_fast_chat_model() or "").strip()
+    else:
+        model_name = (effective_chat_model() or "").strip()
+    if not model_name:
+        label = "CHAT_MODEL_FAST" if tier == "fast" else "CHAT_MODEL"
+        raise RuntimeError(
+            f"Set {label} (or CHAT_MODEL) in the environment to a model id your provider serves."
+        )
+    return model_name
+
+
+def _build_litellm_chat_model(*, tier: str = "default") -> BaseChatModel:
     """LangChain chat model via LiteLLM OpenAI-compatible proxy."""
     if not settings.litellm_key:
         raise RuntimeError(
@@ -317,11 +338,7 @@ def _build_litellm_chat_model() -> BaseChatModel:
             "e.g. http://127.0.0.1:4000/v1",
             base,
         )
-    model_name = (effective_chat_model() or "").strip()
-    if not model_name:
-        raise RuntimeError(
-            "Set CHAT_MODEL in the environment to a model id your LiteLLM proxy serves (see GET /v1/models)."
-        )
+    model_name = _resolve_model_name(tier=tier)
     _validate_chat_model_id(model_name, via="LiteLLM")
     timeout = _request_timeout()
 
@@ -342,19 +359,22 @@ def _build_litellm_chat_model() -> BaseChatModel:
         api_key[-4:] if len(api_key) >= 4 else api_key,
     )
 
-    common = dict(
+    cache_body = _prompt_cache_extra_body()
+    common: dict[str, Any] = dict(
         base_url=base,
         api_key=api_key,
         model=model_name,
         temperature=_temperature(),
     )
+    if cache_body:
+        common["model_kwargs"] = {"extra_body": cache_body}
     try:
         return ChatOpenAI(**common, timeout=timeout)
     except TypeError:
         return ChatOpenAI(**common, request_timeout=timeout)
 
 
-def _build_openrouter_chat_model() -> BaseChatModel:
+def _build_openrouter_chat_model(*, tier: str = "default") -> BaseChatModel:
     """OpenRouter via OpenAI-compatible API (https://openrouter.ai/docs)."""
     key = settings.openrouter_api_key
     if not key:
@@ -368,11 +388,7 @@ def _build_openrouter_chat_model() -> BaseChatModel:
             "e.g. https://openrouter.ai/api/v1",
             base,
         )
-    model_name = (effective_chat_model() or "").strip()
-    if not model_name:
-        raise RuntimeError(
-            "Set CHAT_MODEL to an OpenRouter model id (see https://openrouter.ai/models)."
-        )
+    model_name = _resolve_model_name(tier=tier)
     _validate_chat_model_id(model_name, via="OpenRouter")
     timeout = _request_timeout()
     extra_h = _openrouter_optional_headers()
@@ -382,6 +398,7 @@ def _build_openrouter_chat_model() -> BaseChatModel:
         base,
         key[-4:] if len(key) >= 4 else key,
     )
+    cache_body = _prompt_cache_extra_body()
     common: dict[str, Any] = dict(
         base_url=base,
         api_key=key,
@@ -390,6 +407,8 @@ def _build_openrouter_chat_model() -> BaseChatModel:
     )
     if extra_h:
         common["default_headers"] = extra_h
+    if cache_body:
+        common["model_kwargs"] = {"extra_body": cache_body}
     try:
         return ChatOpenAI(**common, timeout=timeout)
     except TypeError:
@@ -403,14 +422,16 @@ def _build_openrouter_chat_model() -> BaseChatModel:
                 return ChatOpenAI(**common, request_timeout=timeout)
 
 
-def _build_gemini_chat_model() -> BaseChatModel:
+def _build_gemini_chat_model(*, tier: str = "default") -> BaseChatModel:
     """Google Generative Language API via ``langchain-google-genai`` (no LiteLLM)."""
     key = settings.gemini_api_key
     if not key:
         raise RuntimeError(
             "MODEL_PROVIDER=gemini requires GEMINI_API_KEY (or GOOGLE_API_KEY)."
         )
-    model_name = (effective_chat_model() or "").strip() or _GEMINI_DEFAULT_MODEL
+    model_name = _resolve_model_name(tier=tier) if tier == "fast" else (
+        (effective_chat_model() or "").strip() or _GEMINI_DEFAULT_MODEL
+    )
     _validate_chat_model_id(model_name, via="Gemini")
     timeout = _request_timeout()
     from langchain_google_genai import ChatGoogleGenerativeAI
@@ -428,10 +449,18 @@ def _build_gemini_chat_model() -> BaseChatModel:
     )
 
 
-def build_chat_model() -> BaseChatModel:
-    """Chat model: LiteLLM proxy (default), OpenRouter direct, or Gemini."""
+def build_chat_model(*, tier: str = "default") -> BaseChatModel:
+    """Chat model: LiteLLM proxy (default), OpenRouter direct, or Gemini.
+
+    ``tier="fast"`` uses ``CHAT_MODEL_FAST`` when set (subagents / introspection).
+    """
     if settings.model_provider == "gemini":
-        return _build_gemini_chat_model()
+        return _build_gemini_chat_model(tier=tier)
     if settings.model_provider == "openrouter":
-        return _build_openrouter_chat_model()
-    return _build_litellm_chat_model()
+        return _build_openrouter_chat_model(tier=tier)
+    return _build_litellm_chat_model(tier=tier)
+
+
+def build_fast_chat_model() -> BaseChatModel:
+    """Fast model for subagent tool work (schema listing, SQL introspection)."""
+    return build_chat_model(tier="fast")

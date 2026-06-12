@@ -3,6 +3,16 @@ export type UiLocale = "en" | "es";
 
 const STORAGE_KEY = "datasyn-ui-locale";
 
+function browserDefaultLocale(): UiLocale {
+  try {
+    const lang = (navigator.language || "").toLowerCase();
+    if (lang.startsWith("es")) return "es";
+  } catch {
+    /* ignore */
+  }
+  return "en";
+}
+
 export function readStoredLocale(): UiLocale {
   try {
     const v = localStorage.getItem(STORAGE_KEY);
@@ -10,7 +20,7 @@ export function readStoredLocale(): UiLocale {
   } catch {
     /* ignore */
   }
-  return "en";
+  return browserDefaultLocale();
 }
 
 export function persistLocale(locale: UiLocale): void {

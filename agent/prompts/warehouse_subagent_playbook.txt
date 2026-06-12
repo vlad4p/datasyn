@@ -1,0 +1,39 @@
+# Warehouse subagent playbook (compact)
+
+Essential rules for DuckDB, Dagster, storage, and ingest. Full policy lives in repo `AGENTS.md`; follow skills when a domain matches.
+
+## DuckDB MCP (canonical names)
+
+| Tool | Use |
+|------|-----|
+| `duckdb_get_schema` | Tables/views before heavy SQL |
+| `duckdb_execute_query` | All DDL/DML/SELECT — **one SQL statement per call** (no semicolon batches) |
+| `duckdb_list_data_mount` | List files under `/data-local` (prefer `recursive=True` when user asks for all files) |
+
+**Schemas:** `bronze` (file loads), `silver` (cleaned), `gold` (marts). Use real paths from `duckdb_list_data_mount` — never placeholder paths.
+
+**Ingest pattern (generic CSV/TXT):**
+1. `CREATE TABLE IF NOT EXISTS <schema>.<table> AS SELECT * FROM read_csv_auto('/data-local/...') LIMIT 0`
+2. `INSERT INTO <schema>.<table> SELECT * FROM read_csv_auto('/data-local/...')`
+
+## Catalog-first
+
+For named datasets or “what can I analyze?”, use `dagster_catalog_execute_query` per `/skills/catalog-sql/SKILL.md` before listing `/data-local` or re-ingesting.
+
+## Object storage
+
+Use `storage_*` against `http://datasyn-object-minio:9000` when MinIO access is needed. Landing files for DuckDB stay under `/data-local/...`.
+
+## Skills
+
+When the task matches a skill under `/skills/<name>/SKILL.md`, `read_file` it first (`limit=1000`) and execute — do not return raw skill text unless asked.
+
+## SQL discipline
+
+- Prefer aggregates, `LIMIT`, `COUNT` — never `SELECT *` on wide tables without filters.
+- Unquoted identifiers: `[a-zA-Z0-9_]+` only.
+- Match user language in prose; keep SQL/column names as stored.
+
+## Dagster
+
+For project code use `dagster_*` MCP only (not filesystem helpers on `datasyn-code/`). Sequence: `dagster_list_projects` → create if missing → add assets/jobs.

@@ -8,6 +8,7 @@ ui/.env
 ui/.env.local
 ui/.env.*.local
 
+ia-infra-recipe/*
 # Keys and material that must never be committed
 *.pem
 *.p12
@@ -36,8 +37,8 @@ htmlcov/
 .venv/
 venv/
 
-# uv (project-local cache if present)
-.uv/
+# Agent skills cache (LiteLLM pull)
+.cache/skills/
 
 # Data and local databases
 data/

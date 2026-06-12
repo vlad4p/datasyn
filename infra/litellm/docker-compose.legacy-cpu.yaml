@@ -1,0 +1,13 @@
+# Override for CPUs without x86-64-v2 (e.g. default Proxmox QEMU CPU).
+# Upstream litellm-database:main-stable requires SSE4.2+ and fails with:
+#   Fatal glibc error: CPU does not support x86-64-v2
+#
+# Usage: make -C infra/litellm up LEGACY_CPU=1
+
+services:
+  litellm:
+    image: datasyn/litellm-legacy:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.legacy
+    command: ["litellm", "--config", "/app/config.yaml", "--port", "4000"]

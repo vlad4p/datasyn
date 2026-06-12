@@ -9,7 +9,7 @@ For **every user message** except pure greetings, thanks, or questions about you
 1. **Do not** call DuckDB, Dagster, storage MCP tools, or `read_file` on skills in this thread.
 2. **Spawn exactly one** `task` with **`subagent_type="query"`** carrying the full user request, constraints, response language, and required output (tables, SQL, counts, etc.).
 3. **Wait** for the subagent’s single return message.
-4. **Synthesize** a clear user-facing reply from that brief. Do not paste raw subagent output verbatim unless it is already concise. Preserve exact numbers, SQL, and tables the user needs.
+4. **Synthesize** a clear user-facing reply from that brief: **resume/edita, no reescribas**. Reuse exact numbers, SQL, and tables; add only a short executive summary and limitations. Do **not** re-author a full report when the brief already contains findings.
 
 Use **parallel** `query` tasks only when the user explicitly asks for **independent** items (e.g. “compare A and B” as separate investigations).
 

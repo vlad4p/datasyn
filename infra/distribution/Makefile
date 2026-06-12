@@ -15,6 +15,9 @@ DATASYN_CODE_BUILD_DIR := $(if $(wildcard $(DATASYN_CODE_DIR)/Dockerfile),$(DATA
 export DATASYN_CODE_DIR := $(DATASYN_CODE_BUILD_DIR)
 
 DOCKER_PLATFORM_REMOTE ?= linux/amd64
+# Optional: INCLUDE_DUCKDB_UI=1 to build/push profile ``ui`` (duckdb-ui); omitted from fleet prod by default.
+INCLUDE_DUCKDB_UI ?=
+DUCKDB_COMPOSE_PROFILES := $(if $(INCLUDE_DUCKDB_UI),--profile ui,)
 SKOPEO_IMAGE ?= quay.io/skopeo/stable:latest
 STORAGE_MCP_BUILDX_BUILDER ?= datasyn-registry-push
 BUILDKIT_CFG := $(DATASYN_ROOT)/infra/distribution/buildkit-registry-insecure.toml
@@ -33,6 +36,7 @@ help:
 	@echo "  Registry:  make bootstrap | up | down | ps | api-v2 | catalog-v2 | print-env"
 	@echo "  Publish:   make publish ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=<host:port>"
 	@echo "             make publish-remote ...   # buildx + skopeo (HTTP registry)"
+	@echo "             INCLUDE_DUCKDB_UI=1 ...   # optional duckdb-ui in publish set"
 	@echo "  Storage MCP: make storage-mcp-build-push-remote ENVIRONMENT=prod ..."
 
 up: bootstrap
@@ -63,26 +67,26 @@ dagster-user-code-build: bootstrap
 
 images-build: bootstrap dagster-user-code-build
 	$(call deploy_echo_env)
-	$(DEPLOY_COMPOSE) -f "$(OBJECT_STORAGE_COMPOSE)" build
-	$(DEPLOY_COMPOSE) -f "$(DUCKDB_COMPOSE)" --profile ui build
-	$(DEPLOY_COMPOSE) -f "$(DAGSTER_COMPOSE)" build
-	$(DEPLOY_COMPOSE) -f "$(AGENT_COMPOSE)" build
+	$(DEPLOY_COMPOSE) -f "$(OBJECT_STORAGE_COMPOSE)" build minio storage-mcp
+	$(DEPLOY_COMPOSE) -f "$(DUCKDB_COMPOSE)" $(DUCKDB_COMPOSE_PROFILES) build duckdb duckdb-mcp $(if $(INCLUDE_DUCKDB_UI),duckdb-ui,)
+	$(DEPLOY_COMPOSE) -f "$(DAGSTER_COMPOSE)" build dagster_postgresql dagster_user_code dagster_webserver
+	$(DEPLOY_COMPOSE) -f "$(AGENT_COMPOSE)" build brain ui
 
 images-push: images-build
 	$(call deploy_echo_env)
 	@test "$(ENVIRONMENT)" = "prod" || { echo "images-push: use ENVIRONMENT=prod"; exit 1; }
-	$(DEPLOY_COMPOSE) -f "$(OBJECT_STORAGE_COMPOSE)" push
-	$(DEPLOY_COMPOSE) -f "$(DUCKDB_COMPOSE)" --profile ui push
-	$(DEPLOY_COMPOSE) -f "$(DAGSTER_COMPOSE)" push
+	$(DEPLOY_COMPOSE) -f "$(OBJECT_STORAGE_COMPOSE)" push minio storage-mcp
+	$(DEPLOY_COMPOSE) -f "$(DUCKDB_COMPOSE)" $(DUCKDB_COMPOSE_PROFILES) push duckdb duckdb-mcp $(if $(INCLUDE_DUCKDB_UI),duckdb-ui,)
+	$(DEPLOY_COMPOSE) -f "$(DAGSTER_COMPOSE)" push dagster_postgresql dagster_user_code dagster_webserver dagster_daemon
 	$(DEPLOY_COMPOSE) -f "$(AGENT_COMPOSE)" push brain ui
 
 images-pull: bootstrap
 	$(call deploy_echo_env)
 	@test "$(ENVIRONMENT)" = "prod" || { echo "images-pull: use ENVIRONMENT=prod"; exit 1; }
-	$(DEPLOY_COMPOSE) -f "$(OBJECT_STORAGE_COMPOSE)" pull
-	$(DEPLOY_COMPOSE) -f "$(DUCKDB_COMPOSE)" --profile ui pull
-	$(DEPLOY_COMPOSE) -f "$(DAGSTER_COMPOSE)" pull
-	$(DEPLOY_COMPOSE) -f "$(AGENT_COMPOSE)" pull
+	$(DEPLOY_COMPOSE) -f "$(OBJECT_STORAGE_COMPOSE)" pull minio storage-mcp
+	$(DEPLOY_COMPOSE) -f "$(DUCKDB_COMPOSE)" $(DUCKDB_COMPOSE_PROFILES) pull duckdb duckdb-mcp $(if $(INCLUDE_DUCKDB_UI),duckdb-ui,)
+	$(DEPLOY_COMPOSE) -f "$(DAGSTER_COMPOSE)" pull dagster_postgresql dagster_user_code dagster_webserver dagster_daemon
+	$(DEPLOY_COMPOSE) -f "$(AGENT_COMPOSE)" pull brain ui
 
 publish:
 	@test "$(ENVIRONMENT)" = "prod" || { echo "Set ENVIRONMENT=prod"; exit 1; }
@@ -90,7 +94,7 @@ publish:
 
 publish-remote:
 	@test "$(ENVIRONMENT)" = "prod" || { echo "Set ENVIRONMENT=prod"; exit 1; }
-	@export DOCKER_DEFAULT_PLATFORM="$(DOCKER_PLATFORM_REMOTE)" && \
+	@export DOCKER_BUILDKIT=1 DOCKER_DEFAULT_PLATFORM="$(DOCKER_PLATFORM_REMOTE)" && \
 	  $(MAKE) images-build ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY="$(DATASYN_IMAGE_REGISTRY)"
 	@$(MAKE) images-push-skopeo ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY="$(DATASYN_IMAGE_REGISTRY)"
 
@@ -105,7 +109,12 @@ images-push-skopeo:
 	    "$(SKOPEO_IMAGE)" copy --dest-tls-verify=false "docker-daemon:$$img" "docker://$$img"; \
 	}; \
 	for f in "$(OBJECT_STORAGE_COMPOSE)" "$(DUCKDB_COMPOSE)" "$(DAGSTER_COMPOSE)" "$(AGENT_COMPOSE)"; do \
-	  for img in $$(DATASYN_IMAGE_PREFIX="$$_prefix" docker compose -f "$$f" config --images 2>/dev/null | sort -u); do \
+	  if [ "$$f" = "$(DUCKDB_COMPOSE)" ] && [ -n "$(INCLUDE_DUCKDB_UI)" ]; then \
+	    imgs=$$(DATASYN_IMAGE_PREFIX="$$_prefix" docker compose --profile ui -f "$$f" config --images 2>/dev/null | sort -u); \
+	  else \
+	    imgs=$$(DATASYN_IMAGE_PREFIX="$$_prefix" docker compose -f "$$f" config --images 2>/dev/null | sort -u); \
+	  fi; \
+	  for img in $$imgs; do \
 	    [ -n "$$img" ] && push_img "$$img"; \
 	  done; \
 	done
