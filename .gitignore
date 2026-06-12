@@ -7,7 +7,7 @@ agent/.env
 ui/.env
 ui/.env.local
 ui/.env.*.local
-
+develop/*
 ia-infra-recipe/*
 # Keys and material that must never be committed
 *.pem
