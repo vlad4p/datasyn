@@ -79,5 +79,6 @@ Credentials are set in [`docker-compose.yaml`](docker-compose.yaml) (`postgres_u
 
 ## Notes / limitations
 
+- **Per-run containers** mount `/data-local` from the host path in `DATASYN_DATA_LOCAL_HOST` (see `.env.example`). Run `make patch-runtime` before `up` — it renders `runtime/dagster.local.yaml` from the template (DockerRunLauncher volumes cannot use compose env vars).
 - The webserver/daemon require the host Docker socket; on SELinux or rootless-Docker hosts you may need to adjust the volume mount.
 - Production pipelines live in sibling **`../datasyn-code`** — new ingests follow gitflow there (see root `README.md`).

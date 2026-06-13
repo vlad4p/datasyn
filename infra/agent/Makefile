@@ -2,6 +2,7 @@
 
 DATASYN_ROOT := $(abspath ../..)
 COMPOSE_FILE := $(DATASYN_ROOT)/docker-compose.yaml
+STACK_ENV_FILE := $(DATASYN_ROOT)/.env
 include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../deploy.mk)
 
 .PHONY: help build up down ps logs

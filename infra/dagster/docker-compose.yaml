@@ -67,12 +67,8 @@ services:
       DAGSTER_POSTGRES_DB: "postgres_db"
       DAGSTER_CURRENT_IMAGE: "${DATASYN_IMAGE_PREFIX:-datasyn}/dagster_user_code_image:${DATASYN_IMAGE_TAG:-latest}"
       DUCKDB_PATH: "/data/warehouse.duckdb"
-      # LITELLM_KEY / LITELLM_PROXY_BASE come **only** from ``env_file`` (``infra/dagster/.env``).
-      # If listed here with ``${VAR:-…}`` the project-root ``.env`` (or host shell exports)
-      # silently win and the per-run containers point at the wrong proxy (e.g. 127.0.0.1:4000).
-      # MinIO (``infra/object-storage`` stack, alias ``datasyn-object-minio`` on ``infra-datasynk``).
-      # Client keys default from ``MINIO_ROOT_*`` when ``MINIO_ACCESS_KEY`` / ``MINIO_SECRET_KEY``
-      # are unset so Dagster matches ``MINIO_ROOT_USER`` / ``MINIO_ROOT_PASSWORD`` on the server.
+      LITELLM_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_PROXY_BASE: "${LITELLM_PROXY_BASE:-http://host.docker.internal:4000}"
       MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://datasyn-object-minio:9000}"
       MINIO_ROOT_USER: "${MINIO_ROOT_USER:-}"
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-}"
@@ -80,11 +76,7 @@ services:
       MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin123}}"
       MINIO_BUCKET: "${MINIO_BUCKET:-data-local}"
       MINIO_SECURE: "${MINIO_SECURE:-false}"
-      # Host ``/data-local`` mount root (see ``datasyn.utils.landing_io.data_local_root()``).
       DATA_LOCAL_ROOT: "${DATA_LOCAL_ROOT:-/data-local}"
-      # LiteLLM / proxy keys: **only** from ``env_file`` (``.env`` next to this compose file).
-      # Do not list them under ``environment`` with ``${VAR:-…}`` — host-shell exports can
-      # override ``env_file`` and point user code at the wrong proxy (e.g. 127.0.0.1:4000).
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -150,15 +142,16 @@ services:
       DAGSTER_POSTGRES_DB: "postgres_db"
       # Same forwarded set as ``dagster_daemon`` so behavior is consistent if the
       # webserver ever launches runs directly.
-      # LITELLM_KEY / LITELLM_PROXY_BASE come **only** from ``env_file`` (``infra/dagster/.env``).
+      # LITELLM_KEY from LITELLM_MASTER_KEY; LITELLM_PROXY_BASE from ``env_file`` only.
       DUCKDB_PATH: "/data/warehouse.duckdb"
+      LITELLM_KEY: ${LITELLM_MASTER_KEY}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       # Host ``runtime/dagster.yaml`` must be live; the runtime image only COPYs at build
       # time. Without this mount, ``env_vars`` (e.g. MINIO_*) stays stale and
       # DockerRunLauncher will not forward them to per-run containers.
-      - ./runtime/dagster.yaml:/opt/dagster/dagster_home/dagster.yaml:ro
+      - ./runtime/dagster.local.yaml:/opt/dagster/dagster_home/dagster.yaml:ro
       - ./runtime/workspace.yaml:/opt/dagster/dagster_home/workspace.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/io_manager_storage:/tmp/io_manager_storage
@@ -207,9 +200,10 @@ services:
       DAGSTER_POSTGRES_DB: "postgres_db"
       # ``DockerRunLauncher.env_vars`` forwards these from the daemon's own
       # environment into per-run job containers. Keep in sync with ``dagster.yaml``.
-      # LITELLM_KEY / LITELLM_PROXY_BASE come **only** from ``env_file`` (``infra/dagster/.env``)
-      # to avoid project-root ``.env`` / host shell shadowing the value (e.g. 127.0.0.1:4000).
+      # Each name in ``dagster.yaml`` ``env_vars`` must be set here (even empty).
       DUCKDB_PATH: "/data/warehouse.duckdb"
+      LITELLM_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_PROXY_BASE: "${LITELLM_PROXY_BASE:-http://host.docker.internal:4000}"
       MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://datasyn-object-minio:9000}"
       MINIO_ROOT_USER: "${MINIO_ROOT_USER:-}"
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-}"
@@ -232,7 +226,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./runtime/dagster.yaml:/opt/dagster/dagster_home/dagster.yaml:ro
+      - ./runtime/dagster.local.yaml:/opt/dagster/dagster_home/dagster.yaml:ro
       - ./runtime/workspace.yaml:/opt/dagster/dagster_home/workspace.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/io_manager_storage:/tmp/io_manager_storage

@@ -23,6 +23,8 @@ concurrency:
 run_monitoring:
   enabled: true
   poll_interval_seconds: 60
+  # Registry pulls / heavy defs import on fleet VMs can exceed the default 180s.
+  start_timeout_seconds: 600
   # Release concurrency pool slots if a run is cancelled (avoids deadlock with pool limit 1).
   free_slots_after_run_end_seconds: 300
 
@@ -79,12 +81,11 @@ run_launcher:
         # location; container_kwargs.volumes does not support env interpolation.
         - /tmp/dagster_data:/opt/dagster/data
         # Same warehouse and ``/data-local`` host tree as ``dagster_user_code``.
-        # ``container_kwargs.volumes`` does not support env interpolation — set this
-        # absolute path to YOUR clone's ``data-local`` directory (same tree as
-        # ``DATASYN_DATA_LOCAL_HOST`` in ``docker-compose.yaml``).
+        # ``container_kwargs.volumes`` does not support env interpolation — substituted
+        # by ``scripts/patch-dagster-yaml.sh`` → ``runtime/dagster.local.yaml``.
         - duckdb_data:/data
         # RW under ``/data-local`` (e.g. ``landing/...``) for assets that sync to MinIO.
-        - /path/to/datasyn/data-local:/data-local
+        - __DATASYN_DATA_LOCAL_HOST__:/data-local
 
 run_storage:
   module: dagster_postgres.run_storage

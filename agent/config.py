@@ -192,7 +192,7 @@ class Settings:
             model_provider=_model_provider(),
             chat_model=((os.environ.get("CHAT_MODEL") or "").strip() or None),
             chat_model_fast=((os.environ.get("CHAT_MODEL_FAST") or "").strip() or None),
-            litellm_key=_env_first("LITELLM_KEY", "LITELLM_PROXY_KEY"),
+            litellm_key=_env_first("LITELLM_KEY", "LITELLM_PROXY_KEY", "LITELLM_MASTER_KEY"),
             litellm_api_base=_litellm_base_from_env(),
             openrouter_api_key=_env_first("OPENROUTER_API_KEY", "OPENROUTER_KEY"),
             openrouter_api_base=_openrouter_base_from_env(),

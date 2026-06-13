@@ -10,23 +10,55 @@ endif
 DATASYN_IMAGE_NAMESPACE ?= datasyn
 DATASYN_IMAGE_TAG ?= latest
 DATASYN_IMAGE_REGISTRY ?=
+
+# Repo-root deploy .env (minimal: DATASYN_IMAGE_REGISTRY, LITELLM_MASTER_KEY).
+ifneq ($(DATASYN_ROOT),)
+  ROOT_ENV_FILE := $(DATASYN_ROOT)/.env
+  ifneq ($(wildcard $(ROOT_ENV_FILE)),)
+    include $(ROOT_ENV_FILE)
+    export
+  endif
+endif
+
+# Optional stack .env (set STACK_ENV_FILE in infra/*/Makefile before include).
+ifneq ($(STACK_ENV_FILE),)
+  ifneq ($(wildcard $(STACK_ENV_FILE)),)
+    include $(STACK_ENV_FILE)
+    export
+  endif
+endif
+
+ifneq ($(LITELLM_MASTER_KEY),)
+  export LITELLM_KEY := $(LITELLM_MASTER_KEY)
+endif
+
 REGISTRY_PUBLISH_PORT ?= 5000
 REGISTRY_HTTP_URL ?= http://localhost:5000
 
 ifeq ($(ENVIRONMENT),dev)
-  DATASYN_IMAGE_PREFIX := $(DATASYN_IMAGE_NAMESPACE)
+  ifneq ($(DATASYN_IMAGE_REGISTRY),)
+    DATASYN_IMAGE_PREFIX := $(DATASYN_IMAGE_REGISTRY)/$(DATASYN_IMAGE_NAMESPACE)
+  else
+    DATASYN_IMAGE_PREFIX := $(DATASYN_IMAGE_NAMESPACE)
+  endif
 else
   ifeq ($(DATASYN_IMAGE_REGISTRY),)
     DATASYN_IMAGE_REGISTRY := $(shell printf '%s' "$(REGISTRY_HTTP_URL)" | sed -E 's|^https?://||; s|/.*||')
   endif
   ifeq ($(DATASYN_IMAGE_REGISTRY),)
-    $(error ENVIRONMENT=prod: set DATASYN_IMAGE_REGISTRY=host:port or REGISTRY_HTTP_URL)
+    $(error ENVIRONMENT=prod: set DATASYN_IMAGE_REGISTRY=host:port in .env or REGISTRY_HTTP_URL)
   endif
   DATASYN_IMAGE_PREFIX := $(DATASYN_IMAGE_REGISTRY)/$(DATASYN_IMAGE_NAMESPACE)
 endif
 
 export ENVIRONMENT DATASYN_IMAGE_PREFIX DATASYN_IMAGE_NAMESPACE DATASYN_IMAGE_TAG
 export DOCKER_REGISTRY := $(DATASYN_IMAGE_PREFIX)
+ifneq ($(LITELLM_KEY),)
+  export LITELLM_KEY
+endif
+ifneq ($(LITELLM_MASTER_KEY),)
+  export LITELLM_MASTER_KEY
+endif
 
 SHARED_NETWORK ?= infra-datasynk
 SHARED_VOLUMES ?= duckdb_data storage

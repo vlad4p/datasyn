@@ -2,6 +2,7 @@
 
 DATASYN_ROOT := $(abspath ../..)
 COMPOSE_FILE := $(DATASYN_ROOT)/infra/dagster/docker-compose.yaml
+STACK_ENV_FILE := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/.env)
 include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../deploy.mk)
 
 DATASYN_CODE_DIR ?= $(abspath $(DATASYN_ROOT)/../datasyn-code)
@@ -13,12 +14,15 @@ DEPLOY_COMPOSE = DATASYN_IMAGE_PREFIX="$(DATASYN_IMAGE_PREFIX)" DATASYN_IMAGE_TA
 	DATASYN_IMAGE_NAMESPACE="$(DATASYN_IMAGE_NAMESPACE)" DATASYN_CODE_DIR="$(DATASYN_CODE_DIR)" \
 	docker compose
 
-.PHONY: help build up down ps logs restart user-code-build
+.PHONY: help build up down ps logs restart user-code-build patch-runtime pull
 
 help:
 	@echo "infra/dagster — ENVIRONMENT=$(ENVIRONMENT) prefix=$(DATASYN_IMAGE_PREFIX)"
-	@echo "  make bootstrap | print-env | build | up | down | ps | logs | restart"
+	@echo "  make bootstrap | print-env | patch-runtime | build | up | down | ps | logs | restart | pull"
 	@echo "  make user-code-build   # dagster_user_code_image (datasyn-code or stub)"
+
+patch-runtime:
+	@bash "$(abspath $(dir $(lastword $(MAKEFILE_LIST))))/scripts/patch-dagster-yaml.sh"
 
 user-code-build: bootstrap
 	$(call deploy_echo_env)
@@ -30,17 +34,22 @@ user-code-build: bootstrap
 	  $(MAKE) -C "$(DATASYN_CODE_DIR)" build ENVIRONMENT="$(ENVIRONMENT)"; \
 	fi
 
-build: user-code-build
+build: user-code-build patch-runtime
 	$(call deploy_echo_env)
 	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" build
 
-up: user-code-build
+pull: bootstrap patch-runtime
+	$(call deploy_echo_env)
+	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" pull
+
+up: bootstrap patch-runtime
 	$(call deploy_echo_env)
 ifeq ($(ENVIRONMENT),dev)
+	$(MAKE) user-code-build
 	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" up -d --build
 else
 	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" pull
-	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" up -d
+	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" up -d --force-recreate
 endif
 
 down:
