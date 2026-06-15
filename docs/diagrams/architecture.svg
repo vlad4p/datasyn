@@ -73,7 +73,7 @@
     <rect width="380" height="44" rx="3" fill="#ffffff" stroke="#f4bd48" stroke-width="2" stroke-dasharray="4 3"/>
     <rect x="12" y="11" width="72" height="22" rx="6" fill="url(#langfuse)" stroke="#f2b573"/>
     <text x="48" y="26" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="bold" fill="#49443b">Langfuse</text>
-    <text x="96" y="27" font-family="Arial,sans-serif" font-size="10" fill="#585d5e">Trazas server-side del brain (opcional, infra/langfuse/)</text>
+    <text x="96" y="27" font-family="Arial,sans-serif" font-size="10" fill="#585d5e">Trazas server-side del brain (opcional, Langfuse)</text>
   </g>
 
   <!-- Route B: direct MCP hint box -->
@@ -85,7 +85,7 @@
     <line x1="16" y1="72" x2="364" y2="72" stroke="#49443b"/>
     <text x="16" y="92" font-family="Arial,sans-serif" font-size="10" fill="#559778">Consultas SQL y objetos MinIO</text>
     <text x="16" y="110" font-family="Arial,sans-serif" font-size="10" fill="#559778">directamente desde el cliente MCP</text>
-    <text x="16" y="136" font-family="Arial,sans-serif" font-size="9" fill="#585d5e">Misma red Docker infra-datasynk</text>
+    <text x="16" y="136" font-family="Arial,sans-serif" font-size="9" fill="#585d5e">Plataforma externa (MCP, LiteLLM, Dagster)</text>
   </g>
 
   <!-- Arrows from A and B to MCP layer -->
@@ -104,7 +104,7 @@
     <text x="54" y="24" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="bold" fill="#2c695a">duckdb-mcp</text>
     <text x="14" y="48" font-family="Arial,sans-serif" font-size="12" font-weight="bold" fill="#49443b">datasyn/duckdb-mcp</text>
     <text x="14" y="64" font-family="Arial,sans-serif" font-size="10" fill="#585d5e">SQL &#183; schema &#183; /data-local</text>
-    <text x="14" y="76" font-family="Arial,sans-serif" font-size="9" fill="#585d5e">:8040/mcp &#183; infra/duckdb/</text>
+    <text x="14" y="76" font-family="Arial,sans-serif" font-size="9" fill="#585d5e">:8040/mcp &#183; duckdb-mcp</text>
   </g>
 
   <g transform="translate(515,404)">
@@ -113,7 +113,7 @@
     <text x="54" y="24" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="bold" fill="#6c2b3b">storage-mcp</text>
     <text x="14" y="48" font-family="Arial,sans-serif" font-size="12" font-weight="bold" fill="#49443b">datasyn/storage-mcp</text>
     <text x="14" y="64" font-family="Arial,sans-serif" font-size="10" fill="#585d5e">MinIO list/get/put</text>
-    <text x="14" y="76" font-family="Arial,sans-serif" font-size="9" fill="#585d5e">:8044/mcp &#183; infra/object-storage/</text>
+    <text x="14" y="76" font-family="Arial,sans-serif" font-size="9" fill="#585d5e">:8044/mcp &#183; storage-mcp</text>
   </g>
 
   <!-- arrows to data plane -->
@@ -145,5 +145,5 @@
   </g>
 
   <rect x="200" y="618" width="480" height="1" fill="#49443b"/>
-  <text x="440" y="632" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" fill="#585d5e">Red compartida infra-datasynk &#183; cada caja = contenedor Docker independiente</text>
+  <text x="440" y="632" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" fill="#585d5e">brain + ui en datasyn &#183; plataforma de datos externa</text>
 </svg>

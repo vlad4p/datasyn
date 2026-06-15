@@ -22,7 +22,7 @@ def _publish_bundle_file(*, cfg: SkillsSettings, bundle_path: Path) -> Path:
     """Copy tarball into the LiteLLM skills-bundles directory (bind-mounted in compose)."""
     if cfg.bundle_publish_dir is None:
         raise ValueError(
-            "LITELLM_SKILLS_BUNDLE_DIR is not set and infra/litellm/skills-bundles/ was not found. "
+            "LITELLM_SKILLS_BUNDLE_DIR is not set. "
             "Set LITELLM_SKILLS_BUNDLE_DIR to the directory LiteLLM serves, or set "
             "LITELLM_SKILLS_BUNDLE_URL to an existing bundle URL."
         )

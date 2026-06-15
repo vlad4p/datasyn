@@ -82,4 +82,4 @@ for fname in sorted(os.listdir(source_dir)):
 - `storage_put_object_text` accepts **text only** (string content). For binary files, the `put_object_text` tool in `server.py` encodes to UTF-8.
 - The default bucket is `data-local`. Pass a different `bucket` argument to use another bucket.
 - The tool auto-creates the bucket if it does not exist (when `create_bucket_if_missing=True`, which is the default).
-- The storage endpoint is `http://datasyn-object-minio:9000` (see `infra/object-storage/.env`).
+- The storage endpoint is `http://datasyn-object-minio:9000` (or your platform MinIO URL).

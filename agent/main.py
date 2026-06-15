@@ -483,11 +483,11 @@ def _pipeline_snapshot() -> dict[str, Any]:
                 "file_existed_when_process_started": ENV_DOTENV_LOADED_AT_IMPORT,
                 "load_dotenv_override_prior_env": True,
                 "expected_location": "Repository root: same directory that contains the `agent/` folder "
-                "(e.g. `datasyn/.env`). In Docker, `brain` uses `env_file`: `compose.env` plus optional `.env` "
-                "(``path: .env`` with ``required: false``); variables are injected into the process environment.",
-                "compose_also_injects": "docker-compose `brain.env_file`: compose.env then optional .env (omit .env on "
-                "servers that only use compose.env / orchestrator secrets). If `/project/.env` exists in the "
-                "image or a bind mount, `load_dotenv` still applies at import with override=True.",
+                "(e.g. `datasyn/.env`). In Docker, `brain` uses `env_file: .env` (injected into the process "
+                "environment).",
+                "compose_also_injects": "docker-compose `brain.env_file`: `.env` on the VM deploy bundle. "
+                "If `/project/.env` exists in the image or a bind mount, `load_dotenv` still applies at import "
+                "with override=True.",
             },
         },
         "mcp_servers": _mcp_urls_public(),
@@ -496,10 +496,8 @@ def _pipeline_snapshot() -> dict[str, Any]:
             "compose_service": "duckdb-ui",
             "docs": "https://duckdb.org/docs/current/core_extensions/ui.html",
             "announcement": "https://duckdb.org/2025/03/12/duckdb-ui",
-            "note": "Optional service: `docker compose -f infra/duckdb/docker-compose.yaml --profile ui up -d` "
-            "(plain `up` omits `duckdb-ui` so duckdb-mcp can open warehouse.duckdb without lock conflicts). "
-            "DuckDB binds the UI on localhost:4213 (often ::1 in-container); socat listens on 0.0.0.0:4214 "
-            "(compose maps host 4213→4214).",
+            "note": "Optional DuckDB Local UI extension — run separately on your platform host. "
+            "See https://duckdb.org/docs/current/core_extensions/ui.html",
         },
         "listing_data_local": {
             "filesystem_tool": "duckdb-mcp exposes `list_data_mount(path)` — read-only directory listing under DATA_LOCAL_ROOT (default /data-local).",

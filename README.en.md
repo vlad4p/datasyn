@@ -29,9 +29,9 @@
 
 ## About
 
-**datasyn** is the **platform layer**: brain (FastAPI + Deep Agents), React UI, HTTP MCP servers, Docker stacks under `infra/`.
+**datasyn** is the **agent runtime**: brain (FastAPI + Deep Agents), React UI, and versioned skills. It connects to external platform services via **`mcp.json`** and environment variables (LiteLLM, Dagster, MinIO/DuckDB MCP).
 
-Dagster **pipelines** live in sibling [`datasyn-code`](../datasyn-code). **Dagster runtime** (webserver, daemon, gRPC user code) deploys from `infra/dagster/` in this repo.
+Dagster **pipelines** live in sibling [`datasyn-code`](../datasyn-code).
 
 The agent **runs** SQL, lists MinIO objects, and triggers Dagster materializations — with audit trail (SQL, tool calls, versioned skills). Operational MCP servers today: **`duckdb-mcp`** and **`storage-mcp`**.
 
@@ -52,22 +52,21 @@ The agent **runs** SQL, lists MinIO objects, and triggers Dagster materializatio
 
 <p align="center"><img src="docs/diagrams/architecture.svg" alt="Platform architecture" width="880"/></p>
 
-Each service runs in its **own Docker container** on **`infra-datasynk`**:
+This repo deploys **brain** and **ui**; the data platform (MCP, LiteLLM, Dagster) runs separately.
 
 | Route | Flow |
 |-------|------|
-| **A — agent / UI** | `ui` (:8003) → `brain` (:8002) → MCP servers → data plane |
+| **A — agent / UI** | `ui` → `brain` → MCP servers → data plane |
 | **B — direct MCP** | IDE `mcp.json` → `duckdb-mcp` / `storage-mcp` (no brain) |
 
-**Observability (optional):** **Langfuse** (`infra/langfuse/`) collects server-side traces from **brain** (LLM spans, MCP tool calls). See [`INSTALL.md`](INSTALL.md).
+**Observability (optional):** **Langfuse** traces from **brain** — see [`INSTALL.md`](INSTALL.md).
 
-| Container | Image | Port |
+| Component | Image | Port |
 |-----------|-------|------|
 | brain | `datasyn/brain` | `:8002` |
-| ui | `datasyn/ui` | `:8003` |
-| duckdb-mcp | `datasyn/duckdb-mcp` | `:8040` |
-| storage-mcp | `datasyn/storage-mcp` | `:8044` |
-| dagster_* | `datasyn/dagster-*` | UI `:3001` |
+| ui | `datasyn/ui` | `:8003` (Docker) / `:5173` (Vite dev) |
+
+Platform services (external): `duckdb-mcp`, `storage-mcp`, Dagster, LiteLLM — configure in `mcp.json` and `.env`.
 
 Agent rules: [`AGENTS.md`](AGENTS.md).
 
@@ -94,13 +93,13 @@ Two repos: platform in **datasyn**, user code in **datasyn-code**.
 ```bash
 git clone …/datasyn.git && git clone …/datasyn-code.git
 cd datasyn
-make -C infra/object-storage bootstrap
-make -C infra/object-storage up && make -C infra/duckdb up && make -C infra/dagster up
+cp .env.example .env
+make agent-dev
 ```
 
 | Repo | Contents | Key commands |
 |------|----------|--------------|
-| datasyn | Brain, UI, skills, infra (duckdb, minio, Dagster runtime) | `make agent-dev` · stacks in `infra/` · [`INSTALL.md`](INSTALL.md) |
+| datasyn | Brain, UI, skills | `make agent-dev` · `make build` / `make push` · [`INSTALL.md`](INSTALL.md) |
 | datasyn-code | Bronze assets, jobs, schedules, gRPC Dockerfile | `make dev` · `make push` |
 
 ---
@@ -111,10 +110,10 @@ make -C infra/object-storage up && make -C infra/duckdb up && make -C infra/dags
 
 Recommended flow to add a data source:
 
-1. **Clone** [`datasyn`](.) and [`datasyn-code`](../datasyn-code) side by side; start stacks (`infra/README.md`).
+1. **Clone** [`datasyn`](.) and [`datasyn-code`](../datasyn-code) side by side; configure platform per [`INSTALL.md`](INSTALL.md).
 2. **Configure** the agent: [`mcp.json`](mcp.json), skills under [`skills/`](skills/) (e.g. [`ingest-scrape-news-bronze`](skills/ingest-scrape-news-bronze/SKILL.md)), [`AGENTS.md`](AGENTS.md).
 3. **Develop via gitflow** in **`datasyn-code`**: `feature/<source>` branch, assets under `src/datasyn/assets/bronze/<source>/`, job + schedule; PR → merge to `main`.
-4. **Publish** code location: `make -C ../datasyn-code push` and redeploy `dagster_user_code` (see [`INSTALL.md`](INSTALL.md)).
+4. **Publish** code location: `make -C ../datasyn-code push`.
 5. **Validate** in Dagster UI (`:3001`).
 
 Pipeline code is **reviewed in git** in `datasyn-code`; the agent uses **`duckdb_*`** and **`storage_*`** for SQL, landing, and checks on `/data-local`.
@@ -162,29 +161,29 @@ Skills: [`skills/`](skills/). Pipeline ingest skills also in [`datasyn-code`](..
 
 Full guide: [`INSTALL.md`](INSTALL.md).
 
-**Daily dev — brain (`uv`) + UI (`npm`) on the host; infra in Docker:**
+**Build machine:**
 
 ```bash
 cp .env.example .env
-make uv-sync && make ui-install
-make -C infra/object-storage up
-make -C infra/duckdb up
-make -C infra/dagster up
-make agent-dev
+make build
+make push
 ```
 
-**Prod-like stack (brain/ui in containers — not daily dev):**
+**VM:** copy `docker-compose.yaml` + `.env` → `docker compose pull && docker compose up -d` (see [`INSTALL.md`](INSTALL.md)).
+
+**Daily dev — brain (`uv`) + UI (`npm`) on the host:**
 
 ```bash
-make -C infra/object-storage bootstrap
-make -C infra/object-storage up && make -C infra/duckdb up && make -C infra/dagster up && make -C infra/agent up
+cp .env.example .env
+cp mcp.json.example mcp.json
+make uv-sync && make ui-install
+make agent-dev
 ```
 
 Publish user code after pipeline changes:
 
 ```bash
 make -C ../datasyn-code push
-# redeploy: see INSTALL.md (compose recreate dagster_user_code)
 ```
 
 ---
@@ -201,7 +200,7 @@ INDEC EPH, Censo/UCA, elections 2023, Boletín Oficial, press (Infobae, Clarín,
 
 ## Makefile
 
-`make help` (root) · [`infra/README.md`](infra/README.md) · `make agent-dev` · `make uv-sync`
+`make help` (root) · `make agent-dev` · `make build` / `make push` · [`INSTALL.md`](INSTALL.md)
 
 Sibling repo: `make -C ../datasyn-code help`.
 

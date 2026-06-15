@@ -9,9 +9,10 @@ WORKDIR /project
 COPY requirements.txt .
 RUN uv pip install --system --no-cache -r requirements.txt
 
-# Baked image layout (dev Compose still bind-mounts the repo over /project).
+# Baked image layout (skills + agent code ship in the image for VM deploy).
 COPY deepagents.toml mcp.json AGENTS.md /project/
 COPY agent/ /project/agent/
+COPY skills/ /project/skills/
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/project \

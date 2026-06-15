@@ -4,11 +4,7 @@ import { artifactFileUrl } from "./api";
 const CASES_LINE = /^([^:\n]+):\s*([\d,]+)\s*cases\s*\.?\s*$/i;
 
 function maybeAppendInferredBarChart(content: string): string {
-  if (
-    content.includes("```vega-lite") ||
-    content.includes("```vega") ||
-    content.includes("```mermaid")
-  ) {
+  if (content.includes("```vega-lite") || content.includes("```vega")) {
     return content;
   }
   if (/\bChart Image:\s*\/project\//i.test(content)) {

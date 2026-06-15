@@ -36,7 +36,6 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
-          if (id.includes("mermaid")) return "vendor-mermaid";
           if (id.includes("plotly")) return "vendor-plotly";
           if (id.includes("vega")) return "vendor-vega";
           if (id.includes("react-dom") || id.includes("/react/")) return "vendor-react";

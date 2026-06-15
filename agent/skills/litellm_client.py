@@ -16,8 +16,7 @@ class LiteLLMSkillsClient:
         if not cfg.litellm_key:
             raise ValueError(
                 "LITELLM_KEY (or LITELLM_MASTER_KEY) is required for LiteLLM skills sync. "
-                "Set it in the repo root `.env`, or use `infra/litellm/.env` "
-                "(default from `make -C infra/litellm init-env`)."
+                "Set it in the repo root `.env`."
             )
         self._cfg = cfg
         self._root = cfg.litellm_proxy_root.rstrip("/")

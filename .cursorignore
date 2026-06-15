@@ -1,4 +1,4 @@
-# Environment and secrets (single template: .env.example)
+# Environment and secrets
 .env
 .env.*
 !.env.example
@@ -6,8 +6,7 @@ agent/.env
 ui/.env
 ui/.env.local
 ui/.env.*.local
-develop/
-
+develop/*
 # Keys and material that must never be committed
 *.pem
 *.p12
@@ -69,3 +68,4 @@ Thumbs.db
 docker-compose.override.yml
 CONCEPTO.md
 reporte/
+
