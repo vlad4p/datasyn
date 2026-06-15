@@ -14,6 +14,9 @@ ENV DAGSTER_HOME=/opt/dagster/dagster_home/
 
 RUN mkdir -p $DAGSTER_HOME
 
-COPY dagster.yaml workspace.yaml $DAGSTER_HOME
+COPY docker-entrypoint.sh dagster.yaml workspace.yaml $DAGSTER_HOME/
+RUN chmod +x "$DAGSTER_HOME/docker-entrypoint.sh" \
+    && mv "$DAGSTER_HOME/dagster.yaml" "$DAGSTER_HOME/dagster.yaml.template"
 
 WORKDIR $DAGSTER_HOME
+ENTRYPOINT ["/opt/dagster/dagster_home/docker-entrypoint.sh"]

@@ -29,6 +29,7 @@ DEPLOY_COMPOSE = DATASYN_IMAGE_PREFIX="$(DATASYN_IMAGE_PREFIX)" DATASYN_IMAGE_TA
 .PHONY: help up down ps api-v2 catalog-v2 \
 	dagster-user-code-build images-build images-push images-pull \
 	publish publish-remote images-push-skopeo \
+	agent-build-push-remote agent-manifest-v2 \
 	storage-mcp-build-push-remote storage-mcp-manifest-v2
 
 help:
@@ -38,6 +39,7 @@ help:
 	@echo "             make publish-remote ...   # buildx + skopeo (HTTP registry)"
 	@echo "             INCLUDE_DUCKDB_UI=1 ...   # optional duckdb-ui in publish set"
 	@echo "  Storage MCP: make storage-mcp-build-push-remote ENVIRONMENT=prod ..."
+	@echo "  Agent only:  make agent-build-push-remote ENVIRONMENT=prod DATASYN_IMAGE_REGISTRY=<host:port>"
 
 up: bootstrap
 	$(DEPLOY_COMPOSE) -f "$(COMPOSE_FILE)" up -d
@@ -136,3 +138,42 @@ storage-mcp-build-push-remote: storage-mcp-buildx-ensure
 storage-mcp-manifest-v2:
 	@echo "HEAD manifest $(DATASYN_IMAGE_NAMESPACE)/storage-mcp:$(DATASYN_IMAGE_TAG)"
 	@curl -fsS -I "$(REGISTRY_HTTP_URL)/v2/$(DATASYN_IMAGE_NAMESPACE)/storage-mcp/manifests/$(DATASYN_IMAGE_TAG)" | sed -n '1,25p'
+
+agent-build-push-remote: storage-mcp-buildx-ensure
+	@test "$(ENVIRONMENT)" = "prod" || { echo "Set ENVIRONMENT=prod"; exit 1; }
+	@test -n "$(DATASYN_IMAGE_REGISTRY)" || { echo "Set DATASYN_IMAGE_REGISTRY"; exit 1; }
+	@echo "Pushing $(DATASYN_IMAGE_PREFIX)/brain:$(DATASYN_IMAGE_TAG) ($(DOCKER_PLATFORM_REMOTE))"
+	docker buildx build --builder "$(STORAGE_MCP_BUILDX_BUILDER)" --platform "$(DOCKER_PLATFORM_REMOTE)" --provenance=false \
+	  -f "$(DATASYN_ROOT)/Dockerfile" \
+	  -t "$(DATASYN_IMAGE_PREFIX)/brain:$(DATASYN_IMAGE_TAG)" \
+	  "$(DATASYN_ROOT)" --push
+	@echo "Pushing $(DATASYN_IMAGE_PREFIX)/ui:$(DATASYN_IMAGE_TAG) ($(DOCKER_PLATFORM_REMOTE))"
+	docker buildx build --builder "$(STORAGE_MCP_BUILDX_BUILDER)" --platform "$(DOCKER_PLATFORM_REMOTE)" --provenance=false \
+	  -f "$(DATASYN_ROOT)/ui/Dockerfile" \
+	  -t "$(DATASYN_IMAGE_PREFIX)/ui:$(DATASYN_IMAGE_TAG)" \
+	  "$(DATASYN_ROOT)/ui" --push
+
+# Fallback when buildx push hits HTTPS-on-HTTP registry (recreate builder or use this target).
+agent-build-push-skopeo: bootstrap
+	@test "$(ENVIRONMENT)" = "prod" || { echo "Set ENVIRONMENT=prod"; exit 1; }
+	@test -n "$(DATASYN_IMAGE_REGISTRY)" || { echo "Set DATASYN_IMAGE_REGISTRY"; exit 1; }
+	$(call deploy_echo_env)
+	@export DOCKER_DEFAULT_PLATFORM="$(DOCKER_PLATFORM_REMOTE)" && \
+	  $(DEPLOY_COMPOSE) -f "$(AGENT_COMPOSE)" build brain ui
+	@set -euo pipefail; \
+	_prefix="$(DATASYN_IMAGE_PREFIX)"; \
+	_tag="$(DATASYN_IMAGE_TAG)"; \
+	push_img() { \
+	  img="$$1"; echo "Pushing $$img (skopeo)..."; \
+	  dockermount=(); [ -d "$${HOME}/.docker" ] && dockermount=(-v "$${HOME}/.docker:/root/.docker:ro"); \
+	  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$${dockermount[@]}" \
+	    "$(SKOPEO_IMAGE)" copy --dest-tls-verify=false "docker-daemon:$$img" "docker://$$img"; \
+	}; \
+	push_img "$$_prefix/brain:$$_tag"; \
+	push_img "$$_prefix/ui:$$_tag"
+
+agent-manifest-v2:
+	@echo "HEAD manifest $(DATASYN_IMAGE_NAMESPACE)/brain:$(DATASYN_IMAGE_TAG)"
+	@curl -fsS -I "$(REGISTRY_HTTP_URL)/v2/$(DATASYN_IMAGE_NAMESPACE)/brain/manifests/$(DATASYN_IMAGE_TAG)" | sed -n '1,25p'
+	@echo "HEAD manifest $(DATASYN_IMAGE_NAMESPACE)/ui:$(DATASYN_IMAGE_TAG)"
+	@curl -fsS -I "$(REGISTRY_HTTP_URL)/v2/$(DATASYN_IMAGE_NAMESPACE)/ui/manifests/$(DATASYN_IMAGE_TAG)" | sed -n '1,25p'

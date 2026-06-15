@@ -1,9 +1,7 @@
 # BuildKit: allow plain HTTP pushes to the on-prem OCI registry (no TLS).
 # Use with: docker buildx create --name datasyn-registry-push --driver docker-container \
 #   --config "$(pwd)/infra/distribution/buildkit-registry-insecure.toml" --bootstrap
-# Then: docker buildx build --builder datasyn-registry-push ... --push
-#
-# Adjust the host:port if your registry URL differs from the default in the Makefile.
+# Add [registry."host:port"] entries for each registry you push to.
 
 [registry."localhost:5000"]
   http = true
@@ -17,18 +15,6 @@
   http = true
   insecure = true
 
-[registry."10.13.10.156:5000"]
-  http = true
-  insecure = true
-
-[registry."10.13.10.159:5000"]
-  http = true
-  insecure = true
-
-[registry."10.13.10.144:5000"]
-  http = true
-  insecure = true
-
-[registry."10.13.10.164:5000"]
+[registry."10.13.10.123:5000"]
   http = true
   insecure = true

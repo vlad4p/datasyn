@@ -15,6 +15,8 @@ from langchain_openai import ChatOpenAI
 
 from agent.config import OPENROUTER_DEFAULT_API_BASE, settings
 from agent.utils.chat_model_state import effective_chat_model, effective_fast_chat_model
+from agent.utils.litellm_key_state import effective_litellm_key
+from agent.utils.litellm_models import canonical_litellm_model_id
 
 _GEMINI_DEFAULT_MODEL = "gemini-2.0-flash"
 
@@ -62,6 +64,16 @@ def parse_litellm_proxy_response_body(text: str) -> dict[str, Any] | None:
     return parse_litellm_proxy_error_payload(data) if isinstance(data, dict) else None
 
 
+def _is_litellm_key_model_access_denied(parsed: dict[str, Any]) -> bool:
+    code = str(parsed.get("code") or parsed.get("error_code") or "").strip()
+    err_type = str(parsed.get("type") or "").strip()
+    msg = f"{parsed.get('error_message') or ''} {parsed.get('message') or ''}".lower()
+    return (
+        code == "403"
+        and err_type == "key_model_access_denied"
+    ) or "key not allowed to access model" in msg
+
+
 def _is_litellm_model_not_found(parsed: dict[str, Any]) -> bool:
     """True when CHAT_MODEL is not registered for this proxy key / team."""
     cls = (parsed.get("error_class") or "").strip()
@@ -105,6 +117,16 @@ def hint_for_litellm_parsed_error(parsed: dict[str, Any]) -> str:
             return prov
         h = parsed.get("user_api_key_hash")
         code = parsed.get("error_code")
+        err_type = (parsed.get("type") or "").strip()
+        if code == "401" and err_type == "token_not_found_in_db":
+            return (
+                "LiteLLM does not recognize this Bearer token for the configured proxy "
+                f"({settings.litellm_api_base or 'LITELLM_PROXY_BASE'}). "
+                "Local dev: use the same key as LITELLM_MASTER_KEY in infra/litellm/.env "
+                "(default sk-datasyn-local-litellm-dev), not a fleet virtual key. "
+                "Fleet: create the virtual key in LiteLLM admin or use Agent settings → Reset to .env key "
+                "if you pasted the wrong token. Session overrides persist until cleared or brain restart."
+            )
         return (
             "LiteLLM proxy rejected the API key (Bearer token). "
             f"The proxy recorded key hash {h!r} (compare with its logs). "
@@ -114,6 +136,14 @@ def hint_for_litellm_parsed_error(parsed: dict[str, Any]) -> str:
             f"Proxy error_code={code!r}."
         )
     if parsed.get("kind") == "openai_compatible_error":
+        if _is_litellm_key_model_access_denied(parsed):
+            return (
+                "LiteLLM virtual key rejected this model id (key_model_access_denied). "
+                "Bare aliases like deepseek-reasoner often fail when the key only allows "
+                "deepseek/*. Use the prefixed id from GET /v1/models "
+                "(e.g. deepseek/deepseek-reasoner), or widen the key's model list in LiteLLM admin. "
+                f"Detail: {parsed.get('message') or parsed}"
+            )
         if _is_litellm_model_not_found(parsed):
             return (
                 "LiteLLM / upstream rejected the model id (CHAT_MODEL). "
@@ -244,7 +274,7 @@ async def probe_litellm_proxy() -> dict[str, Any]:
             out["error"] = str(exc)[:500]
         return out
     base = settings.litellm_api_base
-    key = settings.litellm_key
+    key = effective_litellm_key()
     out: dict[str, Any] = {
         "in_docker": running_in_docker(),
         "litellm_base": base,
@@ -317,12 +347,15 @@ def _resolve_model_name(*, tier: str) -> str:
         raise RuntimeError(
             f"Set {label} (or CHAT_MODEL) in the environment to a model id your provider serves."
         )
+    if settings.model_provider == "litellm":
+        return canonical_litellm_model_id(model_name)
     return model_name
 
 
 def _build_litellm_chat_model(*, tier: str = "default") -> BaseChatModel:
     """LangChain chat model via LiteLLM OpenAI-compatible proxy."""
-    if not settings.litellm_key:
+    api_key = effective_litellm_key()
+    if not api_key:
         raise RuntimeError(
             "Set LITELLM_KEY or LITELLM_PROXY_KEY to your LiteLLM proxy API key."
         )
@@ -342,8 +375,6 @@ def _build_litellm_chat_model(*, tier: str = "default") -> BaseChatModel:
     _validate_chat_model_id(model_name, via="LiteLLM")
     timeout = _request_timeout()
 
-    api_key = settings.litellm_key
-    assert api_key is not None
     env_openai = (os.getenv("OPENAI_API_KEY") or "").strip()
     if env_openai:
         logger.warning(

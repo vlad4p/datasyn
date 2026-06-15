@@ -3,7 +3,7 @@ import { listChatSessions, type ChatSessionSummary } from "../chatHistoryStorage
 import type { UiLocale } from "../locale";
 import { uiStrings } from "../locale";
 
-export type WorkspaceView = "agent" | "datasets" | "tools" | "analyses";
+export type WorkspaceView = "agent" | "datasets" | "tools" | "analyses" | "settings";
 
 type Props = {
   locale: UiLocale;
@@ -19,7 +19,7 @@ type Props = {
   onToggleCollapse: () => void;
 };
 
-function NavIcon({ kind }: { kind: "chat" | "datasets" | "tools" | "analysis" | "new" }) {
+function NavIcon({ kind }: { kind: "chat" | "datasets" | "tools" | "analysis" | "settings" | "new" }) {
   return (
     <span className="sidebar-nav__icon" aria-hidden>
       {kind === "chat" && (
@@ -43,6 +43,12 @@ function NavIcon({ kind }: { kind: "chat" | "datasets" | "tools" | "analysis" | 
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
           <path d="M3 3v18h18" />
           <path d="M7 16l4-6 4 3 5-8" />
+        </svg>
+      )}
+      {kind === "settings" && (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
         </svg>
       )}
       {kind === "new" && (
@@ -95,11 +101,12 @@ export function WorkspaceSidebar({
     [locale],
   );
 
-  const items: { id: WorkspaceView; label: string; icon: "chat" | "datasets" | "tools" | "analysis" }[] = [
+  const items: { id: WorkspaceView; label: string; icon: "chat" | "datasets" | "tools" | "analysis" | "settings" }[] = [
     { id: "agent", label: s.navAgent, icon: "chat" },
     { id: "datasets", label: s.navDatasets, icon: "datasets" },
     { id: "tools", label: s.navSkillsTools, icon: "tools" },
     { id: "analyses", label: s.navAnalyses, icon: "analysis" },
+    { id: "settings", label: s.navAgentConfig, icon: "settings" },
   ];
 
   return (

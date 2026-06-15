@@ -1,6 +1,6 @@
 FROM python:3.12-slim-bookworm
 
-RUN pip install --no-cache-dir "duckdb>=1.1,<2"
+RUN pip install --no-cache-dir "duckdb>=1.5.3,<2"
 
 WORKDIR /data
 

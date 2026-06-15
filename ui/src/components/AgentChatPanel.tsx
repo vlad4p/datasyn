@@ -6,7 +6,7 @@ import { getHealth, setChatModel } from "../api";
 import type { UiLocale } from "../locale";
 import { uiStrings } from "../locale";
 import { MarkdownMessage } from "./MarkdownMessage";
-import { ModelSwitch, readStoredChatModel } from "./ModelSwitch";
+import { ModelSwitch, LLM_CONFIG_CHANGED_EVENT, readStoredChatModel } from "./ModelSwitch";
 import type { ChatMsg } from "../types/chat";
 
 export type { ChatMsg };
@@ -24,6 +24,7 @@ type Props = {
   onSend: () => void;
   onExportAnalysis?: () => void;
   exporting?: boolean;
+  llmConfigRevision?: number;
 };
 
 export function AgentChatPanel({
@@ -39,6 +40,7 @@ export function AgentChatPanel({
   onSend,
   onExportAnalysis,
   exporting = false,
+  llmConfigRevision = 0,
 }: Props) {
   const s = uiStrings(locale);
   const feedRef = useRef<HTMLDivElement>(null);
@@ -55,8 +57,8 @@ export function AgentChatPanel({
         if (
           stored &&
           stored !== current &&
-          h.model_provider === "openrouter" &&
-          h.has_openrouter_key
+          ((h.model_provider === "openrouter" && h.has_openrouter_key) ||
+            (h.model_provider === "litellm" && h.has_key))
         ) {
           try {
             const updated = await setChatModel(stored);
@@ -67,6 +69,16 @@ export function AgentChatPanel({
         }
       })
       .catch(() => setHealth(null));
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => {
+      void getHealth()
+        .then(setHealth)
+        .catch(() => setHealth(null));
+    };
+    window.addEventListener(LLM_CONFIG_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(LLM_CONFIG_CHANGED_EVENT, refresh);
   }, []);
 
   const last = messages[messages.length - 1];
@@ -112,6 +124,9 @@ export function AgentChatPanel({
               locale={locale}
               modelProvider={health?.model_provider}
               hasOpenRouterKey={health?.has_openrouter_key}
+              hasLitellmKey={health?.has_key}
+              litellmBase={health?.litellm_base}
+              configRevision={llmConfigRevision}
               chatModel={modelLabel}
               disabled={busy}
               onModelChange={(modelId) =>

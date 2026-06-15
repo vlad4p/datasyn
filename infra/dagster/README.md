@@ -79,6 +79,25 @@ Credentials are set in [`docker-compose.yaml`](docker-compose.yaml) (`postgres_u
 
 ## Notes / limitations
 
-- **Per-run containers** mount `/data-local` from the host path in `DATASYN_DATA_LOCAL_HOST` (see `.env.example`). Run `make patch-runtime` before `up` — it renders `runtime/dagster.local.yaml` from the template (DockerRunLauncher volumes cannot use compose env vars).
+- **Warehouse (Quack):** Dagster does not mount `warehouse.duckdb`. Set **`QUACK_URI`**, **`QUACK_TOKEN`**, and **`QUACK_DISABLE_SSL`** in `.env` (see `.env.example`) to point at VM1 `duckdb-mcp` (`:9494`). Per-run containers receive the same vars via `DockerRunLauncher.env_vars` in `runtime/dagster.yaml`.
+- **MinIO reads:** Bronze CSV assets use `read_csv_auto('s3://bucket/key')` with an httpfs S3 secret (`MINIO_*` env) — data stays in object storage until materialized into `bronze.*` on the remote warehouse.
+- **Per-run containers** mount `/data-local` from the host path in `DATASYN_DATA_LOCAL_HOST` (see `.env.example`). The runtime **entrypoint** renders `dagster.yaml` from the template at container start (DockerRunLauncher volumes cannot use compose env vars). `make patch-runtime` still writes `runtime/dagster.local.yaml` for inspection.
+
+### Troubleshooting: `__DATASYN_DATA_LOCAL_HOST__` invalid volume name
+
+`DockerRunLauncher` read a config where the `__DATASYN_DATA_LOCAL_HOST__` placeholder was not substituted. Common causes:
+
+1. **`DATASYN_DATA_LOCAL_HOST` unset** in `infra/dagster/.env` on the VM — set an **absolute** host path (fleet: `provision-vm.sh` writes `${REPO_DIR}/data-local`).
+2. **`runtime/dagster.local.yaml` missing** (gitignored) and an older runtime image without the entrypoint — run `make patch-runtime` then recreate webserver/daemon, or deploy a build that includes `runtime/docker-entrypoint.sh`.
+3. **Host path is a directory** because compose created `dagster.local.yaml` when the file was absent — `rm -rf runtime/dagster.local.yaml`, run `make patch-runtime`, recreate containers.
+
+**Fleet VM (10.13.10.122) quick fix:**
+
+```bash
+cd ~/datasyn   # or your clone path
+grep DATASYN_DATA_LOCAL_HOST infra/dagster/.env   # must be absolute, e.g. /home/.../datasyn/data-local
+bash infra/dagster/scripts/patch-dagster-yaml.sh
+ENVIRONMENT=prod make -C infra/dagster up   # rebuilds runtime if needed; entrypoint renders config at start
+```
 - The webserver/daemon require the host Docker socket; on SELinux or rootless-Docker hosts you may need to adjust the volume mount.
 - Production pipelines live in sibling **`../datasyn-code`** — new ingests follow gitflow there (see root `README.md`).

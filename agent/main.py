@@ -55,7 +55,13 @@ from agent.utils.chat_model_state import (
     effective_chat_model,
     set_runtime_chat_model,
 )
-from agent.utils.openrouter_models import list_openrouter_models
+from agent.utils.litellm_key_state import (
+    effective_litellm_key,
+    litellm_key_source,
+    set_runtime_litellm_key,
+)
+from agent.utils.litellm_models import clear_litellm_models_cache
+from agent.utils.llm_models_catalog import list_llm_models
 from agent.config import (
     ENV_DOTENV_LOADED_AT_IMPORT,
     ENV_DOTENV_RESOLVED_PATH,
@@ -352,13 +358,17 @@ class ChatModelUpdateRequest(BaseModel):
     chat_model: str = Field(..., min_length=1, max_length=256)
 
 
+class LitellmKeyUpdateRequest(BaseModel):
+    litellm_key: str = Field(..., min_length=8, max_length=512)
+
+
 @app.get("/health/llm/models")
 async def health_llm_models(
     free_only: bool = Query(False, description="When true, return only free OpenRouter models."),
     refresh: bool = Query(False, description="Bypass the in-process models cache."),
 ) -> dict[str, Any]:
-    """OpenRouter model catalog for the UI model switch (requires MODEL_PROVIDER=openrouter)."""
-    return await list_openrouter_models(free_only=free_only, force_refresh=refresh)
+    """LLM model catalog for the UI (OpenRouter or LiteLLM proxy, per ``MODEL_PROVIDER``)."""
+    return await list_llm_models(free_only=free_only, force_refresh=refresh)
 
 
 @app.put("/health/llm/model")
@@ -377,9 +387,42 @@ def health_llm_model_update(body: ChatModelUpdateRequest) -> dict[str, Any]:
     }
 
 
+@app.put("/health/llm/key")
+def health_llm_key_update(body: LitellmKeyUpdateRequest) -> dict[str, Any]:
+    """Set the runtime LiteLLM virtual key (session override; does not write ``.env``)."""
+    key = body.litellm_key.strip()
+    if not key.startswith("sk-"):
+        raise HTTPException(
+            status_code=400,
+            detail="LiteLLM virtual keys typically start with 'sk-'",
+        )
+    set_runtime_litellm_key(key)
+    clear_litellm_models_cache()
+    logger.info(
+        "Runtime LiteLLM key set (source=runtime, suffix=…%s)",
+        key[-4:] if len(key) >= 4 else key,
+    )
+    return {
+        "status": "ok",
+        **_llm_config_snapshot(),
+    }
+
+
+@app.delete("/health/llm/key")
+def health_llm_key_clear() -> dict[str, Any]:
+    """Clear runtime LiteLLM key override; brain falls back to ``LITELLM_KEY`` from env."""
+    set_runtime_litellm_key(None)
+    clear_litellm_models_cache()
+    logger.info("Runtime LiteLLM key cleared (source=env)")
+    return {
+        "status": "ok",
+        **_llm_config_snapshot(),
+    }
+
+
 def _llm_config_snapshot() -> dict[str, Any]:
     """Static LLM settings (no network)."""
-    key = settings.litellm_key or ""
+    key = effective_litellm_key() or ""
     key_suffix = key[-4:] if len(key) >= 8 else None
     gkey = settings.gemini_api_key or ""
     gemini_suffix = gkey[-4:] if len(gkey) >= 8 else None
@@ -390,8 +433,9 @@ def _llm_config_snapshot() -> dict[str, Any]:
     return {
         "model_provider": settings.model_provider,
         "litellm_base": settings.litellm_api_base,
-        "has_key": bool(settings.litellm_key),
+        "has_key": bool(key),
         "litellm_key_suffix": key_suffix,
+        "litellm_key_source": litellm_key_source(),
         "gemini_key_suffix": gemini_suffix,
         "has_gemini_key": bool(settings.gemini_api_key),
         "openrouter_base": settings.openrouter_api_base or OPENROUTER_DEFAULT_API_BASE,

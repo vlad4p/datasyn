@@ -1,18 +1,24 @@
 """DuckDB connection and query helpers (Datasyn warehouse MCP).
 
-Pattern inspired by ktanaka101/mcp-server-duckdb (single DB handle, execute path);
-this service adds schema introspection and a confined data-mount listing.
+Single persistent RW connection to ``warehouse.duckdb`` (Quack server owner).
+MCP tools and ``quack_serve`` share this session.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import re
+import threading
 from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
 
 import duckdb
 
 log = logging.getLogger("duckdb-mcp")
+
+_MEDALLION_SCHEMAS: tuple[str, ...] = ("bronze", "silver", "gold")
 
 
 def _fix_data_load_typo(s: str) -> str:
@@ -23,19 +29,154 @@ def _fix_data_load_typo(s: str) -> str:
     return out
 
 
+def _sql_str(s: str) -> str:
+    return "'" + s.replace("'", "''") + "'"
+
+
+def _as_bool(raw: str | None, default: bool = False) -> bool:
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _minio_endpoint_host() -> str | None:
+    """Return MinIO host:port for DuckDB S3 ``ENDPOINT`` (no scheme)."""
+    endpoint = (os.environ.get("MINIO_ENDPOINT") or "").strip()
+    if not endpoint:
+        return None
+    if "://" in endpoint:
+        parsed = urlparse(endpoint)
+        host = parsed.hostname or ""
+        port = parsed.port
+        if port:
+            return f"{host}:{port}"
+        return host
+    return endpoint.rstrip("/")
+
+
+def _minio_credentials() -> tuple[str, str] | None:
+    access_key = (
+        (os.environ.get("MINIO_ACCESS_KEY") or os.environ.get("MINIO_ROOT_USER") or "").strip()
+    )
+    secret_key = (
+        (os.environ.get("MINIO_SECRET_KEY") or os.environ.get("MINIO_ROOT_PASSWORD") or "").strip()
+    )
+    if access_key and secret_key:
+        return access_key, secret_key
+    return None
+
+
 class DuckDBWarehouse:
-    """Thin wrapper around a file-backed DuckDB database."""
+    """Persistent file-backed DuckDB warehouse (Quack server session)."""
 
     def __init__(self, db_path: str, *, sql_row_cap: int, data_local_root: Path) -> None:
         self.db_path = db_path
         self.sql_row_cap = max(1, int(sql_row_cap))
         self.data_local_root = Path(data_local_root).resolve()
+        self._lock = threading.RLock()
+        self._con: duckdb.DuckDBPyConnection | None = None
 
-    def connect(self) -> duckdb.DuckDBPyConnection:
-        parent = os.path.dirname(self.db_path)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        return duckdb.connect(self.db_path)
+    def _connection(self) -> duckdb.DuckDBPyConnection:
+        if self._con is None:
+            raise RuntimeError("DuckDB warehouse not opened — call open() first")
+        return self._con
+
+    def open(self) -> None:
+        """Open the warehouse file and bootstrap medallion schemas (idempotent)."""
+        with self._lock:
+            if self._con is not None:
+                return
+            parent = os.path.dirname(self.db_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            self._con = duckdb.connect(self.db_path)
+            for name in _MEDALLION_SCHEMAS:
+                self._con.execute(f"CREATE SCHEMA IF NOT EXISTS {name}")
+            self._con.execute(
+                "CREATE TABLE IF NOT EXISTS _datasyn_init (ready INTEGER DEFAULT 1)"
+            )
+            log.info("DuckDB warehouse opened at %s", self.db_path)
+
+    def ensure_httpfs(self) -> None:
+        with self._lock:
+            con = self._connection()
+            con.execute("INSTALL httpfs;")
+            con.execute("LOAD httpfs;")
+
+    def ensure_minio_s3_secret(self, secret_name: str = "minio_s3") -> bool:
+        """Create or replace MinIO S3 secret when env credentials are present."""
+        host = _minio_endpoint_host()
+        creds = _minio_credentials()
+        if not host or not creds:
+            log.info("MinIO S3 secret skipped (MINIO_ENDPOINT or credentials unset)")
+            return False
+        access_key, secret_key = creds
+        use_ssl = _as_bool(os.environ.get("MINIO_SECURE"), default=False)
+        with self._lock:
+            self.ensure_httpfs()
+            con = self._connection()
+            if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", secret_name):
+                raise ValueError(f"invalid S3 secret name: {secret_name!r}")
+            con.execute(
+                f"""
+                CREATE OR REPLACE SECRET {secret_name} (
+                    TYPE S3,
+                    KEY_ID {_sql_str(access_key)},
+                    SECRET {_sql_str(secret_key)},
+                    ENDPOINT {_sql_str(host)},
+                    USE_SSL {"true" if use_ssl else "false"},
+                    URL_STYLE 'path',
+                    REGION 'us-east-1'
+                );
+                """
+            )
+            log.info("MinIO S3 secret %s configured (endpoint=%s)", secret_name, host)
+            return True
+
+    def ensure_quack_extension(self) -> None:
+        with self._lock:
+            con = self._connection()
+            con.execute("INSTALL quack;")
+            con.execute("LOAD quack;")
+
+    def start_quack_server(
+        self,
+        bind_uri: str,
+        *,
+        token: str | None = None,
+        allow_other_hostname: bool = True,
+    ) -> str | None:
+        """Start Quack HTTP listener on the persistent session. Returns auth token."""
+        bind_uri = bind_uri.strip()
+        with self._lock:
+            self.ensure_quack_extension()
+            con = self._connection()
+            allow = "true" if allow_other_hostname else "false"
+            if token:
+                con.execute(
+                    f"""
+                    CALL quack_serve(
+                        {_sql_str(bind_uri)},
+                        allow_other_hostname => {allow},
+                        token => {_sql_str(token)}
+                    );
+                    """
+                )
+                auth_token = token
+            else:
+                result = con.execute(
+                    f"""
+                    CALL quack_serve(
+                        {_sql_str(bind_uri)},
+                        allow_other_hostname => {allow}
+                    );
+                    """
+                ).fetchall()
+                auth_token = None
+                if result and len(result[0]) >= 3:
+                    auth_token = str(result[0][2]) if result[0][2] is not None else None
+            log.info("Quack server listening on %s", bind_uri)
+            return auth_token
 
     def rows_to_text(self, columns: list[str], rows: list[tuple[object, ...]]) -> str:
         if not rows:
@@ -55,21 +196,18 @@ class DuckDBWarehouse:
             return "Error: empty SQL"
         if len(text) > 200_000:
             return "Error: SQL too long"
-        con = self.connect()
-        try:
+        with self._lock:
+            con = self._connection()
             cur = con.execute(text)
             if cur.description is None:
                 return "(statement executed; no result set)"
             columns = [d[0] for d in cur.description]
             rows = cur.fetchall()
             return self.rows_to_text(columns, rows)
-        finally:
-            con.close()
 
     def get_schema(self) -> str:
-        """Tables and views from information_schema (read-only introspection)."""
-        con = self.connect()
-        try:
+        with self._lock:
+            con = self._connection()
             rows = con.execute(
                 """
                 SELECT table_schema, table_name, table_type
@@ -80,8 +218,6 @@ class DuckDBWarehouse:
             ).fetchall()
             cols = ["table_schema", "table_name", "table_type"]
             return self.rows_to_text(cols, rows)
-        finally:
-            con.close()
 
     def _resolve_under_data_local(self, path: str) -> tuple[Path | None, str | None]:
         raw = _fix_data_load_typo((path or "").strip() or str(self.data_local_root))

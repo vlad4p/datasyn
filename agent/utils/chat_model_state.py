@@ -31,11 +31,19 @@ def effective_chat_model() -> str | None:
     """Active model id: runtime override if set, else ``CHAT_MODEL`` from env."""
     with _lock:
         if _runtime_chat_model:
-            return _runtime_chat_model
-    env = (settings.chat_model or "").strip()
-    if env:
-        return env
-    return _openrouter_free_default(tier="default")
+            resolved = _runtime_chat_model
+        else:
+            resolved = None
+    if not resolved:
+        env = (settings.chat_model or "").strip()
+        resolved = env or None
+    if not resolved:
+        return _openrouter_free_default(tier="default")
+    if settings.model_provider == "litellm":
+        from agent.utils.litellm_models import canonical_litellm_model_id
+
+        return canonical_litellm_model_id(resolved)
+    return resolved
 
 
 def effective_fast_chat_model() -> str | None:
@@ -65,6 +73,10 @@ def set_runtime_chat_model(model_id: str | None) -> str | None:
     """Set or clear the runtime override. Returns the new effective model id."""
     global _runtime_chat_model
     cleaned = (model_id or "").strip() or None
+    if cleaned and settings.model_provider == "litellm":
+        from agent.utils.litellm_models import canonical_litellm_model_id
+
+        cleaned = canonical_litellm_model_id(cleaned)
     with _lock:
         _runtime_chat_model = cleaned
     return effective_chat_model()

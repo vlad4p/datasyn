@@ -29,7 +29,9 @@ else
   export DATASYN_IMAGE_PREFIX="${DATASYN_IMAGE_PREFIX:-datasyn}"
 fi
 
-if [[ -n "${LITELLM_MASTER_KEY:-}" ]]; then
+if [[ -n "${LITELLM_KEY:-}" ]]; then
+  export LITELLM_KEY
+elif [[ -n "${LITELLM_MASTER_KEY:-}" ]]; then
   export LITELLM_KEY="${LITELLM_MASTER_KEY}"
 fi
 
