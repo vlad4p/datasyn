@@ -2032,6 +2032,39 @@ body {
   overflow: hidden;
 }
 
+.model-switch-instructions {
+  margin: 0;
+  padding: 0.65rem 0.75rem 0;
+  line-height: 1.4;
+  font-size: 0.72rem;
+}
+
+.model-switch-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.model-switch-toolbar-row .model-switch-search {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-switch-refresh {
+  flex-shrink: 0;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.72rem;
+}
+
+.model-switch-meta {
+  margin: 0;
+  font-size: 0.72rem;
+}
+
+.model-switch-no-key {
+  cursor: help;
+}
+
 .model-switch-toolbar {
   display: flex;
   flex-direction: column;
@@ -2584,6 +2617,62 @@ body {
 .panel-tools {
   min-width: 0;
   min-height: 0;
+}
+
+.panel-settings {
+  min-width: 0;
+  min-height: 0;
+  max-width: 42rem;
+}
+
+.agent-config-panel__header {
+  margin-bottom: 1rem;
+}
+
+.agent-config-panel__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.agent-config-dl {
+  margin: 0;
+}
+
+.agent-config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface-elevated, rgba(255, 255, 255, 0.02));
+}
+
+.agent-config-form__label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.agent-config-form__input {
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85rem;
+}
+
+.agent-config-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.agent-config-probe {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
 }
 
 .empty-state {

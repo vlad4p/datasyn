@@ -285,11 +285,12 @@ export type BrainHealth = {
   chat_model?: string;
   chat_model_env?: string;
   chat_model_source?: "env" | "runtime";
+  litellm_key_source?: "env" | "runtime";
   /** Same object as ``GET /health/pipeline``; embedded so the UI needs only one request. */
   pipeline?: Record<string, unknown>;
 };
 
-export type OpenRouterModelItem = {
+export type LlmModelItem = {
   id: string;
   name: string;
   description?: string;
@@ -297,14 +298,20 @@ export type OpenRouterModelItem = {
   is_free?: boolean;
 };
 
-export type OpenRouterModelsResponse = {
+/** @deprecated Use LlmModelItem */
+export type OpenRouterModelItem = LlmModelItem;
+
+export type LlmModelsResponse = {
   status: string;
   model_provider?: string;
-  models: OpenRouterModelItem[];
+  models: LlmModelItem[];
   count?: number;
   free_only?: boolean;
   error?: string | null;
 };
+
+/** @deprecated Use LlmModelsResponse */
+export type OpenRouterModelsResponse = LlmModelsResponse;
 
 export type ChatModelUpdateResponse = {
   status: string;
@@ -312,6 +319,19 @@ export type ChatModelUpdateResponse = {
   chat_model_env?: string;
   chat_model_source?: "env" | "runtime";
   model_provider?: string;
+  has_key?: boolean;
+  litellm_key_suffix?: string | null;
+  litellm_key_source?: "env" | "runtime";
+};
+
+export type LitellmKeyUpdateResponse = {
+  status: string;
+  model_provider?: string;
+  litellm_base?: string | null;
+  has_key?: boolean;
+  litellm_key_suffix?: string | null;
+  litellm_key_source?: "env" | "runtime";
+  chat_model?: string;
 };
 
 export type ToolInventoryItem = {
@@ -424,18 +444,21 @@ export async function probeLlm(): Promise<unknown> {
   return res.json();
 }
 
-export async function getOpenRouterModels(options?: {
+export async function getLlmModels(options?: {
   freeOnly?: boolean;
   refresh?: boolean;
-}): Promise<OpenRouterModelsResponse> {
+}): Promise<LlmModelsResponse> {
   const params = new URLSearchParams();
   if (options?.freeOnly) params.set("free_only", "true");
   if (options?.refresh) params.set("refresh", "true");
   const qs = params.toString();
   const res = await brainFetch(brainApiUrl(`/health/llm/models${qs ? `?${qs}` : ""}`));
   if (!res.ok) throw new Error(await readFetchError(res));
-  return res.json() as Promise<OpenRouterModelsResponse>;
+  return res.json() as Promise<LlmModelsResponse>;
 }
+
+/** @deprecated Use getLlmModels */
+export const getOpenRouterModels = getLlmModels;
 
 export async function setChatModel(chatModel: string): Promise<ChatModelUpdateResponse> {
   const res = await brainFetch(brainApiUrl("/health/llm/model"), {
@@ -445,6 +468,22 @@ export async function setChatModel(chatModel: string): Promise<ChatModelUpdateRe
   });
   if (!res.ok) throw new Error(await readFetchError(res));
   return res.json() as Promise<ChatModelUpdateResponse>;
+}
+
+export async function setLitellmKey(litellmKey: string): Promise<LitellmKeyUpdateResponse> {
+  const res = await brainFetch(brainApiUrl("/health/llm/key"), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ litellm_key: litellmKey }),
+  });
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<LitellmKeyUpdateResponse>;
+}
+
+export async function clearLitellmKey(): Promise<LitellmKeyUpdateResponse> {
+  const res = await brainFetch(brainApiUrl("/health/llm/key"), { method: "DELETE" });
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<LitellmKeyUpdateResponse>;
 }
 
 /**

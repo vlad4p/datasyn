@@ -28,8 +28,12 @@ ifneq ($(STACK_ENV_FILE),)
   endif
 endif
 
-ifneq ($(LITELLM_MASTER_KEY),)
-  export LITELLM_KEY := $(LITELLM_MASTER_KEY)
+ifneq ($(LITELLM_KEY),)
+  export LITELLM_KEY
+else
+  ifneq ($(LITELLM_MASTER_KEY),)
+    export LITELLM_KEY := $(LITELLM_MASTER_KEY)
+  endif
 endif
 
 REGISTRY_PUBLISH_PORT ?= 5000

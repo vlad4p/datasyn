@@ -35,13 +35,15 @@ services:
       - "host.docker.internal:host-gateway"
     env_file:
       - compose.env
-      # Optional: create a repo-root ``.env`` for secrets (gitignored). Omit on CI/servers that inject env elsewhere.
+      # Optional secrets: repo-root ``.env`` (see .env.example / .env.deploy.example)
       - path: .env
         required: false
     environment:
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-litellm}
       LITELLM_PROXY_BASE: ${LITELLM_PROXY_BASE:-http://litellm:4000}
-      LITELLM_API_BASE: ${LITELLM_API_BASE:-http://litellm:4000}
-      LITELLM_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_KEY: ${LITELLM_KEY:-${LITELLM_MASTER_KEY:-}}
+      CHAT_MODEL: ${CHAT_MODEL:-}
+      DAGSTER_URL: ${DAGSTER_URL:-http://dagster_webserver:3000}
       # Skills: default local mount below. For LiteLLM pull in prod, set SKILLS_SOURCE=litellm
       # and LITELLM_SKILLS_STATIC_BASE=http://skills-static:4001 (see infra/litellm).
       SKILLS_SOURCE: ${SKILLS_SOURCE:-local}

@@ -10,6 +10,11 @@ DATASYN_USER_CODE_STUB_DIR := $(abspath $(DATASYN_ROOT)/infra/dagster/user_code)
 DATASYN_CODE_BUILD_DIR := $(if $(wildcard $(DATASYN_CODE_DIR)/Dockerfile),$(DATASYN_CODE_DIR),$(DATASYN_USER_CODE_STUB_DIR))
 export DATASYN_CODE_DIR := $(DATASYN_CODE_BUILD_DIR)
 
+# Absolute host path for DockerRunLauncher bind mounts (entrypoint + patch-runtime).
+ifeq ($(strip $(DATASYN_DATA_LOCAL_HOST)),)
+  export DATASYN_DATA_LOCAL_HOST := $(abspath $(DATASYN_ROOT)/data-local)
+endif
+
 DEPLOY_COMPOSE = DATASYN_IMAGE_PREFIX="$(DATASYN_IMAGE_PREFIX)" DATASYN_IMAGE_TAG="$(DATASYN_IMAGE_TAG)" \
 	DATASYN_IMAGE_NAMESPACE="$(DATASYN_IMAGE_NAMESPACE)" DATASYN_CODE_DIR="$(DATASYN_CODE_DIR)" \
 	docker compose

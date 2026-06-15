@@ -9,6 +9,30 @@
 #   so it does not clash with Langfuse on 3000. Postgres is kept internal
 #   (no host port) to avoid any clash with the other Postgres services.
 
+# Env forwarded to per-run containers — keep in sync with ``runtime/dagster.yaml`` ``env_vars``.
+x-dagster-forwarded-env: &dagster-forwarded-env
+  QUACK_URI: "${QUACK_URI:-quack:duckdb-mcp:9494}"
+  QUACK_TOKEN: "${QUACK_TOKEN:-}"
+  QUACK_DISABLE_SSL: "${QUACK_DISABLE_SSL:-true}"
+  LITELLM_KEY: "${LITELLM_KEY:-${LITELLM_MASTER_KEY:-}}"
+  LITELLM_PROXY_BASE: "${LITELLM_PROXY_BASE:-http://host.docker.internal:4000}"
+  MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://datasyn-object-minio:9000}"
+  MINIO_ROOT_USER: "${MINIO_ROOT_USER:-}"
+  MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-}"
+  MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-${MINIO_ROOT_USER:-minioadmin}}"
+  MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin123}}"
+  MINIO_BUCKET: "${MINIO_BUCKET:-data-local}"
+  MINIO_SECURE: "${MINIO_SECURE:-false}"
+  DATA_LOCAL_ROOT: "${DATA_LOCAL_ROOT:-/data-local}"
+  ICEBERG_REST_ENDPOINT: "${ICEBERG_REST_ENDPOINT:-}"
+  ICEBERG_REST_TOKEN: "${ICEBERG_REST_TOKEN:-}"
+  ICEBERG_REST_WAREHOUSE: "${ICEBERG_REST_WAREHOUSE:-}"
+  ICEBERG_ATTACH_ALIAS: "${ICEBERG_ATTACH_ALIAS:-}"
+  ICEBERG_REST_SECRET_NAME: "${ICEBERG_REST_SECRET_NAME:-}"
+  ICEBERG_REST_CLIENT_ID: "${ICEBERG_REST_CLIENT_ID:-}"
+  ICEBERG_REST_CLIENT_SECRET: "${ICEBERG_REST_CLIENT_SECRET:-}"
+  ICEBERG_REST_OAUTH_URI: "${ICEBERG_REST_OAUTH_URI:-}"
+
 services:
   # Postgres DB used by Dagster for run storage, schedule storage, and event log storage.
   dagster_postgresql:
@@ -66,22 +90,10 @@ services:
       DAGSTER_POSTGRES_PASSWORD: "postgres_password"
       DAGSTER_POSTGRES_DB: "postgres_db"
       DAGSTER_CURRENT_IMAGE: "${DATASYN_IMAGE_PREFIX:-datasyn}/dagster_user_code_image:${DATASYN_IMAGE_TAG:-latest}"
-      DUCKDB_PATH: "/data/warehouse.duckdb"
-      LITELLM_KEY: ${LITELLM_MASTER_KEY}
-      LITELLM_PROXY_BASE: "${LITELLM_PROXY_BASE:-http://host.docker.internal:4000}"
-      MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://datasyn-object-minio:9000}"
-      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-}"
-      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-}"
-      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-${MINIO_ROOT_USER:-minioadmin}}"
-      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin123}}"
-      MINIO_BUCKET: "${MINIO_BUCKET:-data-local}"
-      MINIO_SECURE: "${MINIO_SECURE:-false}"
-      DATA_LOCAL_ROOT: "${DATA_LOCAL_ROOT:-/data-local}"
+      <<: *dagster-forwarded-env
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      # Same named volume as Datasyn ``duckdb`` service (warehouse file).
-      - duckdb_data:/data
       # Shared object storage volume (MinIO data) for landing access if needed.
       - storage:/storage
       # Absolute host path — set ``DATASYN_DATA_LOCAL_HOST`` in ``.env`` if your tree differs.
@@ -111,6 +123,7 @@ services:
     image: ${DATASYN_IMAGE_PREFIX:-datasyn}/dagster-runtime:${DATASYN_IMAGE_TAG:-latest}
     pull_policy: never
     entrypoint:
+      - /opt/dagster/dagster_home/docker-entrypoint.sh
       - dagster-webserver
       - -h
       - "0.0.0.0"
@@ -140,23 +153,21 @@ services:
       DAGSTER_POSTGRES_USER: "postgres_user"
       DAGSTER_POSTGRES_PASSWORD: "postgres_password"
       DAGSTER_POSTGRES_DB: "postgres_db"
-      # Same forwarded set as ``dagster_daemon`` so behavior is consistent if the
-      # webserver ever launches runs directly.
-      # LITELLM_KEY from LITELLM_MASTER_KEY; LITELLM_PROXY_BASE from ``env_file`` only.
-      DUCKDB_PATH: "/data/warehouse.duckdb"
-      LITELLM_KEY: ${LITELLM_MASTER_KEY}
+      QUACK_URI: "${QUACK_URI:-quack:duckdb-mcp:9494}"
+      QUACK_TOKEN: "${QUACK_TOKEN:-}"
+      QUACK_DISABLE_SSL: "${QUACK_DISABLE_SSL:-true}"
+      LITELLM_KEY: "${LITELLM_KEY:-${LITELLM_MASTER_KEY:-}}"
+      DATASYN_DATA_LOCAL_HOST: "${DATASYN_DATA_LOCAL_HOST:-}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      # Host ``runtime/dagster.yaml`` must be live; the runtime image only COPYs at build
-      # time. Without this mount, ``env_vars`` (e.g. MINIO_*) stays stale and
-      # DockerRunLauncher will not forward them to per-run containers.
-      - ./runtime/dagster.local.yaml:/opt/dagster/dagster_home/dagster.yaml:ro
+      # Live template; entrypoint renders ``dagster.yaml`` (DockerRunLauncher volumes
+      # cannot use compose env interpolation).
+      - ./runtime/dagster.yaml:/opt/dagster/dagster_home/dagster.yaml.template:ro
       - ./runtime/workspace.yaml:/opt/dagster/dagster_home/workspace.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/io_manager_storage:/tmp/io_manager_storage
       - /tmp/dagster_data:/opt/dagster/data
-      - duckdb_data:/data
       - storage:/storage
     networks:
       - infra
@@ -173,6 +184,7 @@ services:
     image: ${DATASYN_IMAGE_PREFIX:-datasyn}/dagster-runtime:${DATASYN_IMAGE_TAG:-latest}
     pull_policy: never
     entrypoint:
+      - /opt/dagster/dagster_home/docker-entrypoint.sh
       - dagster-daemon
       - run
       # - -w
@@ -198,35 +210,12 @@ services:
       DAGSTER_POSTGRES_USER: "postgres_user"
       DAGSTER_POSTGRES_PASSWORD: "postgres_password"
       DAGSTER_POSTGRES_DB: "postgres_db"
-      # ``DockerRunLauncher.env_vars`` forwards these from the daemon's own
-      # environment into per-run job containers. Keep in sync with ``dagster.yaml``.
-      # Each name in ``dagster.yaml`` ``env_vars`` must be set here (even empty).
-      DUCKDB_PATH: "/data/warehouse.duckdb"
-      LITELLM_KEY: ${LITELLM_MASTER_KEY}
-      LITELLM_PROXY_BASE: "${LITELLM_PROXY_BASE:-http://host.docker.internal:4000}"
-      MINIO_ENDPOINT: "${MINIO_ENDPOINT:-http://datasyn-object-minio:9000}"
-      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-}"
-      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-}"
-      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-${MINIO_ROOT_USER:-minioadmin}}"
-      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin123}}"
-      MINIO_BUCKET: "${MINIO_BUCKET:-data-local}"
-      MINIO_SECURE: "${MINIO_SECURE:-false}"
-      # Landing tree root (read by ``data_local_root()`` in user code).
-      DATA_LOCAL_ROOT: "${DATA_LOCAL_ROOT:-/data-local}"
-      # Iceberg REST (optional; native DuckDB when unset).
-      ICEBERG_REST_ENDPOINT: "${ICEBERG_REST_ENDPOINT:-}"
-      ICEBERG_REST_TOKEN: "${ICEBERG_REST_TOKEN:-}"
-      ICEBERG_REST_WAREHOUSE: "${ICEBERG_REST_WAREHOUSE:-}"
-      ICEBERG_ATTACH_ALIAS: "${ICEBERG_ATTACH_ALIAS:-}"
-      ICEBERG_REST_SECRET_NAME: "${ICEBERG_REST_SECRET_NAME:-}"
-      ICEBERG_REST_CLIENT_ID: "${ICEBERG_REST_CLIENT_ID:-}"
-      ICEBERG_REST_CLIENT_SECRET: "${ICEBERG_REST_CLIENT_SECRET:-}"
-      ICEBERG_REST_OAUTH_URI: "${ICEBERG_REST_OAUTH_URI:-}"
-      # OpenRouter / LiteLLM: from ``env_file`` only — see comment on ``dagster_user_code``.
+      DATASYN_DATA_LOCAL_HOST: "${DATASYN_DATA_LOCAL_HOST:-}"
+      <<: *dagster-forwarded-env
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./runtime/dagster.local.yaml:/opt/dagster/dagster_home/dagster.yaml:ro
+      - ./runtime/dagster.yaml:/opt/dagster/dagster_home/dagster.yaml.template:ro
       - ./runtime/workspace.yaml:/opt/dagster/dagster_home/workspace.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/io_manager_storage:/tmp/io_manager_storage
@@ -246,7 +235,5 @@ networks:
 
 volumes:
   dagster-db-data:
-  duckdb_data:
-    external: true
   storage:
     external: true

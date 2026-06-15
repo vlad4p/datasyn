@@ -105,8 +105,8 @@ def _cors_extra_origins() -> tuple[str, ...]:
 
 def _litellm_base_from_env() -> str | None:
     raw = _env_first(
-        "LITELLM_API_BASE",
         "LITELLM_PROXY_BASE",
+        "LITELLM_API_BASE",
         "LITELLM_URL",
     )
     if not raw:

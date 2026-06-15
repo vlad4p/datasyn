@@ -33,8 +33,33 @@ HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8040"))
 MCP_HTTP_PATH = os.environ.get("MCP_HTTP_PATH", "/mcp")
 DATA_LOCAL_ROOT = Path(os.environ.get("DATA_LOCAL_ROOT", "/data-local")).resolve()
+QUACK_BIND_URI = (os.environ.get("QUACK_BIND_URI") or "quack:0.0.0.0:9494").strip()
+QUACK_TOKEN = (os.environ.get("QUACK_TOKEN") or "").strip()
+QUACK_ENABLE = os.environ.get("QUACK_ENABLE", "true").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 _db = DuckDBWarehouse(DUCKDB_PATH, sql_row_cap=SQL_ROW_CAP, data_local_root=DATA_LOCAL_ROOT)
+
+
+def _bootstrap_warehouse() -> None:
+    _db.open()
+    _db.ensure_minio_s3_secret()
+    if QUACK_ENABLE:
+        token = _db.start_quack_server(
+            QUACK_BIND_URI,
+            token=QUACK_TOKEN or None,
+            allow_other_hostname=True,
+        )
+        if token and not QUACK_TOKEN:
+            log.info(
+                "Quack auto-generated token (set QUACK_TOKEN in env for a stable value): %s",
+                token,
+            )
+
 
 mcp = FastMCP(
     name="duckdb-mcp",
@@ -46,8 +71,8 @@ mcp = FastMCP(
         "Prefer **list_data_mount** for folder trees; alternatively **execute_query** with glob(). "
         "Mount name is **data-local** (not data-load). "
         "Use **one SQL statement per execute_query** call (do not batch multiple CREATE/INSERT with semicolons). "
-        "If tools fail with IO Error / lock on warehouse.duckdb, another process holds the file "
-        "(often DuckDB Local UI); stop that service or start MCP stack without compose profile `ui`."
+        "Warehouse RW access is owned by this process (Quack :9494). Do not open warehouse.duckdb from another "
+        "process while duckdb-mcp runs (including DuckDB Local UI profile)."
     ),
 )
 
@@ -104,6 +129,7 @@ async def health(_request: Request) -> PlainTextResponse:
 
 
 if __name__ == "__main__":
+    _bootstrap_warehouse()
     mcp.run(
         transport="http",
         host=HOST,

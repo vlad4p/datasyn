@@ -9,6 +9,8 @@ import { AppHeader } from "./components/AppHeader";
 import { DatasetCatalog } from "./components/DatasetCatalog";
 import { LoginPage } from "./components/LoginPage";
 import { SkillsToolsView } from "./components/SkillsToolsView";
+import { AgentConfigPanel } from "./components/AgentConfigPanel";
+import { LLM_CONFIG_CHANGED_EVENT } from "./components/ModelSwitch";
 import { WorkspaceSidebar, type WorkspaceView } from "./components/WorkspaceSidebar";
 import {
   createChatSession,
@@ -26,6 +28,7 @@ const AGENT_PANEL_ID = "agent-workspace";
 const DATASETS_PANEL_ID = "datasets-panel";
 const TOOLS_PANEL_ID = "skills-tools-panel";
 const ANALYSES_PANEL_ID = "analyses-panel";
+const SETTINGS_PANEL_ID = "agent-settings-panel";
 
 type Msg = ChatMsg & {
   pipelineDebug?: ChatResponsePayload["debug"];
@@ -104,6 +107,7 @@ function AppWorkspace({ locale, onLocaleChange, user, onLogout }: WorkspaceProps
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [analysisRefresh, setAnalysisRefresh] = useState(0);
+  const [llmConfigRevision, setLlmConfigRevision] = useState(0);
   const [chatHistoryRefresh, setChatHistoryRefresh] = useState(0);
   const [pendingDatasetFqn, setPendingDatasetFqn] = useState<string | null>(null);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("agent");
@@ -121,6 +125,12 @@ function AppWorkspace({ locale, onLocaleChange, user, onLogout }: WorkspaceProps
       persistSidebarCollapsed(next);
       return next;
     });
+  }, []);
+
+  useEffect(() => {
+    const bump = () => setLlmConfigRevision((n) => n + 1);
+    window.addEventListener(LLM_CONFIG_CHANGED_EVENT, bump);
+    return () => window.removeEventListener(LLM_CONFIG_CHANGED_EVENT, bump);
   }, []);
 
   const handleNewChat = useCallback(() => {
@@ -358,6 +368,7 @@ function AppWorkspace({ locale, onLocaleChange, user, onLogout }: WorkspaceProps
               onSend={send}
               onExportAnalysis={() => void handleExportAnalysis()}
               exporting={exporting}
+              llmConfigRevision={llmConfigRevision}
             />
 
             <DatasetCatalog
@@ -380,6 +391,15 @@ function AppWorkspace({ locale, onLocaleChange, user, onLogout }: WorkspaceProps
               }
               locale={locale}
               refreshToken={analysisRefresh}
+            />
+
+            <AgentConfigPanel
+              id={SETTINGS_PANEL_ID}
+              className={
+                workspaceView === "settings" ? "panel-settings" : "panel-settings panel-hidden"
+              }
+              locale={locale}
+              llmConfigRevision={llmConfigRevision}
             />
           </div>
         </main>

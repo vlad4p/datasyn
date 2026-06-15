@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { OpenRouterModelItem } from "../api";
-import { getOpenRouterModels, setChatModel } from "../api";
+import type { LlmModelItem } from "../api";
+import { getLlmModels, setChatModel } from "../api";
 import type { UiLocale } from "../locale";
 import { uiStrings } from "../locale";
 
 const STORAGE_KEY = "datasyn-chat-model";
 
+/** Dispatched after the LiteLLM virtual key is updated (Agent settings). */
+export const LLM_CONFIG_CHANGED_EVENT = "datasyn-llm-config-changed";
+
 type Props = {
   locale: UiLocale;
   modelProvider?: string;
   hasOpenRouterKey?: boolean;
+  hasLitellmKey?: boolean;
+  litellmBase?: string | null;
+  /** Bumps when LiteLLM key/model config changes (forces catalog reload). */
+  configRevision?: number;
   chatModel: string;
   onModelChange: (modelId: string) => void;
   disabled?: boolean;
@@ -36,45 +43,72 @@ export function ModelSwitch({
   locale,
   modelProvider,
   hasOpenRouterKey,
+  hasLitellmKey,
+  litellmBase,
+  configRevision = 0,
   chatModel,
   onModelChange,
   disabled = false,
 }: Props) {
   const m = uiStrings(locale).modelSwitch;
-  const canSwitch = modelProvider === "openrouter" && hasOpenRouterKey && !disabled;
+  const isLitellm = modelProvider === "litellm";
+  const isOpenRouter = modelProvider === "openrouter";
+  const canSwitch =
+    !disabled &&
+    ((isOpenRouter && hasOpenRouterKey) || (isLitellm && hasLitellmKey));
+  const showFreeFilter = isOpenRouter;
   const [open, setOpen] = useState(false);
   const [freeOnly, setFreeOnly] = useState(false);
   const [search, setSearch] = useState("");
-  const [models, setModels] = useState<OpenRouterModelItem[]>([]);
+  const [models, setModels] = useState<LlmModelItem[]>([]);
+  const [modelCount, setModelCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const loadModels = useCallback(async () => {
-    if (!canSwitch) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await getOpenRouterModels({ freeOnly });
-      if (res.status !== "ok") {
+  const loadModels = useCallback(
+    async (opts?: { refresh?: boolean }) => {
+      if (!canSwitch) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await getLlmModels({ freeOnly, refresh: opts?.refresh });
+        if (res.status !== "ok") {
+          setModels([]);
+          setModelCount(0);
+          setError(res.error ?? m.loadFailed);
+          return;
+        }
+        setModels(res.models ?? []);
+        setModelCount(typeof res.count === "number" ? res.count : (res.models?.length ?? 0));
+      } catch (e) {
         setModels([]);
-        setError(res.error ?? m.loadFailed);
-        return;
+        setModelCount(null);
+        setError(String(e));
+      } finally {
+        setLoading(false);
       }
-      setModels(res.models ?? []);
-    } catch (e) {
-      setModels([]);
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [canSwitch, freeOnly, m.loadFailed]);
+    },
+    [canSwitch, freeOnly, m.loadFailed],
+  );
 
   useEffect(() => {
     if (!open || !canSwitch) return;
-    void loadModels();
-  }, [open, canSwitch, loadModels]);
+    void loadModels({ refresh: true });
+  }, [open, canSwitch, loadModels, configRevision, hasLitellmKey]);
+
+  useEffect(() => {
+    if (!canSwitch) return;
+    const onConfigChanged = () => {
+      setModels([]);
+      setModelCount(null);
+      setError(null);
+      if (open) void loadModels({ refresh: true });
+    };
+    window.addEventListener(LLM_CONFIG_CHANGED_EVENT, onConfigChanged);
+    return () => window.removeEventListener(LLM_CONFIG_CHANGED_EVENT, onConfigChanged);
+  }, [canSwitch, open, loadModels]);
 
   useEffect(() => {
     if (!open) return;
@@ -115,9 +149,23 @@ export function ModelSwitch({
     }
   };
 
+  if (isLitellm && !hasLitellmKey) {
+    return (
+      <p className="agent-model model-switch-no-key" title={m.noKeyHint}>
+        {chatModel || "—"}
+      </p>
+    );
+  }
+
   if (!canSwitch) {
     return <p className="agent-model">{chatModel || "—"}</p>;
   }
+
+  const instructions = isLitellm
+    ? `${m.litellmInstructions}${litellmBase ? ` Proxy: ${litellmBase}` : ""}`
+    : isOpenRouter
+      ? m.openrouterInstructions
+      : null;
 
   return (
     <div className="model-switch" ref={rootRef}>
@@ -137,23 +185,44 @@ export function ModelSwitch({
       </button>
       {open && (
         <div className="model-switch-popover" role="dialog" aria-label={m.switchTitle}>
+          {instructions ? (
+            <p className="small muted model-switch-instructions">{instructions}</p>
+          ) : null}
           <div className="model-switch-toolbar">
-            <input
-              type="search"
-              className="model-switch-search"
-              placeholder={m.searchPlaceholder}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              autoFocus
-            />
-            <label className="model-switch-free">
+            <div className="model-switch-toolbar-row">
               <input
-                type="checkbox"
-                checked={freeOnly}
-                onChange={(e) => setFreeOnly(e.target.checked)}
+                type="search"
+                className="model-switch-search"
+                placeholder={m.searchPlaceholder}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                autoFocus
               />
-              {m.freeOnly}
-            </label>
+              <button
+                type="button"
+                className="btn ghost sm model-switch-refresh"
+                disabled={loading}
+                onClick={() => void loadModels({ refresh: true })}
+                title={m.refresh}
+              >
+                {m.refresh}
+              </button>
+            </div>
+            {showFreeFilter && (
+              <label className="model-switch-free">
+                <input
+                  type="checkbox"
+                  checked={freeOnly}
+                  onChange={(e) => setFreeOnly(e.target.checked)}
+                />
+                {m.freeOnly}
+              </label>
+            )}
+            {!loading && !error && modelCount !== null && modelCount > 0 && (
+              <p className="small muted model-switch-meta">
+                {m.modelsCount.replace("{count}", String(modelCount))}
+              </p>
+            )}
           </div>
           {loading && <p className="small muted model-switch-status">{m.loading}</p>}
           {error && <p className="error small model-switch-status">{error}</p>}

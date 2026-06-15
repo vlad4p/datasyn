@@ -6,15 +6,16 @@ run_coordinator:
   module: dagster.core.run_coordinator
   class: QueuedRunCoordinator
 
-# DuckDB file at DUCKDB_PATH allows only one writer; pool all warehouse assets (see datasynk ``pool=``).
+# DuckDB warehouse is remote (Quack on VM1 duckdb-mcp); pool warehouse writers (see datasynk ``pool=``).
 # https://docs.dagster.io/guides/operate/managing-concurrency/concurrency-pools
 concurrency:
   pools:
-    default_limit: 1
+    default_limit: 5
   runs:
-    # Single file ``warehouse.duckdb``: two DockerRunLauncher containers must not open it RW at once.
-    # Raise only if you move the warehouse off file-backed DuckDB (e.g. MotherDuck) or drop writers to one.
-    max_concurrent_runs: 1
+    # QueuedRunCoordinator: up to N runs in flight (each spawns a Docker job container).
+    # Warehouse writers still share one DuckDB file on VM1 — expect lock errors if many
+    # bronze jobs run together; use tag_concurrency_limits to cap warehouse separately.
+    max_concurrent_runs: 5
     tag_concurrency_limits:
       - key: "operation"
         value: "example"
@@ -25,18 +26,22 @@ run_monitoring:
   poll_interval_seconds: 60
   # Registry pulls / heavy defs import on fleet VMs can exceed the default 180s.
   start_timeout_seconds: 600
-  # Release concurrency pool slots if a run is cancelled (avoids deadlock with pool limit 1).
+  # Release concurrency pool slots if a run is cancelled (avoids deadlock with low pool limits).
   free_slots_after_run_end_seconds: 300
 
 run_launcher:
   module: dagster_docker
   class: DockerRunLauncher
   config:
+    # Warehouse: QUACK_URI (not DUCKDB_PATH). Dagster attaches remotely to duckdb-mcp :9494.
+    # Every name below must be set on dagster_daemon (even empty) or launch_run fails.
     env_vars:
       - DAGSTER_POSTGRES_USER
       - DAGSTER_POSTGRES_PASSWORD
       - DAGSTER_POSTGRES_DB
-      - DUCKDB_PATH
+      - QUACK_URI
+      - QUACK_TOKEN
+      - QUACK_DISABLE_SSL
       - LITELLM_KEY
       - LITELLM_PROXY_BASE
       # Keep in sync with ``dagster_daemon`` ``environment`` in ``docker-compose.yaml``:
@@ -80,10 +85,6 @@ run_launcher:
         # Docker Desktop). Override by editing this file if you need a different
         # location; container_kwargs.volumes does not support env interpolation.
         - /tmp/dagster_data:/opt/dagster/data
-        # Same warehouse and ``/data-local`` host tree as ``dagster_user_code``.
-        # ``container_kwargs.volumes`` does not support env interpolation — substituted
-        # by ``scripts/patch-dagster-yaml.sh`` → ``runtime/dagster.local.yaml``.
-        - duckdb_data:/data
         # RW under ``/data-local`` (e.g. ``landing/...``) for assets that sync to MinIO.
         - __DATASYN_DATA_LOCAL_HOST__:/data-local
 

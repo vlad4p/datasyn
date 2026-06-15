@@ -47,6 +47,7 @@ type Strings = {
   navDatasets: string;
   navSkillsTools: string;
   navAnalyses: string;
+  navAgentConfig: string;
   /** @deprecated use navAgent */
   navChat: string;
   newChat: string;
@@ -77,6 +78,11 @@ type Strings = {
     loading: string;
     empty: string;
     loadFailed: string;
+    refresh: string;
+    modelsCount: string;
+    litellmInstructions: string;
+    openrouterInstructions: string;
+    noKeyHint: string;
   };
   suggestions: string[];
   catalog: {
@@ -121,6 +127,33 @@ type Strings = {
   skillsTools: {
     title: string;
     hint: string;
+  };
+  agentConfig: {
+    title: string;
+    hint: string;
+    loading: string;
+    provider: string;
+    proxyBase: string;
+    keyStatus: string;
+    keyConfigured: string;
+    keyMissing: string;
+    runtime: string;
+    chatModel: string;
+    virtualKeyLabel: string;
+    virtualKeyHint: string;
+    virtualKeyPlaceholder: string;
+    saveKey: string;
+    saving: string;
+    keyRequired: string;
+    resetKey: string;
+    resetting: string;
+    keyInvalid: string;
+    testConnection: string;
+    probing: string;
+    probeOk: string;
+    modelsListed: string;
+    refresh: string;
+    notLitellmHint: string;
   };
   analyses: {
     title: string;
@@ -181,6 +214,7 @@ const EN: Strings = {
   navDatasets: "Datasets",
   navSkillsTools: "Skills & Tools",
   navAnalyses: "Analyses",
+  navAgentConfig: "Agent settings",
   navChat: "Agent",
   newChat: "New chat",
   sidebarCollapse: "Hide sidebar",
@@ -209,7 +243,13 @@ const EN: Strings = {
     currentBadge: "Active",
     loading: "Loading models…",
     empty: "No models match.",
-    loadFailed: "Could not load models from OpenRouter.",
+    loadFailed: "Could not load models from the LLM provider.",
+    refresh: "Refresh",
+    modelsCount: "{count} models for your key",
+    litellmInstructions:
+      "Models come from the LiteLLM proxy (GET /v1/models) scoped to your virtual key. Change the key in Agent settings to see a different catalog.",
+    openrouterInstructions: "Models from OpenRouter for your API key.",
+    noKeyHint: "Configure a LiteLLM virtual key in Agent settings to browse models.",
   },
   suggestions: [
     "List all files under /data-local (including subfolders) using duckdb tools.",
@@ -258,6 +298,35 @@ const EN: Strings = {
   skillsTools: {
     title: "Skills & Tools",
     hint: "MCP servers, built-in helpers, and project skills available to the agent at runtime.",
+  },
+  agentConfig: {
+    title: "Agent configuration",
+    hint: "LiteLLM virtual key and chat model for datasyn-brain (session overrides; does not edit .env).",
+    loading: "Loading configuration…",
+    provider: "Model provider",
+    proxyBase: "LiteLLM base URL",
+    keyStatus: "Virtual key",
+    keyConfigured: "Configured",
+    keyMissing: "Not set",
+    runtime: "session",
+    chatModel: "Chat model",
+    virtualKeyLabel: "LiteLLM virtual key",
+    virtualKeyHint:
+      "Paste a virtual key registered on this LiteLLM proxy. Local dev: use LITELLM_MASTER_KEY from infra/litellm/.env (not a fleet key). Cleared with Reset to .env key.",
+    virtualKeyPlaceholder: "sk-…",
+    saveKey: "Apply key",
+    saving: "Applying…",
+    keyRequired: "Enter a virtual key.",
+    resetKey: "Reset to .env key",
+    resetting: "Resetting…",
+    keyInvalid: "LiteLLM rejected this key. For local proxy use LITELLM_MASTER_KEY from infra/litellm/.env.",
+    testConnection: "Test LiteLLM",
+    probing: "Testing…",
+    probeOk: "LiteLLM connection OK (GET /v1/models).",
+    modelsListed: "({count} models for this key)",
+    refresh: "Refresh",
+    notLitellmHint:
+      "MODEL_PROVIDER is {provider}. Set MODEL_PROVIDER=litellm in .env or compose.env to configure LiteLLM here.",
   },
   analyses: {
     title: "Last analyses",
@@ -318,6 +387,7 @@ const ES: Strings = {
   navDatasets: "Datasets",
   navSkillsTools: "Skills y herramientas",
   navAnalyses: "Análisis",
+  navAgentConfig: "Config. agente",
   navChat: "Agente",
   newChat: "Nuevo chat",
   sidebarCollapse: "Ocultar panel",
@@ -346,7 +416,13 @@ const ES: Strings = {
     currentBadge: "Activo",
     loading: "Cargando modelos…",
     empty: "Ningún modelo coincide.",
-    loadFailed: "No se pudieron cargar modelos desde OpenRouter.",
+    loadFailed: "No se pudieron cargar modelos del proveedor LLM.",
+    refresh: "Actualizar",
+    modelsCount: "{count} modelos para tu clave",
+    litellmInstructions:
+      "Los modelos provienen del proxy LiteLLM (GET /v1/models) según tu clave virtual. Cambiá la clave en Ajustes del agente para ver otro catálogo.",
+    openrouterInstructions: "Modelos de OpenRouter para tu clave API.",
+    noKeyHint: "Configurá una clave virtual LiteLLM en Ajustes del agente para ver modelos.",
   },
   suggestions: [
     "Lista todos los archivos bajo /data-local (incl. subcarpetas) con las herramientas duckdb.",
@@ -395,6 +471,36 @@ const ES: Strings = {
   skillsTools: {
     title: "Skills y herramientas",
     hint: "Servidores MCP, helpers internos y skills del proyecto disponibles para el agente.",
+  },
+  agentConfig: {
+    title: "Configuración del agente",
+    hint: "Clave virtual LiteLLM y modelo de chat para datasyn-brain (solo sesión; no modifica .env).",
+    loading: "Cargando configuración…",
+    provider: "Proveedor de modelo",
+    proxyBase: "URL base LiteLLM",
+    keyStatus: "Clave virtual",
+    keyConfigured: "Configurada",
+    keyMissing: "Sin clave",
+    runtime: "sesión",
+    chatModel: "Modelo de chat",
+    virtualKeyLabel: "Clave virtual LiteLLM",
+    virtualKeyHint:
+      "Pegá una clave virtual registrada en este proxy LiteLLM. Dev local: usá LITELLM_MASTER_KEY de infra/litellm/.env (no una clave fleet). Se borra con Restablecer clave .env.",
+    virtualKeyPlaceholder: "sk-…",
+    saveKey: "Aplicar clave",
+    saving: "Aplicando…",
+    keyRequired: "Ingresá una clave virtual.",
+    resetKey: "Restablecer clave .env",
+    resetting: "Restableciendo…",
+    keyInvalid:
+      "LiteLLM rechazó esta clave. Para proxy local usá LITELLM_MASTER_KEY de infra/litellm/.env.",
+    testConnection: "Probar LiteLLM",
+    probing: "Probando…",
+    probeOk: "Conexión LiteLLM OK (GET /v1/models).",
+    modelsListed: "({count} modelos para esta clave)",
+    refresh: "Actualizar",
+    notLitellmHint:
+      "MODEL_PROVIDER es {provider}. Definí MODEL_PROVIDER=litellm en .env o compose.env para configurar LiteLLM acá.",
   },
   analyses: {
     title: "Últimos análisis",
