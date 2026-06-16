@@ -20,6 +20,9 @@ endif
 DATASYN_IMAGE_NAMESPACE ?= datasyn
 DATASYN_IMAGE_TAG ?= latest
 DATASYN_IMAGE_REGISTRY ?=
+# Fleet VMs are amd64; set linux/arm64 only for local compose on Apple Silicon.
+DATASYN_DOCKER_PLATFORM ?= linux/amd64
+export DOCKER_DEFAULT_PLATFORM := $(DATASYN_DOCKER_PLATFORM)
 
 # host:port only (strip http(s):// if pasted from a browser URL)
 ifneq ($(DATASYN_IMAGE_REGISTRY),)

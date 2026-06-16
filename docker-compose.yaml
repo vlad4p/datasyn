@@ -4,13 +4,14 @@
 #   cp .env.example .env
 #   make build-agent && make build-ui && make push
 #
-# VM (copy only docker-compose.yaml + .env — no git clone):
+# VM (copy docker-compose.yaml + .env + mcp.json — no git clone):
 #   docker compose pull && docker compose up -d
 
 name: datasyn
 
 services:
   brain:
+    platform: linux/amd64
     build:
       context: .
       dockerfile: Dockerfile
@@ -23,6 +24,7 @@ services:
       - "8002:8000"
     volumes:
       - reports:/project/reports
+      - ./mcp.json:/project/mcp.json:ro
     command:
       [
         "uvicorn",
@@ -47,6 +49,7 @@ services:
     restart: unless-stopped
 
   ui:
+    platform: linux/amd64
     build:
       context: ./ui
       dockerfile: Dockerfile
