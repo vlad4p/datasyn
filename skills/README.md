@@ -38,6 +38,12 @@ Copy or link this folder into your tool’s skills directory:
 | [`statistical-report`](statistical-report/SKILL.md) | EDA and reports (many output formats) |
 | [`sentiment-analysis`](sentiment-analysis/SKILL.md) | Text tone / framing reports |
 
+### Engineering workflow
+
+| Skill | When to use |
+|-------|-------------|
+| [`gitflow`](gitflow/SKILL.md) | Branching: feature, release, hotfix; PRs to `develop` / `main` |
+
 ### Data collection & setup
 
 | Skill | When to use |
