@@ -23,24 +23,6 @@ def _skills_source() -> SkillsSource:
     raise ValueError(f"SKILLS_SOURCE must be 'local' or 'litellm', got {raw!r}")
 
 
-def _read_infra_litellm_dotenv(project_root: Path) -> dict[str, str]:
-    """Parse ``infra/litellm/.env`` without mutating ``os.environ``."""
-    path = project_root / "infra" / "litellm" / ".env"
-    if not path.is_file():
-        return {}
-    out: dict[str, str] = {}
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        key = key.strip()
-        value = value.strip().strip("'\"")
-        if key and value:
-            out[key] = value
-    return out
-
-
 def _litellm_proxy_root(*, project_root: Path) -> str:
     """LiteLLM admin routes (``/claude-code/plugins``) live on the proxy root, not ``/v1``."""
     base = _litellm_base_from_env()
@@ -53,11 +35,7 @@ def _litellm_proxy_root(*, project_root: Path) -> str:
 
 
 def _litellm_key_for_skills(*, project_root: Path) -> str | None:
-    key = _env_first("LITELLM_KEY", "LITELLM_PROXY_KEY", "LITELLM_MASTER_KEY")
-    if key:
-        return key
-    infra = _read_infra_litellm_dotenv(project_root)
-    return infra.get("LITELLM_MASTER_KEY") or infra.get("LITELLM_KEY") or infra.get("LITELLM_PROXY_KEY")
+    return _env_first("LITELLM_KEY", "LITELLM_PROXY_KEY", "LITELLM_MASTER_KEY")
 
 
 def _default_bundle_filename() -> str:
@@ -65,7 +43,7 @@ def _default_bundle_filename() -> str:
 
 
 def _default_bundle_public_url(*, filename: str) -> str | None:
-    """HTTP URL for the skills bundle served by ``skills-static`` (see infra/litellm)."""
+    """HTTP URL for the skills bundle served by a LiteLLM skills-static sidecar."""
     explicit = _env_first("LITELLM_SKILLS_BUNDLE_URL", "SKILLS_BUNDLE_URL")
     if explicit:
         return explicit
@@ -113,10 +91,6 @@ class SkillsSettings:
         filename = _default_bundle_filename()
         publish_raw = os.environ.get("LITELLM_SKILLS_BUNDLE_DIR", "").strip()
         publish_dir = Path(publish_raw).expanduser().resolve() if publish_raw else None
-        if publish_dir is None:
-            default_publish = root / "infra" / "litellm" / "skills-bundles"
-            if default_publish.parent.is_dir():
-                publish_dir = default_publish.resolve()
         return cls(
             source=_skills_source(),
             local_dir=local.resolve(),

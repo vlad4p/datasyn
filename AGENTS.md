@@ -20,7 +20,7 @@ If **`AGENTS.md`** is absent, the brain falls back to **`agent/prompts/superviso
 
 ### DuckDB MCP: canonical names
 
-Implementation: **`infra/duckdb/mcp/server.py`**. Tools are registered as **`get_schema`**, **`execute_query`**, **`list_data_mount`**. The MCP client prefixes each tool with the **`mcp.json`** server key **`duckdb`**, yielding:
+Implementation: **duckdb** MCP server (configured in `mcp.json`). Tools are registered as **`get_schema`**, **`execute_query`**, **`list_data_mount`**. The MCP client prefixes each tool with the **`mcp.json`** server key **`duckdb`**, yielding:
 
 | Prefixed name | Role |
 |---------------|------|
@@ -48,7 +48,7 @@ This process loads the HTTP MCP servers declared in **`mcp.json`** (default: **`
 | **`duckdb_list_data_mount`** | **Directory listing** (`ls`-style) under the host data mount: names, file vs directory, size. Read-only; paths must stay under `/data-local` (see MCP `DATA_LOCAL_ROOT`). **Prefer this** when the user asks what files exist in a folder. |
 | **`duckdb_execute_query`** | All DDL/DML/SELECT, including **ingest** and optional **`glob()`**-based paths via DuckDB SQL. |
 
-**Default schemas (medallion):** The `duckdb` service runs `infra/duckdb/warehouse/init_db.py` on startup and ensures **`medallion`**, **`bronze`**, **`silver`**, and **`gold`** exist. Prefer **`bronze`** for new file loads, **`silver`** for cleaned models, **`gold`** for marts. Older examples may still use **`raw`**—create it with `CREATE SCHEMA IF NOT EXISTS raw` if needed.
+**Default schemas (medallion):** The warehouse initializer ensures **`medallion`**, **`bronze`**, **`silver`**, and **`gold`** exist. Prefer **`bronze`** for new file loads, **`silver`** for cleaned models, **`gold`** for marts. Older examples may still use **`raw`**—create it with `CREATE SCHEMA IF NOT EXISTS raw` if needed.
 
 **Exception (INDEC EPH usuarios):** For paths under **`/data-local/indec/mercado_laboral/`** (EPH microdatos **`usu_hogar_*.txt`** / **`usu_individual_*.txt`**), **do not** apply the generic "prefer **`bronze`** for file loads" rule. Follow **`./skills/ingest-indec-mercadolaboral/SKILL.md`**: schema **`gold`** only, tables **`gold.indec_eph_usu_hogar`** and **`gold.indec_eph_usu_individual`**, append quarters with **`INSERT`**, **one SQL statement per `duckdb_execute_query`**. Names like **`bronze.eph_hogar_2025_q1`** are incorrect for this pipeline.
 
@@ -86,9 +86,9 @@ DuckDB **skips the `AS SELECT`** when the table already exists. The agent then r
 
 ### Object storage (`storage_*`)
 
-Implementation: **`infra/object-storage/mcp/server.py`**. Typical tools (prefixed **`storage_`** via `mcp.json`): **`list_buckets`**, **`list_objects`**, **`get_object_text`**, **`put_object_text`**, **`put_object_base64`** (binary: PDF, images), **`put_object_from_path`** (large/server-side file under the MCP host mount), **`delete_object`**. Default bucket is usually **`data-local`**.
+Implementation: **storage** MCP server (configured in `mcp.json`). Typical tools (prefixed **`storage_`** via `mcp.json`): **`list_buckets`**, **`list_objects`**, **`get_object_text`**, **`put_object_text`**, **`put_object_base64`** (binary: PDF, images), **`put_object_from_path`** (large/server-side file under the MCP host mount), **`delete_object`**. Default bucket is usually **`data-local`**.
 
-**Endpoint discipline:** use **`http://datasyn-object-minio:9000`** (alias from **`infra/object-storage`**) — not bare **`http://minio:9000`**: on **`infra-datasynk`**, Langfuse also registers the hostname **`minio`**, so DNS can hit the wrong instance and you get **`InvalidAccessKeyId`**. **`storage-mcp`** credentials should match **`MINIO_ROOT_USER`** / **`MINIO_ROOT_PASSWORD`** in **`infra/object-storage/.env`**.
+**Endpoint discipline:** use the application MinIO endpoint configured for your platform (e.g. **`http://datasyn-object-minio:9000`**) — not a generic `minio` hostname that may resolve to the wrong instance. **`storage-mcp`** credentials must match your MinIO **`MINIO_ROOT_USER`** / **`MINIO_ROOT_PASSWORD`**.
 
 **Landing files for DuckDB:** keep CSV/TXT material under **`/data-local/...`** for **`duckdb_list_data_mount`** and **`read_csv_auto`**. Use **`storage_*`** when you need to list or read objects directly from the **`data-local`** bucket (or others) in MinIO.
 
@@ -327,7 +327,7 @@ The runtime appends the canonical **reports directory** after this file—use it
 
 Human operators: see **`README.md`** for Docker stack layout, `make` targets, and compose start order.
 
-MCP servers are **only** those declared in **`mcp.json`**. Do not assume extra servers exist. **`storage-mcp`** talks to application MinIO on **`datasyn-object-minio`** (see **`infra/object-storage/docker-compose.yaml`**). **`duckdb`** / **`duckdb-mcp`** mount **`./data-local`** read-only for SQL and directory listing. The brain-only compose file is the repo root **`docker-compose.yaml`**. Optional **metadata catalog** (PostgreSQL) is accessed via **`dagster_catalog_*`** tools when a **`dagster`** MCP server is configured with **`DATABASE_URL`** or **`CATALOG_DATABASE_URL`**—not in the default **`mcp.json`**. Skills for catalog updates may live in **`datasyn-code`**.
+MCP servers are **only** those declared in **`mcp.json`**. Do not assume extra servers exist. **`storage-mcp`** talks to application MinIO on your platform endpoint. **`duckdb`** / **`duckdb-mcp`** mount **`./data-local`** read-only for SQL and directory listing. The compose file in this repo is root **`docker-compose.yaml`** (brain + UI only). Optional **metadata catalog** (PostgreSQL) is accessed via **`dagster_catalog_*`** tools when a **`dagster`** MCP server is configured with **`DATABASE_URL`** or **`CATALOG_DATABASE_URL`**—not in the default **`mcp.json`**. Skills for catalog updates may live in **`datasyn-code`**.
 
 ---
 

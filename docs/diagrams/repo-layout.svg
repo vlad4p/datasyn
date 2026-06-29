@@ -13,28 +13,22 @@
     <circle cx="36" cy="22" r="6" fill="#9c2128" opacity="0.8"/>
     <circle cx="56" cy="22" r="6" fill="#f4bd48" opacity="0.8"/>
     <circle cx="76" cy="22" r="6" fill="#559778" opacity="0.8"/>
-    <text x="280" y="28" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#49443b">plataforma + runtime</text>
+    <text x="280" y="28" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#49443b">brain + UI runtime</text>
     <text x="32" y="78" font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="#49443b">agent/</text>
     <text x="120" y="78" font-family="Arial,sans-serif" font-size="12" fill="#585d5e">Brain FastAPI &#183; clientes MCP &#183; Deep Agents</text>
     <text x="32" y="108" font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="#49443b">ui/</text>
     <text x="120" y="108" font-family="Arial,sans-serif" font-size="12" fill="#585d5e">Frontend React &#183; proxy /api &#183; brain</text>
     <text x="32" y="138" font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="#49443b">skills/</text>
     <text x="120" y="138" font-family="Arial,sans-serif" font-size="12" fill="#585d5e">Playbooks SKILL.md (ingesta &#183; an&#225;lisis)</text>
-    <text x="32" y="168" font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="#49443b">infra/</text>
-    <rect x="120" y="152" width="72" height="22" rx="3" fill="url(#bronze)"/>
-    <text x="156" y="167" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="bold" fill="#49443b">duckdb</text>
-    <rect x="200" y="152" width="52" height="22" rx="3" fill="#f9dac1" stroke="#de6433"/>
-    <text x="226" y="167" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="bold" fill="#6c2b3b">minio</text>
-    <rect x="260" y="152" width="64" height="22" rx="3" fill="#b3c8cd" stroke="#e3b09b"/>
-    <text x="292" y="167" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="bold" fill="#6c2b3b">dagster</text>
-    <text x="336" y="167" font-family="Arial,sans-serif" font-size="12" fill="#585d5e">+ distribution registry</text>
+    <text x="32" y="168" font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="#49443b">docker-compose.yaml</text>
+    <text x="200" y="168" font-family="Arial,sans-serif" font-size="12" fill="#585d5e">docker-compose.yaml &#183; brain + UI</text>
     <text x="32" y="198" font-family="Arial,sans-serif" font-size="14" fill="#49443b">data-local/</text>
     <text x="120" y="198" font-family="Arial,sans-serif" font-size="12" fill="#585d5e">Landing host (gitignored) &#183; mount duckdb-mcp</text>
     <text x="32" y="228" font-family="Arial,sans-serif" font-size="14" fill="#49443b">docs/diagrams/</text>
     <text x="160" y="228" font-family="Arial,sans-serif" font-size="12" fill="#585d5e">Diagramas de arquitectura (README)</text>
     <line x1="32" y1="244" x2="480" y2="244" stroke="#49443b"/>
     <text x="32" y="270" font-family="Arial,sans-serif" font-size="14" fill="#49443b">AGENTS.md &#183; mcp.json &#183; Makefile</text>
-    <text x="32" y="292" font-family="Arial,sans-serif" font-size="11" fill="#585d5e">Contrato agente &#183; URLs MCP &#183; make stack-up</text>
+    <text x="32" y="292" font-family="Arial,sans-serif" font-size="11" fill="#585d5e">Contrato agente &#183; URLs MCP &#183; make build / make push</text>
     <text x="32" y="322" font-family="Arial,sans-serif" font-size="11" fill="#585d5e">Pipelines Dagster: ../datasyn-code</text>
   </g>
 </svg>

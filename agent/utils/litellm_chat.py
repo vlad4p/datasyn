@@ -122,7 +122,7 @@ def hint_for_litellm_parsed_error(parsed: dict[str, Any]) -> str:
             return (
                 "LiteLLM does not recognize this Bearer token for the configured proxy "
                 f"({settings.litellm_api_base or 'LITELLM_PROXY_BASE'}). "
-                "Local dev: use the same key as LITELLM_MASTER_KEY in infra/litellm/.env "
+                "Local dev: use the same key as LITELLM_MASTER_KEY in repo-root `.env` "
                 "(default sk-datasyn-local-litellm-dev), not a fleet virtual key. "
                 "Fleet: create the virtual key in LiteLLM admin or use Agent settings → Reset to .env key "
                 "if you pasted the wrong token. Session overrides persist until cleared or brain restart."

@@ -1,32 +1,17 @@
-# Datasyn aggregator compose (agent + ui).
+# Datasyn — brain + UI (single compose for build, push, pull, and run).
 #
-# Start order (local dev): ``make -C infra/object-storage up``, ``duckdb up``, ``dagster up`` — see infra/README.md
-#   1. docker compose -f infra/object-storage/docker-compose.yaml up -d --build
-#   2. docker compose -f infra/duckdb/docker-compose.yaml up -d --build
-#   3. docker compose -f infra/dagster/docker-compose.yaml up -d --build
-#   4. docker compose up -d --build
-# Registry publish (CI / remote): ``make -C infra/distribution publish`` — see INSTALL.md
+# Build machine:
+#   cp .env.example .env
+#   make build-agent && make build-ui && make push
 #
-# All stacks share external network `infra-datasynk`.
-#
-# MinIO object storage (landing zone) lives in the object-storage stack, not this file:
-#   cp infra/object-storage/.env.example infra/object-storage/.env
-#   docker compose -f infra/object-storage/docker-compose.yaml up -d
+# VM (copy docker-compose.yaml + .env + mcp.json — no git clone):
+#   docker compose pull && docker compose up -d
 
 name: datasyn
 
-networks:
-  infra:
-    name: infra-datasynk
-    external: true
-
-volumes:
-  storage:
-    external: true
-    name: storage
-
 services:
   brain:
+    platform: linux/amd64
     build:
       context: .
       dockerfile: Dockerfile
@@ -34,25 +19,12 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     env_file:
-      - compose.env
-      # Optional secrets: repo-root ``.env`` (see .env.example / .env.deploy.example)
-      - path: .env
-        required: false
-    environment:
-      MODEL_PROVIDER: ${MODEL_PROVIDER:-litellm}
-      LITELLM_PROXY_BASE: ${LITELLM_PROXY_BASE:-http://litellm:4000}
-      LITELLM_KEY: ${LITELLM_KEY:-${LITELLM_MASTER_KEY:-}}
-      CHAT_MODEL: ${CHAT_MODEL:-}
-      DAGSTER_URL: ${DAGSTER_URL:-http://dagster_webserver:3000}
-      # Skills: default local mount below. For LiteLLM pull in prod, set SKILLS_SOURCE=litellm
-      # and LITELLM_SKILLS_STATIC_BASE=http://skills-static:4001 (see infra/litellm).
-      SKILLS_SOURCE: ${SKILLS_SOURCE:-local}
-    networks:
-      - infra
+      - .env
+    ports:
+      - "8002:8000"
     volumes:
-      - ./skills:/project/skills:ro
-      - ./AGENTS.md:/project/AGENTS.md:ro
-      - ./reports:/project/reports
+      - reports:/project/reports
+      - ./mcp.json:/project/mcp.json:ro
     command:
       [
         "uvicorn",
@@ -62,8 +34,6 @@ services:
         "--port",
         "8000",
       ]
-    ports:
-      - "8002:8000"
     healthcheck:
       test:
         [
@@ -76,8 +46,10 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
+    restart: unless-stopped
 
   ui:
+    platform: linux/amd64
     build:
       context: ./ui
       dockerfile: Dockerfile
@@ -87,7 +59,9 @@ services:
     depends_on:
       brain:
         condition: service_healthy
-    networks:
-      - infra
     ports:
       - "8003:8003"
+    restart: unless-stopped
+
+volumes:
+  reports:

@@ -1,9 +1,10 @@
 """Load MCP HTTP endpoints from ``mcp.json`` with host-friendly URL rewriting.
 
-Docker Compose uses internal DNS (``duckdb-mcp``, ``storage-mcp``, …). Those names only
-resolve **inside** the ``infra-datasynk`` network. When the brain runs on the host
-(``make agent-dev``), rewrite those URLs to ``127.0.0.1:<published-port>`` so the same
-``mcp.json`` works for containerized and local uvicorn processes.
+When the brain runs on the **host** (``make agent-dev``), Docker-internal MCP hostnames
+(``duckdb-mcp``, ``storage-mcp``) are rewritten to ``127.0.0.1:<port>``.
+
+When the brain runs **inside Docker**, loopback URLs (``127.0.0.1`` / ``localhost``) are
+rewritten to ``host.docker.internal`` so the container can reach MCP servers on the host.
 """
 
 from __future__ import annotations
@@ -19,13 +20,15 @@ from agent.utils.litellm_chat import running_in_docker
 
 logger = logging.getLogger(__name__)
 
-# Hostnames from ``mcp.json`` that map to published ports in the ``infra/*/docker-compose.yaml`` stacks.
+# Hostnames from ``mcp.json`` that only resolve inside a platform Docker network.
 _DOCKER_ONLY_MCP_HOSTS = frozenset(
     {
         "duckdb-mcp",
         "storage-mcp",
     }
 )
+
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost"})
 
 
 def _rewrite_mcp_url_for_host_process(url: str) -> str:
@@ -54,11 +57,37 @@ def _rewrite_mcp_url_for_host_process(url: str) -> str:
     return loopback
 
 
+def _rewrite_mcp_url_for_docker(url: str) -> str:
+    """Inside Docker, loopback is the container — reach MCP on the host instead."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if host not in _LOOPBACK_HOSTS:
+        return url
+    port = parsed.port
+    if port is None:
+        logger.warning(
+            "MCP URL %r has no port; cannot rewrite for Docker host access; leaving unchanged",
+            url,
+        )
+        return url
+    gateway = urlunparse(
+        (
+            parsed.scheme or "http",
+            f"host.docker.internal:{port}",
+            parsed.path or "",
+            parsed.params,
+            parsed.query,
+            parsed.fragment,
+        )
+    )
+    return gateway
+
+
 def load_mcp_tool_connections(project_root: Path | None = None) -> dict[str, Any]:
     """Build the LangChain MCP client ``connections`` map (transport + url per server key).
 
-    * On the **host** (no ``/.dockerenv``): rewrite Docker-only hostnames to ``127.0.0.1``.
-    * **Inside** the brain container: keep ``mcp.json`` URLs (Docker DNS works).
+    * On the **host**: rewrite Docker-only hostnames to ``127.0.0.1``.
+    * **Inside** the brain container: rewrite loopback to ``host.docker.internal``.
 
     Set ``MCP_DISABLE_HOST_URL_REWRITE=1`` to always use raw ``mcp.json`` URLs.
     """
@@ -98,14 +127,23 @@ def load_mcp_tool_connections(project_root: Path | None = None) -> dict[str, Any
             "true",
             "yes",
         )
-        if not disable_rewrite and not running_in_docker():
-            effective = _rewrite_mcp_url_for_host_process(url_str)
-            if effective != url_str:
-                logger.info(
-                    "MCP URL rewrite (host process): %s -> %s",
-                    url_str,
-                    effective,
-                )
+        if not disable_rewrite:
+            if running_in_docker():
+                effective = _rewrite_mcp_url_for_docker(url_str)
+                if effective != url_str:
+                    logger.info(
+                        "MCP URL rewrite (Docker): %s -> %s",
+                        url_str,
+                        effective,
+                    )
+            else:
+                effective = _rewrite_mcp_url_for_host_process(url_str)
+                if effective != url_str:
+                    logger.info(
+                        "MCP URL rewrite (host process): %s -> %s",
+                        url_str,
+                        effective,
+                    )
         connections[str(name)] = {"transport": transport, "url": effective}
     if not connections:
         raise ValueError("mcp.json: no entries with a 'url' field.")

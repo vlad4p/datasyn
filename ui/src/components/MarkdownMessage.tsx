@@ -6,7 +6,6 @@ import type { VisualizationSpec } from "vega-embed";
 
 import { prepareMarkdownContent } from "../prepareMarkdown";
 import { ChatChart } from "./ChatChart";
-import { MermaidDiagram } from "./MermaidDiagram";
 import { PlotlyChart } from "./PlotlyChart";
 
 function parseLanguage(className?: string): string | undefined {
@@ -109,10 +108,6 @@ function tryPlotlySpec(data: unknown): PlotlySpec | null {
 function CodeBlock({ className, children }: { className?: string; children?: ReactNode }) {
   const text = String(children).replace(/\n$/, "");
   const lang = chartLanguage(parseLanguage(className));
-
-  if (lang === "mermaid") {
-    return <MermaidDiagram chart={text} />;
-  }
 
   if (lang === "vega-lite" || lang === "vega") {
     try {
