@@ -3,7 +3,7 @@ import { listChatSessions, type ChatSessionSummary } from "../chatHistoryStorage
 import type { UiLocale } from "../locale";
 import { uiStrings } from "../locale";
 
-export type WorkspaceView = "agent" | "datasets" | "tools" | "analyses" | "settings";
+export type WorkspaceView = "agent" | "datasets" | "tools" | "analyses" | "lineage" | "settings";
 
 type Props = {
   locale: UiLocale;
@@ -19,7 +19,7 @@ type Props = {
   onToggleCollapse: () => void;
 };
 
-function NavIcon({ kind }: { kind: "chat" | "datasets" | "tools" | "analysis" | "settings" | "new" }) {
+function NavIcon({ kind }: { kind: "chat" | "datasets" | "tools" | "analysis" | "lineage" | "settings" | "new" }) {
   return (
     <span className="sidebar-nav__icon" aria-hidden>
       {kind === "chat" && (
@@ -43,6 +43,14 @@ function NavIcon({ kind }: { kind: "chat" | "datasets" | "tools" | "analysis" | 
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
           <path d="M3 3v18h18" />
           <path d="M7 16l4-6 4 3 5-8" />
+        </svg>
+      )}
+      {kind === "lineage" && (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+          <circle cx="6" cy="6" r="2.5" />
+          <circle cx="18" cy="6" r="2.5" />
+          <circle cx="12" cy="18" r="2.5" />
+          <path d="M8.2 7.5l3 8M15.8 7.5l-3 8M8.5 6h7" />
         </svg>
       )}
       {kind === "settings" && (
@@ -101,11 +109,12 @@ export function WorkspaceSidebar({
     [locale],
   );
 
-  const items: { id: WorkspaceView; label: string; icon: "chat" | "datasets" | "tools" | "analysis" | "settings" }[] = [
+  const items: { id: WorkspaceView; label: string; icon: "chat" | "datasets" | "tools" | "analysis" | "lineage" | "settings" }[] = [
     { id: "agent", label: s.navAgent, icon: "chat" },
     { id: "datasets", label: s.navDatasets, icon: "datasets" },
     { id: "tools", label: s.navSkillsTools, icon: "tools" },
     { id: "analyses", label: s.navAnalyses, icon: "analysis" },
+    { id: "lineage", label: s.navLineage, icon: "lineage" },
     { id: "settings", label: s.navAgentConfig, icon: "settings" },
   ];
 

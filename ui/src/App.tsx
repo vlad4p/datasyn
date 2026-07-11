@@ -11,6 +11,7 @@ import { LoginPage } from "./components/LoginPage";
 import { SkillsToolsView } from "./components/SkillsToolsView";
 import { AgentConfigPanel } from "./components/AgentConfigPanel";
 import { LLM_CONFIG_CHANGED_EVENT } from "./components/ModelSwitch";
+import { SyncLineagePanel } from "./components/SyncLineagePanel";
 import { WorkspaceSidebar, type WorkspaceView } from "./components/WorkspaceSidebar";
 import {
   createChatSession,
@@ -28,6 +29,7 @@ const AGENT_PANEL_ID = "agent-workspace";
 const DATASETS_PANEL_ID = "datasets-panel";
 const TOOLS_PANEL_ID = "skills-tools-panel";
 const ANALYSES_PANEL_ID = "analyses-panel";
+const LINEAGE_PANEL_ID = "sync-lineage-panel";
 const SETTINGS_PANEL_ID = "agent-settings-panel";
 
 type Msg = ChatMsg & {
@@ -391,6 +393,14 @@ function AppWorkspace({ locale, onLocaleChange, user, onLogout }: WorkspaceProps
               }
               locale={locale}
               refreshToken={analysisRefresh}
+            />
+
+            <SyncLineagePanel
+              id={LINEAGE_PANEL_ID}
+              className={
+                workspaceView === "lineage" ? "panel-lineage" : "panel-lineage panel-hidden"
+              }
+              locale={locale}
             />
 
             <AgentConfigPanel

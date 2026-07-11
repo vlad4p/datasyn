@@ -1,0 +1,25 @@
+# Quack sync sources (non-secret). Tokens/URIs resolve from env at runtime.
+#
+# Per source:
+#   - name: logical id (also used in SYNC_<NAME>_QUACK_URI / SYNC_<NAME>_QUACK_TOKEN)
+#   - env_prefix: optional override for env var prefix (default SYNC_<UPPER_NAME>)
+#   - quack_uri_env / quack_token_env: optional explicit env var names
+#   - alias: ATTACH alias on the main warehouse (must be a valid DuckDB identifier)
+#   - target_schema: medallion schema for CREATE OR REPLACE TABLE (default bronze)
+#   - tables: list of { source_schema, source_table, target_table? }
+#     If tables is empty / omitted, sync discovers all BASE TABLEs under source_schemas.
+#   - source_schemas: schemas to scan when tables is empty (default: [bronze, silver, gold])
+#   - enabled: set false to skip without removing the entry
+#
+# Credentials (in .env, not here):
+#   SYNC_EXTERNAL_QUACK_URI=quack:127.0.0.1:9494
+#   SYNC_EXTERNAL_QUACK_TOKEN=<same as datasyn-duckdb/mcp/.env QUACK_TOKEN>
+
+sources:
+  - name: external
+    alias: ext_wh
+    target_schema: bronze
+    enabled: true
+    # Empty tables → discover BASE TABLEs under source_schemas on attach.
+    source_schemas: [bronze, silver, gold]
+    tables: []

@@ -47,6 +47,7 @@ type Strings = {
   navDatasets: string;
   navSkillsTools: string;
   navAnalyses: string;
+  navLineage: string;
   navAgentConfig: string;
   /** @deprecated use navAgent */
   navChat: string;
@@ -166,6 +167,28 @@ type Strings = {
     back: string;
     messageCount: (n: number) => string;
   };
+  syncLineage: {
+    title: string;
+    hint: string;
+    syncNow: string;
+    syncing: string;
+    refresh: string;
+    loading: string;
+    empty: string;
+    configuredTitle: string;
+    noConfigured: string;
+    tableTitle: string;
+    colSource: string;
+    colSourceFqn: string;
+    colTargetFqn: string;
+    colRows: string;
+    colStatus: string;
+    colSyncedAt: string;
+    lineageTitle: string;
+    lineageHint: string;
+    syncOk: string;
+    syncFailed: string;
+  };
   dashboard: {
     title: string;
     refresh: string;
@@ -214,6 +237,7 @@ const EN: Strings = {
   navDatasets: "Datasets",
   navSkillsTools: "Skills & Tools",
   navAnalyses: "Analyses",
+  navLineage: "Sync & Lineage",
   navAgentConfig: "Agent settings",
   navChat: "Agent",
   newChat: "New chat",
@@ -339,6 +363,28 @@ const EN: Strings = {
     back: "Back to list",
     messageCount: (n) => `${n} message${n === 1 ? "" : "s"}`,
   },
+  syncLineage: {
+    title: "Sync & Lineage",
+    hint: "Pull tables from external Quack DuckDB sources into the main warehouse and inspect sync lineage.",
+    syncNow: "Sync now",
+    syncing: "Syncing…",
+    refresh: "Refresh",
+    loading: "Loading sync status…",
+    empty: "No synced tables yet. Configure config/sync_sources.yaml and .env, then click Sync now.",
+    configuredTitle: "Configured sources",
+    noConfigured: "No enabled sources with credentials (see config/sync_sources.yaml).",
+    tableTitle: "Synced tables",
+    colSource: "Source",
+    colSourceFqn: "External FQN",
+    colTargetFqn: "Main FQN",
+    colRows: "Rows",
+    colStatus: "Status",
+    colSyncedAt: "Synced at",
+    lineageTitle: "Lineage graph",
+    lineageHint: "MCP Apps UI resource (ui://datasyn/lineage)",
+    syncOk: "Sync finished.",
+    syncFailed: "Sync failed",
+  },
   dashboard: {
     title: "Dashboard",
     refresh: "Refresh",
@@ -387,6 +433,7 @@ const ES: Strings = {
   navDatasets: "Datasets",
   navSkillsTools: "Skills y herramientas",
   navAnalyses: "Análisis",
+  navLineage: "Sync y linaje",
   navAgentConfig: "Config. agente",
   navChat: "Agente",
   newChat: "Nuevo chat",
@@ -512,6 +559,28 @@ const ES: Strings = {
     empty: "Aún no hay análisis exportados. Usa Exportar análisis en la vista Agente.",
     back: "Volver al listado",
     messageCount: (n) => (n === 1 ? "1 mensaje" : `${n} mensajes`),
+  },
+  syncLineage: {
+    title: "Sync y linaje",
+    hint: "Trae tablas desde DuckDB externos (Quack) al warehouse principal e inspecciona el linaje de sync.",
+    syncNow: "Sincronizar",
+    syncing: "Sincronizando…",
+    refresh: "Actualizar",
+    loading: "Cargando estado de sync…",
+    empty: "Aún no hay tablas sincronizadas. Configurá config/sync_sources.yaml y .env, luego tocá Sincronizar.",
+    configuredTitle: "Fuentes configuradas",
+    noConfigured: "No hay fuentes habilitadas con credenciales (ver config/sync_sources.yaml).",
+    tableTitle: "Tablas sincronizadas",
+    colSource: "Fuente",
+    colSourceFqn: "FQN externo",
+    colTargetFqn: "FQN principal",
+    colRows: "Filas",
+    colStatus: "Estado",
+    colSyncedAt: "Sincronizado",
+    lineageTitle: "Grafo de linaje",
+    lineageHint: "Recurso UI MCP Apps (ui://datasyn/lineage)",
+    syncOk: "Sync finalizado.",
+    syncFailed: "Sync falló",
   },
   dashboard: {
     title: "Panel",

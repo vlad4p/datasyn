@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mcp-ui/client": "^7.1.1",
     "plotly.js-dist-min": "^3.5.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

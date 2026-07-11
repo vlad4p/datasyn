@@ -48,6 +48,8 @@ Copy or link this folder into your tool’s skills directory:
 
 | Skill | When to use |
 |-------|-------------|
+| [`sync-duckdb-quack`](sync-duckdb-quack/SKILL.md) | Sync external Quack DuckDB tables into the main warehouse |
+| [`lineage-mcp-app`](lineage-mcp-app/SKILL.md) | MCP Apps lineage UI (`ui://datasyn/lineage`) / Sync & Lineage panel |
 | [`web-scraping`](web-scraping/SKILL.md) | Fetch data to `data/landing/` |
 | [`create-table`](create-table/SKILL.md) | Schema design |
 | [`create-python-script`](create-python-script/SKILL.md) | Optional code in `scripts/python/` |

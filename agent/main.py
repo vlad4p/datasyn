@@ -45,6 +45,7 @@ from agent.utils.analysis_export import export_analysis, get_analysis, list_anal
 from agent.utils.dagster_graphql import dagster_graphql_url, dagster_server_url
 from agent.utils.catalog_datasets import catalog_dataset_detail_payload, catalog_datasets_payload
 from agent.utils.warehouse_schema import warehouse_tables_payload
+from agent.sync.quack_sync import build_lineage_ui_resource, run_quack_sync, sync_status
 from agent.utils.litellm_chat import (
     explain_litellm_http_exception,
     probe_litellm_proxy,
@@ -587,6 +588,59 @@ async def catalog_dataset_detail(fqn: str) -> dict[str, Any]:
     except Exception as exc:
         logger.warning("GET /catalog/datasets/%s failed: %s", fqn, exc)
         return {"status": "error", "error": str(exc)[:500]}
+
+
+class SyncRunRequest(BaseModel):
+    """Optional filter: sync only one source from config/sync_sources.yaml."""
+
+    source: str | None = Field(None, description="Source name from sync_sources.yaml")
+
+
+@app.post("/sync/run")
+async def sync_run(body: SyncRunRequest = SyncRunRequest()) -> dict[str, Any]:
+    """Pull tables from external Quack sources into the main warehouse (via MCP)."""
+    try:
+        return await run_quack_sync(source_name=body.source)
+    except Exception as exc:
+        logger.warning("POST /sync/run failed: %s", exc)
+        return {"status": "error", "error": str(exc)[:500], "results": []}
+
+
+@app.get("/sync/status")
+async def sync_status_endpoint(limit: int = Query(200, ge=1, le=1000)) -> dict[str, Any]:
+    """Synced tables from medallion.sync_registry plus configured sources."""
+    try:
+        return await sync_status(limit=limit)
+    except Exception as exc:
+        logger.warning("GET /sync/status failed: %s", exc)
+        return {
+            "status": "error",
+            "error": str(exc)[:500],
+            "entries": [],
+            "sources": [],
+            "configured_sources": [],
+            "count": 0,
+        }
+
+
+@app.get("/lineage/ui-resource")
+async def lineage_ui_resource() -> dict[str, Any]:
+    """MCP Apps / MCP-UI UIResource for Quack sync lineage (ui://datasyn/lineage)."""
+    try:
+        return await build_lineage_ui_resource()
+    except Exception as exc:
+        logger.warning("GET /lineage/ui-resource failed: %s", exc)
+        return {
+            "status": "error",
+            "error": str(exc)[:500],
+            "type": "resource",
+            "resource": {
+                "uri": "ui://datasyn/lineage",
+                "mimeType": "text/html",
+                "text": f"<html><body><p>Lineage unavailable: {exc}</p></body></html>",
+            },
+            "_meta": {"ui": {"resourceUri": "ui://datasyn/lineage"}},
+        }
 
 
 @app.get("/analyses")

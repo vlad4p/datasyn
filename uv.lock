@@ -374,6 +374,7 @@ dependencies = [
     { name = "pandas" },
     { name = "pyjwt" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "xlrd" },
 ]
@@ -409,6 +410,7 @@ requires-dist = [
     { name = "pyjwt", specifier = ">=2.8" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
     { name = "xlrd", specifier = ">=2.0" },
 ]

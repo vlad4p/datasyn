@@ -688,3 +688,79 @@ export async function exportAnalysis(body: AnalysisExportRequest): Promise<{ sta
   return res.json() as Promise<{ status: string; analysis: AnalysisManifest }>;
 }
 
+/** Row from ``medallion.sync_registry`` (newest first). */
+export type SyncRegistryEntry = {
+  id: string;
+  source_name: string;
+  source_uri: string;
+  source_fqn: string;
+  target_fqn: string;
+  row_count: number | null;
+  status: string;
+  error_message?: string | null;
+  synced_at?: string | null;
+};
+
+export type SyncConfiguredSource = {
+  name: string;
+  alias: string;
+  uri: string;
+  target_schema: string;
+  table_count?: number | null;
+};
+
+export type SyncStatusResponse = {
+  status: string;
+  entries: SyncRegistryEntry[];
+  sources: { name: string; uri: string; last_synced_at?: string | null; last_status?: string }[];
+  configured_sources?: SyncConfiguredSource[];
+  count?: number;
+  error?: string | null;
+};
+
+export type SyncRunResponse = {
+  status: string;
+  message?: string;
+  error?: string;
+  results: unknown[];
+};
+
+/** MCP Apps / MCP-UI resource payload from ``GET /lineage/ui-resource``. */
+export type LineageUiResourceResponse = {
+  status: string;
+  type?: string;
+  resource: {
+    uri: string;
+    mimeType: string;
+    text?: string;
+    blob?: string;
+  };
+  _meta?: { ui?: { resourceUri?: string } };
+  entry_count?: number;
+  node_count?: number;
+  edge_count?: number;
+  error?: string | null;
+};
+
+export async function getSyncStatus(limit = 200): Promise<SyncStatusResponse> {
+  const res = await brainFetch(brainApiUrl(`/sync/status?limit=${limit}`));
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<SyncStatusResponse>;
+}
+
+export async function runSync(source?: string | null): Promise<SyncRunResponse> {
+  const res = await brainFetch(brainApiUrl("/sync/run"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source: source ?? null }),
+  });
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<SyncRunResponse>;
+}
+
+export async function getLineageResource(): Promise<LineageUiResourceResponse> {
+  const res = await brainFetch(brainApiUrl("/lineage/ui-resource"));
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<LineageUiResourceResponse>;
+}
+
