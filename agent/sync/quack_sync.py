@@ -191,12 +191,48 @@ def load_sync_sources(manifest_path: Path | None = None) -> list[SyncSource]:
     return out
 
 
+def _tool_arg_names(tool: Any) -> set[str]:
+    """Collect argument names from a LangChain / MCP tool schema."""
+    names: set[str] = set()
+    schema = getattr(tool, "args_schema", None)
+    if schema is not None:
+        fields = getattr(schema, "model_fields", None) or getattr(schema, "__fields__", None)
+        if isinstance(fields, dict):
+            names.update(str(k) for k in fields)
+        if isinstance(schema, dict):
+            props = schema.get("properties")
+            if isinstance(props, dict):
+                names.update(str(k) for k in props)
+            for key in ("required",):
+                req = schema.get(key)
+                if isinstance(req, list):
+                    names.update(str(k) for k in req)
+    # StructuredTool often exposes a JSON-schema-like ``args`` / ``tool_call_schema``
+    for attr in ("args", "tool_call_schema", "input_schema"):
+        blob = getattr(tool, attr, None)
+        if isinstance(blob, dict):
+            props = blob.get("properties") if "properties" in blob else blob
+            if isinstance(props, dict):
+                names.update(str(k) for k in props)
+    return names
+
+
+def _resolve_sql_arg_key(tool: Any) -> str:
+    """duckdb-mcp ``execute_query`` takes ``sql`` (not ``query``). Prefer schema, else ``sql``."""
+    names = _tool_arg_names(tool)
+    for candidate in ("sql", "query", "statement"):
+        if candidate in names:
+            return candidate
+    # Fleet / local duckdb-mcp contract is ``sql``; never default to ``query``.
+    return "sql"
+
+
 class _McpSql:
     """Thin wrapper: one SQL statement per duckdb_execute_query call."""
 
     def __init__(self) -> None:
         self._tool: Any | None = None
-        self._arg_key: str = "query"
+        self._arg_key: str = "sql"
 
     async def connect(self) -> None:
         client = MultiServerToolClient(load_mcp_tool_connections(), tool_name_prefix=True)
@@ -204,14 +240,7 @@ class _McpSql:
         for t in tools:
             if str(getattr(t, "name", "") or "").strip() == "duckdb_execute_query":
                 self._tool = t
-                schema = getattr(t, "args_schema", None)
-                fields: dict[str, Any] = {}
-                if schema is not None:
-                    fields = getattr(schema, "model_fields", None) or getattr(schema, "__fields__", {}) or {}
-                for candidate in ("query", "sql", "statement"):
-                    if candidate in fields:
-                        self._arg_key = candidate
-                        break
+                self._arg_key = _resolve_sql_arg_key(t)
                 return
         raise RuntimeError("duckdb_execute_query tool not found (check mcp.json duckdb server)")
 
